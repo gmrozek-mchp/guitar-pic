@@ -25,6 +25,13 @@ static servo_cal_t s_cal[SERVO_COUNT];       /* RAM working copy */
 static uint16_t    s_pulse_us[SERVO_COUNT];
 static int8_t      s_position[SERVO_COUNT];
 
+/* Output gate. While clear, requested pulses/positions are still recorded but the
+ * TCC duty is left alone, so nothing moves whatever asked — the beat nod, the
+ * coordinator's 0x88B5 positions, beatbox's positions, or the local CLI. Default on
+ * so the puppet works with no coordinator; marvin pushes its own state over
+ * 0x88B9. */
+static bool        s_output_en = true;
+
 static uint16_t us_to_ticks(uint16_t us)
 {
     return (uint16_t)(((uint32_t)us * SERVO_TICKS_NUM) / SERVO_TICKS_DEN);
@@ -50,8 +57,42 @@ uint16_t Servo_SetPulseUs(servo_id_t servo, uint16_t us)
     if (us > SERVO_US_MAX) { us = SERVO_US_MAX; }
 
     s_pulse_us[servo] = us;
-    (void)TCC0_PWM16bitDutySet(s_channel[servo], us_to_ticks(us));
+    if (s_output_en)
+    {
+        (void)TCC0_PWM16bitDutySet(s_channel[servo], us_to_ticks(us));
+    }
     return us;
+}
+
+void Servo_SetEnabled(bool en)
+{
+    if (en == s_output_en) { return; }
+
+    if (en)
+    {
+        /* Re-apply what was requested while gated, so the puppet resumes where the
+         * motion source already thinks it is. */
+        s_output_en = true;
+        for (servo_id_t s = 0; s < SERVO_COUNT; s++)
+        {
+            (void)TCC0_PWM16bitDutySet(s_channel[s], us_to_ticks(s_pulse_us[s]));
+        }
+    }
+    else
+    {
+        /* Park at neutral before gating, so the head settles rather than freezing
+         * mid-nod (the same courtesy BeatNod_SetEnabled does for the neck). */
+        for (servo_id_t s = 0; s < SERVO_COUNT; s++)
+        {
+            (void)TCC0_PWM16bitDutySet(s_channel[s], us_to_ticks(s_cal[s].neutral_us));
+        }
+        s_output_en = false;
+    }
+}
+
+bool Servo_IsEnabled(void)
+{
+    return s_output_en;
 }
 
 uint16_t Servo_GetPulseUs(servo_id_t servo)

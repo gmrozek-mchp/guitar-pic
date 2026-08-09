@@ -128,7 +128,8 @@ bool T1SLink_SendToLemmy(int8_t neck, int8_t jaw);
 #define T1S_ANIM_CTRL_NOD_EN     (1u)  /* arg 0|1  : enable/disable the nod        */
 #define T1S_ANIM_CTRL_NOD_TRIM   (2u)  /* arg int8 : nod trim / pot offset         */
 #define T1S_ANIM_CTRL_NOD_OSC    (3u)  /* arg 0|1  : oscillator (beat-only vs osc) */
-#define T1S_ANIM_CTRL_OP_COUNT   (3u)
+#define T1S_ANIM_CTRL_OUTPUT_EN  (4u)  /* arg 0|1  : gate every servo write        */
+#define T1S_ANIM_CTRL_OP_COUNT   (4u)
 bool T1SLink_SendLemmyCtrl(uint8_t opcode, uint8_t arg);
 
 /* Lightshow control channel — same 0x88B9 transport + [opcode, arg] grammar as
@@ -138,6 +139,16 @@ bool T1SLink_SendLemmyCtrl(uint8_t opcode, uint8_t arg);
 #define T1S_LIGHT_CTRL_OUTPUT_EN (1u)  /* arg 0|1  : enable/disable the LED output */
 #define T1S_LIGHT_CTRL_OP_COUNT  (1u)
 bool T1SLink_SendLightshowCtrl(uint8_t opcode, uint8_t arg);
+
+/* Guitar control channel — same 0x88B9 transport + [opcode, arg] grammar, routed
+ * to the guitar node with its own opcode namespace. Output enable gates the
+ * node's open-drain button GPIOs at the node, so it holds even inside the window
+ * where the fretboard drives the guitar peer-to-peer and marvin is silent
+ * (Detector_FretboardDriving). Same threading contract; returns false if the link
+ * is down or the opcode is unknown. */
+#define T1S_GUITAR_CTRL_OUTPUT_EN (1u) /* arg 0|1  : gate the button outputs       */
+#define T1S_GUITAR_CTRL_OP_COUNT  (1u)
+bool T1SLink_SendGuitarCtrl(uint8_t opcode, uint8_t arg);
 
 /* Fretboard (detector) control channel — same 0x88B9 transport + [opcode, arg]
  * grammar, routed to the detector node with its own opcode namespace. Arm gates
@@ -153,6 +164,31 @@ bool T1SLink_SendLightshowCtrl(uint8_t opcode, uint8_t arg);
 #define T1S_DET_CTRL_TEACHER     (4u)  /* arg mask : CV teacher command, latched as the edge-ai label */
 #define T1S_DET_CTRL_OP_COUNT    (4u)
 bool T1SLink_SendFretboardCtrl(uint8_t opcode, uint8_t arg);
+
+/* The three actuator nodes whose physical output marvin gates over 0x88B9. One
+ * enum for the whole stack: actuator/actuator_enable owns the operator-facing
+ * state and the dashboard/console talk in these ids, rather than each layer
+ * keeping its own parallel list. */
+typedef enum
+{
+    T1S_ACT_GUITAR = 0,
+    T1S_ACT_LEMMY,
+    T1S_ACT_LIGHTSHOW,
+    T1S_ACT_COUNT
+} t1s_actuator_t;
+
+/* Command one actuator's output enable, mapping the actuator to its node and its
+ * node's own OUTPUT_EN opcode number (they differ: guitar/lightshow op 1, lemmy
+ * op 4). Same threading contract as the per-node Send*Ctrl calls above. */
+bool T1SLink_SendActuatorCtrl(t1s_actuator_t act, bool on);
+
+/* What an actuator node reports about itself. `present` is the usual heartbeat
+ * presence window; `output_on` is heartbeat flags bit1, the node's own view of its
+ * output gate, and is meaningless while !present. Marvin re-pushes OUTPUT_EN
+ * whenever a node's report disagrees with what it was last commanded, so a node
+ * that reboots, or whose local CLI is poked, converges on its own. Returns false
+ * only for a bad actuator id. */
+bool T1SLink_GetActuatorState(t1s_actuator_t act, bool *present, bool *output_on);
 
 /* Delivers a received node payload (already demuxed by src MAC) to a consumer.
  * Called from the T1S service task. `detector_id` is the node's bus id. */

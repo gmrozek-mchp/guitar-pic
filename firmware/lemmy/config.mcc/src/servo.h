@@ -50,6 +50,15 @@ typedef struct
 /* Start TCC0 PWM, load default calibration, park both servos at neutral. */
 void Servo_Initialize(void);
 
+/* Output gate, at the single hardware-write point — so it holds against every
+ * motion source (beat nod, the coordinator's and beatbox's T1S positions, the local
+ * CLI) rather than just one of them. Requested pulses/positions keep being recorded
+ * while gated, and are re-applied on enable. Disabling parks both servos at neutral
+ * first. Defaults enabled; the coordinator sets it over 0x88B9 and reconciles
+ * against the heartbeat, so a local change is transient while marvin is present. */
+void Servo_SetEnabled(bool en);
+bool Servo_IsEnabled(void);
+
 /* --- raw pulse layer --- */
 uint16_t Servo_SetPulseUs(servo_id_t servo, uint16_t us);  /* clamped; returns applied */
 uint16_t Servo_GetPulseUs(servo_id_t servo);

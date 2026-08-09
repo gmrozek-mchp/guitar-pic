@@ -133,6 +133,10 @@ static struct {
     uint32_t base_tx, base_rx;     /* the node's totals when first seen        */
     uint16_t base_crc, base_sym;
     bool     based;                /* a baseline has been captured             */
+    bool     out_en;               /* heartbeat flags bit1: node's output gate */
+    uint32_t reconcile_tick;       /* last OUTPUT_EN re-push (rate limit)      */
+    uint8_t  reconcile_hbs;        /* consecutive heartbeats in disagreement   */
+    bool     warned_no_echo;       /* logged "not confirming" once             */
 } s_node_rt[T1S_NODE_TABLE_LEN];
 
 /* Saturating subtract: a node that restarts reports totals below its baseline,
@@ -210,16 +214,56 @@ static volatile bool    s_cmd_dirty;
 static volatile uint8_t s_lemmy_cmd[2];
 static volatile bool    s_lemmy_dirty;
 
-/* Node control channel (0x88B9): typed [opcode, arg] commands, one per-node
+/* Node control channels (0x88B9): typed [opcode, arg] commands, one per-node
  * opcode namespace. Staged per-opcode (indexed by opcode-1) rather than
  * latest-wins so distinct commands can't drop each other; one frame flushed per
- * service pass. lemmy = beat-nod tuning; lightshow = LED output enable. */
-static volatile uint8_t s_lemmy_ctrl_arg[T1S_ANIM_CTRL_OP_COUNT];
-static volatile bool    s_lemmy_ctrl_dirty[T1S_ANIM_CTRL_OP_COUNT];
-static volatile uint8_t s_light_ctrl_arg[T1S_LIGHT_CTRL_OP_COUNT];
-static volatile bool    s_light_ctrl_dirty[T1S_LIGHT_CTRL_OP_COUNT];
-static volatile uint8_t s_fret_ctrl_arg[T1S_DET_CTRL_OP_COUNT];
-static volatile bool    s_fret_ctrl_dirty[T1S_DET_CTRL_OP_COUNT];
+ * service pass. guitar = output enable; lemmy = beat-nod tuning + servo output
+ * enable; lightshow = LED output enable; fretboard = arm/stream/model/teacher.
+ *
+ * `arg` doubles as the desired state: it holds the last value commanded whether
+ * or not the wire carried it, which is what lets a resync (node restart) or a
+ * reconcile (node's report disagrees) re-push without asking the layer above. */
+#define T1S_CTRL_OP_MAX  (4u)   /* widest opcode namespace (fretboard, lemmy) */
+
+typedef struct {
+    t1s_node_type_t  type;
+    uint8_t          op_count;
+    volatile uint8_t arg[T1S_CTRL_OP_MAX];
+    volatile bool    dirty[T1S_CTRL_OP_MAX];  /* staged, not yet on the wire      */
+    volatile bool    known[T1S_CTRL_OP_MAX];  /* ever commanded -> resyncable     */
+} t1s_ctrl_chan_t;
+
+static t1s_ctrl_chan_t s_ctrl_chan[] = {
+    { T1S_NODE_GUITAR,    T1S_GUITAR_CTRL_OP_COUNT, {0}, {0}, {0} },
+    { T1S_NODE_ANIMATION, T1S_ANIM_CTRL_OP_COUNT,   {0}, {0}, {0} },
+    { T1S_NODE_LIGHTSHOW, T1S_LIGHT_CTRL_OP_COUNT,  {0}, {0}, {0} },
+    { T1S_NODE_FRETBOARD, T1S_DET_CTRL_OP_COUNT,    {0}, {0}, {0} },
+};
+
+#define T1S_CTRL_CHAN_LEN  (sizeof(s_ctrl_chan) / sizeof(s_ctrl_chan[0]))
+
+/* The OUTPUT_EN opcode in each actuator's namespace, indexed by t1s_actuator_t.
+ * They are not the same number — lemmy's control channel already owned 1..3 for
+ * the nod before the servo gate was added. */
+static const struct {
+    t1s_node_type_t type;
+    uint8_t         output_en_op;
+} s_actuators[T1S_ACT_COUNT] = {
+    { T1S_NODE_GUITAR,    T1S_GUITAR_CTRL_OUTPUT_EN },
+    { T1S_NODE_ANIMATION, T1S_ANIM_CTRL_OUTPUT_EN   },
+    { T1S_NODE_LIGHTSHOW, T1S_LIGHT_CTRL_OUTPUT_EN  },
+};
+
+/* Look up a node's control channel (NULL if that node type has none). */
+static t1s_ctrl_chan_t *chan_for_type(t1s_node_type_t type)
+{
+    for (uint8_t i = 0u; i < T1S_CTRL_CHAN_LEN; i++) {
+        if (s_ctrl_chan[i].type == type) {
+            return &s_ctrl_chan[i];
+        }
+    }
+    return NULL;
+}
 
 static T1SLink_FrameHandler s_frame_handler;
 
@@ -655,48 +699,23 @@ static void t1s_task(void *param)
             }
         }
 
-        /* Flush one staged lemmy control command (0x88B9). One opcode per pass;
-         * the rest drain on the next service wake. Shares the single in-flight TX. */
-        if (!s_tx_busy) {
-            for (uint8_t i = 0u; i < T1S_ANIM_CTRL_OP_COUNT; i++) {
-                if (!s_lemmy_ctrl_dirty[i]) { continue; }
-                const t1s_node_t *lemmy = node_for_type(T1S_NODE_ANIMATION);
-                if (lemmy == NULL) { break; }
-                s_lemmy_ctrl_dirty[i] = false;
-                uint8_t frame[2] = { (uint8_t)(i + 1u), s_lemmy_ctrl_arg[i] };
-                if (send_to_node(lemmy->node_id, T1S_ETHERTYPE_NODE_CTRL, frame, 2u)) {
-                    s_tx_count++;
-                }
-                break;   /* one frame per pass (send_to_node set s_tx_busy) */
-            }
-        }
+        /* Flush one staged node-control command (0x88B9) across every channel.
+         * One frame per service pass, so the channels drain fairly across wakes
+         * (each TX-done gives s_svc_sem) and no opcode can starve another.
+         *
+         * `dirty` is cleared only on a successful send: a refused TX leaves the
+         * opcode staged and the next pass retries it, so a command can't be lost
+         * to a busy MAC-PHY while marvin believes the node was told. */
+        for (uint8_t c = 0u; (c < T1S_CTRL_CHAN_LEN) && !s_tx_busy; c++) {
+            t1s_ctrl_chan_t  *chan = &s_ctrl_chan[c];
+            const t1s_node_t *node = node_for_type(chan->type);
+            if (node == NULL) { continue; }
 
-        /* Flush one staged lightshow control command (0x88B9, lightshow opcode
-         * namespace). Same one-per-pass drain as the lemmy control channel. */
-        if (!s_tx_busy) {
-            for (uint8_t i = 0u; i < T1S_LIGHT_CTRL_OP_COUNT; i++) {
-                if (!s_light_ctrl_dirty[i]) { continue; }
-                const t1s_node_t *light = node_for_type(T1S_NODE_LIGHTSHOW);
-                if (light == NULL) { break; }
-                s_light_ctrl_dirty[i] = false;
-                uint8_t frame[2] = { (uint8_t)(i + 1u), s_light_ctrl_arg[i] };
-                if (send_to_node(light->node_id, T1S_ETHERTYPE_NODE_CTRL, frame, 2u)) {
-                    s_tx_count++;
-                }
-                break;   /* one frame per pass (send_to_node set s_tx_busy) */
-            }
-        }
-
-        /* Flush one staged fretboard (detector) control command (0x88B9, detector
-         * opcode namespace). Same one-per-pass drain as the channels above. */
-        if (!s_tx_busy) {
-            for (uint8_t i = 0u; i < T1S_DET_CTRL_OP_COUNT; i++) {
-                if (!s_fret_ctrl_dirty[i]) { continue; }
-                const t1s_node_t *fret = node_for_type(T1S_NODE_FRETBOARD);
-                if (fret == NULL) { break; }
-                s_fret_ctrl_dirty[i] = false;
-                uint8_t frame[2] = { (uint8_t)(i + 1u), s_fret_ctrl_arg[i] };
-                if (send_to_node(fret->node_id, T1S_ETHERTYPE_NODE_CTRL, frame, 2u)) {
+            for (uint8_t i = 0u; i < chan->op_count; i++) {
+                if (!chan->dirty[i]) { continue; }
+                uint8_t frame[2] = { (uint8_t)(i + 1u), chan->arg[i] };
+                if (send_to_node(node->node_id, T1S_ETHERTYPE_NODE_CTRL, frame, 2u)) {
+                    chan->dirty[i] = false;
                     s_tx_count++;
                 }
                 break;   /* one frame per pass (send_to_node set s_tx_busy) */
@@ -970,45 +989,155 @@ bool T1SLink_SendToLemmy(int8_t neck, int8_t jaw)
     return true;
 }
 
-bool T1SLink_SendLemmyCtrl(uint8_t opcode, uint8_t arg)
+/* Stage one control opcode for a node. The value and its `known` flag are recorded
+ * whether or not the link is up, so a command placed before bring-up (the boot
+ * actuator defaults) is still the desired state a later resync can push — only the
+ * dirty flag, which is what the flush acts on, waits for the link. */
+static bool ctrl_stage(t1s_node_type_t type, uint8_t opcode, uint8_t arg)
 {
+    t1s_ctrl_chan_t *chan = chan_for_type(type);
+    if (chan == NULL) {
+        return false;
+    }
+    if ((opcode < 1u) || (opcode > chan->op_count)) {
+        return false;
+    }
+    uint8_t i = (uint8_t)(opcode - 1u);
+    chan->arg[i]   = arg;
+    chan->known[i] = true;
     if (!s_link_up) {
         return false;
     }
-    if ((opcode < 1u) || (opcode > T1S_ANIM_CTRL_OP_COUNT)) {
-        return false;
-    }
-    s_lemmy_ctrl_arg[opcode - 1u]   = arg;
-    s_lemmy_ctrl_dirty[opcode - 1u] = true;
+    chan->dirty[i] = true;
     (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
     return true;
+}
+
+/* Re-stage every opcode this channel has ever carried, so a node that just came
+ * back (first sight, reconnect, or restart) is told marvin's state instead of
+ * running on its own compiled-in defaults. */
+static void ctrl_resync(t1s_ctrl_chan_t *chan)
+{
+    if (chan == NULL) { return; }
+    for (uint8_t i = 0u; i < chan->op_count; i++) {
+        if (chan->known[i]) { chan->dirty[i] = true; }
+    }
+    (void)xSemaphoreGive(s_svc_sem);
+}
+
+/* Keep a node's output gate in step with what marvin commanded. Called on every
+ * heartbeat, with two triggers:
+ *
+ *   arriving — the node is fresh (first sight, reconnect, or a restart caught by
+ *              its counters going backwards), so it is running its own defaults:
+ *              re-push every opcode it has ever been told, including the ones it
+ *              cannot echo (the fretboard's arm/model/teacher).
+ *   mismatch — the node reports an output gate other than the commanded one, so
+ *              either a frame was lost or something moved it locally. Re-push that
+ *              one opcode, rate-limited to T1S_RECONCILE_MIN_MS so a node that
+ *              never confirms costs a frame a second, not one per heartbeat.
+ *
+ * With everything agreeing this sends nothing at all, which is what keeps the
+ * control channel off the bus in steady state. */
+#define T1S_RECONCILE_MIN_MS    (1000u) /* min gap between re-pushes to one node  */
+#define T1S_RECONCILE_WARN_HBS  (6u)    /* ~3 s of disagreement before complaining */
+
+static void hb_reconcile_ctrl(uint8_t idx, t1s_node_type_t type, bool arriving,
+                              uint32_t now_tick)
+{
+    t1s_ctrl_chan_t *chan = chan_for_type(type);
+    if (chan == NULL) { return; }
+
+    if (arriving) {
+        ctrl_resync(chan);
+        s_node_rt[idx].reconcile_tick = now_tick;
+        return;   /* the resync covers OUTPUT_EN along with everything else */
+    }
+
+    /* Only the actuator channels carry an output gate the node can echo back. */
+    uint8_t op = 0u;
+    for (uint8_t a = 0u; a < T1S_ACT_COUNT; a++) {
+        if (s_actuators[a].type == type) {
+            op = s_actuators[a].output_en_op;
+            break;
+        }
+    }
+    if (op == 0u) { return; }
+
+    uint8_t i = (uint8_t)(op - 1u);
+    if (!chan->known[i]) { return; }
+
+    if ((chan->arg[i] != 0u) == s_node_rt[idx].out_en) {
+        s_node_rt[idx].reconcile_hbs  = 0u;
+        s_node_rt[idx].warned_no_echo = false;
+        return;
+    }
+
+    /* Disagreement. One heartbeat of it is the normal gap between a command and
+     * its confirmation; a run of them means the node isn't taking it. */
+    if (s_node_rt[idx].reconcile_hbs < UINT8_MAX) { s_node_rt[idx].reconcile_hbs++; }
+    if ((s_node_rt[idx].reconcile_hbs >= T1S_RECONCILE_WARN_HBS) &&
+        !s_node_rt[idx].warned_no_echo) {
+        s_node_rt[idx].warned_no_echo = true;
+        LOG_WARN("T1S: %s not confirming output enable (want %u) — node firmware "
+                 "without the heartbeat echo?\r\n",
+                 node_type_name(type, 0u), (unsigned)(chan->arg[i] != 0u));
+    }
+
+    if ((now_tick - s_node_rt[idx].reconcile_tick) < pdMS_TO_TICKS(T1S_RECONCILE_MIN_MS)) {
+        return;
+    }
+    s_node_rt[idx].reconcile_tick = now_tick;
+    chan->dirty[i] = true;
+    (void)xSemaphoreGive(s_svc_sem);
+}
+
+bool T1SLink_SendLemmyCtrl(uint8_t opcode, uint8_t arg)
+{
+    return ctrl_stage(T1S_NODE_ANIMATION, opcode, arg);
 }
 
 bool T1SLink_SendLightshowCtrl(uint8_t opcode, uint8_t arg)
 {
-    if (!s_link_up) {
-        return false;
-    }
-    if ((opcode < 1u) || (opcode > T1S_LIGHT_CTRL_OP_COUNT)) {
-        return false;
-    }
-    s_light_ctrl_arg[opcode - 1u]   = arg;
-    s_light_ctrl_dirty[opcode - 1u] = true;
-    (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
-    return true;
+    return ctrl_stage(T1S_NODE_LIGHTSHOW, opcode, arg);
+}
+
+bool T1SLink_SendGuitarCtrl(uint8_t opcode, uint8_t arg)
+{
+    return ctrl_stage(T1S_NODE_GUITAR, opcode, arg);
 }
 
 bool T1SLink_SendFretboardCtrl(uint8_t opcode, uint8_t arg)
 {
-    if (!s_link_up) {
+    return ctrl_stage(T1S_NODE_FRETBOARD, opcode, arg);
+}
+
+bool T1SLink_SendActuatorCtrl(t1s_actuator_t act, bool on)
+{
+    if (act >= T1S_ACT_COUNT) {
         return false;
     }
-    if ((opcode < 1u) || (opcode > T1S_DET_CTRL_OP_COUNT)) {
+    return ctrl_stage(s_actuators[act].type, s_actuators[act].output_en_op,
+                      on ? 1u : 0u);
+}
+
+bool T1SLink_GetActuatorState(t1s_actuator_t act, bool *present, bool *output_on)
+{
+    if (act >= T1S_ACT_COUNT) {
         return false;
     }
-    s_fret_ctrl_arg[opcode - 1u]   = arg;
-    s_fret_ctrl_dirty[opcode - 1u] = true;
-    (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
+    const t1s_node_t *node = node_for_type(s_actuators[act].type);
+    if (node == NULL) {
+        return false;
+    }
+    uint8_t idx = (uint8_t)(node - s_nodes);
+
+    if (present != NULL) {
+        uint32_t age = xTaskGetTickCount() - s_node_rt[idx].last_seen_tick;
+        *present = s_node_rt[idx].seen &&
+                   (age < pdMS_TO_TICKS(T1S_PRESENCE_TIMEOUT_MS));
+    }
+    if (output_on != NULL) { *output_on = s_node_rt[idx].out_en; }
     return true;
 }
 
@@ -1129,13 +1258,26 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
     if (ethertype == T1S_ETHERTYPE_HB) {
         /* Presence heartbeat: stamp last-seen; capture the seq if present. */
         s_hb_rx_count++;
-        s_node_rt[idx].last_seen_tick = xTaskGetTickCount();
+        uint32_t now_tick = xTaskGetTickCount();
+
+        /* A node that was never seen, or whose presence window had lapsed, is
+         * arriving fresh — so it is running its own compiled-in defaults and needs
+         * to be told marvin's control state. Sampled before last_seen_tick moves. */
+        bool arriving = !s_node_rt[idx].seen ||
+                        ((now_tick - s_node_rt[idx].last_seen_tick) >=
+                         pdMS_TO_TICKS(T1S_PRESENCE_TIMEOUT_MS));
+
+        s_node_rt[idx].last_seen_tick = now_tick;
         s_node_rt[idx].seen = true;
         if (payload_len >= T1S_HB_LEN) {
             s_node_rt[idx].last_seq = (uint32_t)payload[4]
                                     | ((uint32_t)payload[5] << 8)
                                     | ((uint32_t)payload[6] << 16)
                                     | ((uint32_t)payload[7] << 24);
+            /* flags bit0 = TC6 sync (unused here); bit1 = the node's own view of
+             * its output gate. Only the actuator nodes set bit1; for everyone else
+             * it reads 0 and nothing consults it. */
+            s_node_rt[idx].out_en = (payload[3] & 0x02u) != 0u;
         }
         /* Extended (v2) heartbeat: the node's own traffic + error telemetry. A
          * legacy 8-byte heartbeat leaves these fields untouched (stay 0). */
@@ -1157,6 +1299,10 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
             if (!s_node_rt[idx].based ||
                 (raw_tx < s_node_rt[idx].base_tx) ||
                 (raw_rx < s_node_rt[idx].base_rx)) {
+                /* Counters going backwards means the node restarted, which is the
+                 * one restart marvin can see without the presence window lapsing
+                 * (a node that reboots fast enough never looks absent). */
+                if (s_node_rt[idx].based) { arriving = true; }
                 s_node_rt[idx].based    = true;
                 s_node_rt[idx].base_tx  = raw_tx;
                 s_node_rt[idx].base_rx  = raw_rx;
@@ -1173,6 +1319,8 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
             s_node_rt[idx].crc_err  = (uint16_t)sub_base(raw_crc, s_node_rt[idx].base_crc);
             s_node_rt[idx].sym_err  = (uint16_t)sub_base(raw_sym, s_node_rt[idx].base_sym);
         }
+
+        hb_reconcile_ctrl(idx, node->type, arriving, now_tick);
         return;
     }
 

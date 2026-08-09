@@ -28,6 +28,11 @@ extern "C" {
  * This header is POD-only (no Legato types) so producers in actuator/ and game/ can
  * include it without pulling in the GFX stack.
  *
+ * Not everything on the dashboard has a producer: T1S node presence and the output
+ * enable each actuator node confirms arrive on heartbeats, with no event to post. The
+ * consumer therefore waits with a timeout rather than parking, and polls those rows on
+ * the idle tick (repainting only what changed).
+ *
  * Lifecycle: DashboardFeed_Init() creates the queue pre-scheduler (so producers may
  * post immediately — buffered events are coalesced); DashboardFeed_Start() creates the
  * consumer task once the dashboard widgets are built and painted (post-reveal). */

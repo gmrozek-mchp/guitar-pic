@@ -114,6 +114,33 @@ static bool parse_servo(const char *a, servo_id_t *out)
     return false;
 }
 
+/* Manual motion commands share the output gate with the beat nod, so a gated node
+ * accepts them and moves nothing. Say so rather than looking broken. */
+static void note_if_gated(void)
+{
+    if (!Servo_IsEnabled())
+    {
+        cli_printf("(output disabled — 'output on' to move; marvin may re-disable it)");
+    }
+}
+
+static void cmd_output(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)ctx;
+    const char *a = embeddedCliGetToken(args, 1);
+    if (a == NULL || (strcmp(a, "on") != 0 && strcmp(a, "off") != 0))
+    {
+        cli_printf("usage: output <on|off>  (currently %s)",
+                   Servo_IsEnabled() ? "on" : "off");
+        return;
+    }
+    bool on = (strcmp(a, "on") == 0);
+    Servo_SetEnabled(on);
+    cli_printf("output %s", on ? "on" : "off");
+    cli_printf("(marvin overrides this within ~1s if it disagrees)");
+}
+
 static void cmd_servo(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli;
@@ -143,6 +170,7 @@ static void cmd_servo(EmbeddedCli *cli, char *args, void *ctx)
     uint16_t got = Servo_SetPulseUs(servo, req);
     cli_printf("%s = %u us%s", servo_name(servo),
                (unsigned)got, (got != req) ? " (clamped)" : "");
+    note_if_gated();
 }
 
 static void cmd_pos(EmbeddedCli *cli, char *args, void *ctx)
@@ -175,6 +203,7 @@ static void cmd_pos(EmbeddedCli *cli, char *args, void *ctx)
     int8_t got = Servo_SetPosition(servo, (int8_t)req);
     cli_printf("%s pos=%d -> %u us", servo_name(servo),
                (int)got, (unsigned)Servo_GetPulseUs(servo));
+    note_if_gated();
 }
 
 /* Print one servo's calibration as a paste-ready C initializer for servo.c. */
@@ -225,6 +254,7 @@ static void cmd_cal(EmbeddedCli *cli, char *args, void *ctx)
 
     Servo_SetCal(servo, c);   /* re-applies current position under new cal */
     print_cal(servo);         /* echo applied values (post guard-rail clamp) */
+    note_if_gated();
 }
 
 static const char *band_name(uint8_t b)
@@ -270,6 +300,7 @@ static void cmd_nod(EmbeddedCli *cli, char *args, void *ctx)
     uint8_t seq, energy, bass, treble, kick, flags;
     BeatNod_GetLast(&seq, &energy, &bass, &treble, &kick, &flags);
     cli_printf("state:   %s", BeatNod_IsEnabled() ? "on" : "off (neck free)");
+    cli_printf("output:  %s", Servo_IsEnabled() ? "on" : "off (servos gated)");
     cli_printf("frames:  %lu", (unsigned long)BeatNod_FrameCount());
     cli_printf("last:    seq=%u energy=%u bass=%u treble=%u kick=%u",
                (unsigned)seq, (unsigned)energy, (unsigned)bass,
@@ -315,6 +346,7 @@ static void register_commands(void)
         { "t1s",   "Print link / sync / chipRev / PLCA / counters",  false, NULL, cmd_t1s },
         { "id",    "Raw-read + log the MAC-PHY ID registers",        false, NULL, cmd_id },
         { "plca",  "Read + log the PLCA status register",            false, NULL, cmd_plca },
+        { "output","output <on|off>: gate both servos (all sources)", true,  NULL, cmd_output },
         { "servo", "Raw servo pulse: servo <neck|jaw> <us>",         true,  NULL, cmd_servo },
         { "pos",   "Position via cal: pos <neck|jaw> <-127..127>",    true,  NULL, cmd_pos },
         { "cal",   "Servo cal: cal [show] | cal <s> <field> <val>",   true,  NULL, cmd_cal },

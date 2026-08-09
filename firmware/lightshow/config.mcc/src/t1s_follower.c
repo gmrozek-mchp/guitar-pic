@@ -170,7 +170,11 @@ static void send_heartbeat(void)
     s_hb_frame[14] = T1S_HB_VERSION;
     s_hb_frame[15] = T1S_HB_TYPE_LIGHTSHOW;
     s_hb_frame[16] = (uint8_t)T1S_NODE_ID;
-    s_hb_frame[17] = synced ? 0x01u : 0x00u;   /* flags: bit0 = synced */
+    /* flags: bit0 = TC6 synced, bit1 = LED output gate. The coordinator reconciles
+     * bit1 against what it last commanded, so a local `show` change or a reboot gets
+     * corrected instead of silently disagreeing. */
+    s_hb_frame[17] = (uint8_t)((synced ? 0x01u : 0x00u) |
+                              (BeatShow_IsEnabled() ? 0x02u : 0x00u));
     s_hb_seq++;
     s_hb_frame[18] = (uint8_t)(s_hb_seq);
     s_hb_frame[19] = (uint8_t)(s_hb_seq >> 8);

@@ -62,7 +62,33 @@ static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
     cli_printf("credits: tx=%u rx=%u", (unsigned)txc, (unsigned)rxc);
     cli_printf("rx cmds: %lu", (unsigned long)T1SFollower_RxCount());
     cli_printf("last:    0x%02X", (unsigned)T1SFollower_LastCmd());
+    cli_printf("output:  %s", T1SFollower_IsOutputEnabled() ? "on" : "off");
+
+    uint8_t  cop = 0u, carg = 0u;
+    uint32_t ccount = 0u;
+    T1SFollower_LastCtrl(&cop, &carg, &ccount);
+    cli_printf("ctrl:    op=%u arg=%u count=%lu", (unsigned)cop, (unsigned)carg,
+               (unsigned long)ccount);
     cli_printf("errors:  %lu", (unsigned long)T1SFollower_ErrCount());
+}
+
+static void cmd_output(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)ctx;
+    const char *a = embeddedCliGetToken(args, 1);
+    if (a == NULL || (strcmp(a, "on") != 0 && strcmp(a, "off") != 0))
+    {
+        cli_printf("usage: output <on|off>  (currently %s)",
+                   T1SFollower_IsOutputEnabled() ? "on" : "off");
+        return;
+    }
+    bool on = (strcmp(a, "on") == 0);
+    T1SFollower_SetOutputEnabled(on);
+    cli_printf("output %s", on ? "on" : "off");
+    /* The coordinator reconciles its own wanted state against the heartbeat, so a
+     * local change here is transient while marvin is on the bus. */
+    cli_printf("(marvin overrides this within ~1s if it disagrees)");
 }
 
 static void cmd_btn(EmbeddedCli *cli, char *args, void *ctx)
@@ -124,6 +150,7 @@ static void register_commands(void)
         { "t1s",    "Print link / sync / chipRev / PLCA / counters", false, NULL, cmd_t1s },
         { "btn",    "btn <mask hex>: drive the 7 button GPIOs (0 = release all)", true, NULL, cmd_btn },
         { "tap",    "tap <mask hex> [ms]: assert then release (default 60 ms)",   true, NULL, cmd_tap },
+        { "output", "output <on|off>: gate the button GPIOs (all sources)",       true, NULL, cmd_output },
         { "id",     "Raw-read + log the MAC-PHY ID registers (SPI diagnostic)",   false, NULL, cmd_id },
         { "plca",   "Read + log the PLCA status register",                        false, NULL, cmd_plca },
     };

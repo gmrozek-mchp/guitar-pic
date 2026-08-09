@@ -13,8 +13,9 @@
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
 #include "ui/widgets/bar/widget_bar.h"
 
-#include "actuator/guitar_cmd.h"   /* GUITAR_BTN_* fret mask layout */
-#include "detector/detector.h"     /* DETECTOR_* — the detector selector rows */
+#include "actuator/guitar_cmd.h"       /* GUITAR_BTN_* fret mask layout */
+#include "actuator/actuator_enable.h"  /* the ACTUATORS toggles' state + T1S push */
+#include "detector/detector.h"         /* DETECTOR_* — the detector selector rows */
 
 #include "game/game_catalog.h"
 #include "game/game_art.h"
@@ -244,13 +245,14 @@ static leButtonWidget      *s_mult_robot[4];
 static leButtonWidget      *s_mult_human[4];
 static leButtonWidget      *s_detector[2];     /* [0] = CV, [1] = fretboard/NN      */
 
-/* Actuator enables, in the mockup's order. Nothing is driven yet — see
- * actuator_on_release — so the state lives here rather than being read back from the
- * nodes. Order is grid order: GUITAR, LEMMY on the first row, LIGHTSHOW on the second. */
-#define ACTUATOR_COUNT  3u
+/* Actuator enables. The state belongs to actuator/actuator_enable (marvin's wanted
+ * value) and to the nodes themselves (what they confirm over the heartbeat), so
+ * nothing is cached here — these are just the widgets. The mockup's grid order
+ * happens to match t1s_actuator_t: GUITAR, LEMMY on the first row, LIGHTSHOW on the
+ * second. */
+#define ACTUATOR_COUNT  ((unsigned)T1S_ACT_COUNT)
 static leButtonWidget      *s_actuator[ACTUATOR_COUNT];
 static leWidget            *s_actuator_led[ACTUATOR_COUNT];
-static bool                 s_actuator_on[ACTUATOR_COUNT];
 static leButtonWidget      *s_start;
 static leButtonWidget      *s_pick;    /* SELECT SONG — gated while a run is in flight */
 static leTableString        s_start_cap, s_stop_cap;
@@ -528,28 +530,55 @@ static void detector_on_release(leButtonWidget *btn)
 }
 
 /* Paint one actuator toggle. Same scheme pair as the detector rows, plus the state dot
- * the mockup puts at the button's right edge. */
+ * the mockup puts at the button's right edge. Three states, because the dot answers
+ * "is this actuator actually enabled" and not "did we ask":
+ *
+ *   node absent  — greyed like the SELECT SONG gate below (the toggle would command a
+ *                  node nobody can hear), dot dark.
+ *   pending      — commanded but not yet confirmed by the node's heartbeat. Normally
+ *                  the sub-500 ms gap after a tap; if it sticks, the node isn't taking
+ *                  the command and a green dot would be a lie.
+ *   confirmed    — the node reports the gate marvin asked for.
+ *
+ * Uses the same "no disabled styling in Legato's button paint, so swap the scheme"
+ * approach as apply_run_chrome — see the long note there. */
 static void actuator_paint(unsigned i)
 {
-    bool on = s_actuator_on[i];
+    t1s_actuator_t act = (t1s_actuator_t)i;
+    bool present = ActuatorEnable_Present(act);
+    bool pending = ActuatorEnable_Pending(act);
+    bool on      = ActuatorEnable_Reported(act);
 
-    s_actuator[i]->fn->setScheme(s_actuator[i], on ? &SCHEME_TOGGLE_ON : &SCHEME_TOGGLE_OFF);
-    s_actuator_led[i]->fn->setScheme(s_actuator_led[i],
-                                     on ? &SCHEME_FILL_GREEN_400 : &SCHEME_FILL_ZINC_600);
+    const leScheme *btn_scheme = &SCHEME_BUTTON_DISABLED;
+    const leScheme *dot_scheme = &SCHEME_FILL_ZINC_600;
+
+    if (present)
+    {
+        btn_scheme = on ? &SCHEME_TOGGLE_ON : &SCHEME_TOGGLE_OFF;
+        if (pending)     { dot_scheme = &SCHEME_FILL_YELLOW_400; }
+        else if (on)     { dot_scheme = &SCHEME_FILL_GREEN_400; }
+    }
+
+    if (present) { s_actuator[i]->widget.flags |=  LE_WIDGET_ENABLED; }
+    else         { s_actuator[i]->widget.flags &= ~LE_WIDGET_ENABLED; }
+
+    s_actuator[i]->fn->setScheme(s_actuator[i], btn_scheme);
+    s_actuator_led[i]->fn->setScheme(s_actuator_led[i], dot_scheme);
     s_actuator[i]->fn->invalidate(s_actuator[i]);
     s_actuator_led[i]->fn->invalidate(s_actuator_led[i]);
 }
 
-/* Toggle one actuator node's enable. The node side is not connected yet — this holds the
- * operator's intent and shows it; hooking each entry up to its node (the guitar's output
- * enable, lemmy's motion, lightshow's output) is a call per index from here. */
+/* Toggle one actuator node's output enable. actuator_enable pushes it over the node's
+ * 0x88B9 control channel and re-pushes until the node confirms, so the repaint here
+ * shows "pending" and the confirmation lands on a later refresh tick. */
 static void actuator_on_release(leButtonWidget *btn)
 {
     for (unsigned i = 0u; i < ACTUATOR_COUNT; i++)
     {
         if (s_actuator[i] == btn)
         {
-            s_actuator_on[i] = !s_actuator_on[i];
+            t1s_actuator_t act = (t1s_actuator_t)i;
+            ActuatorEnable_Set(act, !ActuatorEnable_Get(act));
             actuator_paint(i);
             break;
         }
@@ -699,7 +728,8 @@ static void build_robot_card(leWidget *content)
      * (three buttons, so the last one sits alone on the second row). Each is
      * label-left + state dot-right; the dot is a sibling drawn over the button and
      * marked IGNOREPICK, because a Legato button paints its own caption and cannot host
-     * children. Not wired to the nodes yet — the toggle latches its look only. */
+     * children. Each toggle drives its node's output enable over T1S; actuator_paint
+     * settles the look once the node reports back. */
     (void)add_cap(card, COL_X, R_ACT_Y, COL_W, 16, stringID_PLAYER_ROBOT_ACTUATORS,
             &SCHEME_TEXT_ZINC_500, LE_HALIGN_LEFT);
 
@@ -722,6 +752,8 @@ static void build_robot_card(leWidget *content)
                                     y + DOT_Y(OPT_H, MONO_B12_BASE, MONO_B12_XH, 8), 8,
                                     &SCHEME_FILL_ZINC_600);
         s_actuator_led[i]->flags |= LE_WIDGET_IGNOREPICK;
+
+        actuator_paint(i);   /* no bus yet at build time, so this reads "absent" */
     }
 
     add_card_frame(content, 0, 0, SIDE_W, CONTENT_H, CARD_R);
@@ -1045,6 +1077,28 @@ static void dash_selection_changed(const game_selection_t *sel)
 static void dash_game_status(const char *text)
 {
     DashboardFeed_PostStatus(text);
+}
+
+/* Re-read the three actuator rows. Presence and the nodes' confirmations arrive on
+ * heartbeats with no event to hang off, so the feed task polls this; only rows whose
+ * appearance actually changed are repainted, keeping an idle tick free of damage. */
+void ScreenDashboard_RefreshActuators(void)
+{
+    static uint8_t s_last[ACTUATOR_COUNT];
+    static bool    s_valid;
+
+    for (unsigned i = 0u; i < ACTUATOR_COUNT; i++)
+    {
+        t1s_actuator_t act = (t1s_actuator_t)i;
+        uint8_t state = (uint8_t)((ActuatorEnable_Present(act)  ? 1u : 0u)
+                                | (ActuatorEnable_Reported(act) ? 2u : 0u)
+                                | (ActuatorEnable_Pending(act)  ? 4u : 0u));
+
+        if (s_valid && (state == s_last[i])) { continue; }
+        s_last[i] = state;
+        actuator_paint(i);
+    }
+    s_valid = true;
 }
 
 /* Reflect the live guitar mask on the ROBOT frets (pressed = fret held) and the STRUM

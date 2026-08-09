@@ -17,6 +17,7 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/game_timing.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/fretboard_link.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/manual_control.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/actuator_enable.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/ui_manager.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/ui_anim.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/dashboard_feed.c"

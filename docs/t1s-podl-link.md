@@ -250,10 +250,20 @@ command TX targets. marvin selects the active node of each class.
   fresh ethertype — the typed-control *grammar* is what earns `0x88B9` over `0x88B5`'s fixed
   positional payloads, not the node. marvin stages commands per-opcode and flushes one frame per
   service pass; the follower applies each on RX. Defined namespaces:
+    - **guitar** (`02:..:03`) — button output: `0x01` output enable (arg 0|1), driven from
+      marvin's `guitar on|off` → `T1SFollower_SetOutputEnabled`. Disabling releases every button
+      GPIO and holds them released. Gating at the node rather than by muting marvin's `0x88B5`
+      command is what makes it authoritative: inside a song with the fretboard selected, the
+      **fretboard drives the guitar peer-to-peer and marvin is silent**, so a marvin-side gate
+      would not stop actuation in exactly the window that matters.
     - **lemmy** (`02:..:06`) — beat-nod tuning: `0x01` nod enable (arg 0|1), `0x02` nod trim
       (arg int8), `0x03` oscillator (arg 0|1); the same tunables as lemmy's local `nod` CLI,
-      driven from marvin's `lemmy nod|trim|osc`. (Manual servo positioning stays on `0x88B5`;
-      `nod off` frees the neck so that path takes effect.)
+      driven from marvin's `lemmy nod|trim|osc`. Plus `0x04` **servo output enable** (arg 0|1) →
+      `Servo_SetEnabled`, driven from marvin's `lemmy output on|off`. The two are different knobs
+      and deliberately so: `nod enable` only detaches the neck from the beat engine (freeing it
+      for a manual `0x88B5` position), while `output enable` gates the single hardware write in
+      `servo.c` and therefore stops **every** source — the nod, marvin's positions, and
+      beatbox's. Disabling parks both servos at neutral first.
     - **lightshow** (`02:..:07`) — LED output: `0x01` output enable (arg 0|1), driven from
       marvin's `lightshow on|off` → `BeatShow_SetEnabled`. Disabling blanks the strands.
     - **fretboard** (`02:..:04`) — `0x01` arm (arg 0|1) + `0x02` stream (arg 0|1) + `0x03` model
@@ -278,6 +288,27 @@ command TX targets. marvin selects the active node of each class.
       Plumbing today: only `hard` is trained, so all slots currently resolve to the hard model.
   Opcode space in each namespace is left open for future control (scripted gestures / jaw for
   lemmy; scenes / brightness for lightshow; per-fret sensitivity for the detector).
+
+  **Durability.** The channel is fire-and-forget at L2 — no ACK — and a follower boots on its own
+  compiled-in defaults, so "marvin sent it once" is not the same as "the node is in that state".
+  Three rules close the gap, all on the coordinator side:
+    1. **Retry until sent.** A staged opcode clears its dirty flag only when `send_to_node`
+       actually accepted the frame; a refusal leaves it staged for the next service pass. (Before
+       this, a busy MAC-PHY silently dropped the command while marvin believed it had gone out.)
+    2. **Resync on (re)appearance.** When a node's heartbeat shows it arriving — never seen, or its
+       presence window had lapsed, or its cumulative counters went *backwards* (which only happens
+       when the node restarted, and catches a reboot too quick to look absent) — marvin re-pushes
+       every opcode that node has ever been told. This is the only mechanism covering opcodes the
+       node can't report back, i.e. the fretboard's arm/stream/model/teacher.
+    3. **Reconcile against the echo.** Each actuator node reports its output gate in the heartbeat
+       (§7.2 flags bit1). When the report disagrees with what marvin last commanded, marvin
+       re-pushes that opcode, rate-limited to ~1 Hz per node. This is what catches a lost frame or
+       a *local* change on the node (its own `output` CLI), neither of which looks like an arrival.
+       With everything agreeing it sends nothing, so the control channel is off the bus in steady
+       state; sustained disagreement (≈3 s) also logs a warning, since a node whose firmware
+       predates the echo reports 0 forever and would otherwise be re-pushed silently.
+  Marvin's wanted state for the three actuator enables is owned by `actuator/actuator_enable.c`
+  and defaults to **all enabled**, so a cold boot plays without operator interaction.
 - A static **node table** on marvin maps `{PLCA ID, MAC, node_type}` → the bus
   `detector_id` (and the actuator target for TX). The single fretboard keeps
   `detector_id = 1`, matching today's `adc_fretboard` bus slot. No discovery /
@@ -307,11 +338,18 @@ within ~2 s).
 
 Payload — **v1 (8 bytes, legacy)**: `version(1)`, `node_type(1)` (1=detector, 2=guitar,
 3=controller, 4=animation, 5=lightshow, 6=beat source), `node_id(1)`, `flags(1)`
-(bit0 = follower synced), `seq(u32 LE)`. marvin derives the node from the **src MAC** via its
+(bit0 = follower synced, bit1 = **output enabled**), `seq(u32 LE)`. marvin derives the node from the **src MAC** via its
 static node table, not by decoding the `node_type` byte — so the payload type is informational
 (seq enables drop detection). marvin's `nodes` display recognizes `lemmy` (id 6), `lightshow`
 (id 7), and `beatbox` (id 5) as table entries; decoding the payload `node_type` byte remains an
 unneeded marvin-side follow-up.
+
+**`flags` bit1 is meaningful per node type.** Only the three actuator nodes — guitar, lemmy,
+lightshow — set it, each reporting its own output gate (`T1SFollower_IsOutputEnabled`,
+`Servo_IsEnabled`, `BeatShow_IsEnabled` respectively). Every other node leaves it 0 and marvin
+never consults it for them. It is the return leg of the `0x88B9` output-enable command: it turns a
+fire-and-forget push into a closed loop, letting marvin reconcile (§7.1) and letting the dashboard
+show what an actuator *is* rather than what it was asked to be.
 
 **v2 (20 bytes) — telemetry extension** (for the bus-statistics UI, `nodes`/`t1s` console).
 `version` is bumped to `2` and the 8-byte header is followed by the node's own cumulative

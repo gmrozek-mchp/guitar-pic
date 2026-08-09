@@ -76,7 +76,9 @@ to `guitar`'s:
   decode + `nodes` display learn it (marvin-side follow-up). Heartbeat TX is gated on PLCA actually
   operating (`PLCA_STATUS` bit 15, polled every 250 ms) — not just local MAC-PHY init — so a follower
   never queues a frame before the coordinator's beacon exists; `T1SFollower_IsConnected()` reports this
-  real on-bus state.
+  real on-bus state. The `flags` byte carries **bit1 = output enabled** (`BeatShow_IsEnabled()`), the
+  return leg of the control channel below: marvin compares it against what it last commanded and
+  re-pushes on mismatch, so the gate converges after a lost frame, a reboot, or a local `show` command.
 - **Command planes:** two coexist, routed by ethertype. (1) **beat frame** —
   [`beatbox`](../beatbox/SPEC.md) (id 5) **broadcasts** an 8-byte `LightshowFrame` under **ethertype
   `0x88B8`** (dst `FF:FF:FF:FF:FF:FF`) at ~23.4 Hz — fields `seq`, `energy`, `bass`, `treble`, `kick`,

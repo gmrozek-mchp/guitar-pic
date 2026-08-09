@@ -23,8 +23,16 @@
 
 #define T1S_ETHERTYPE       (0x88B5u)  /* data / command frames */
 #define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
+#define T1S_ETHERTYPE_CTRL  (0x88B9u)  /* per-node control channel (unicast) */
 #define T1S_ETH_HDR_LEN     (14u)
 #define T1S_CMD_BIT_MASK    (0x7Fu)  /* 5 frets + 2 strum */
+
+/* Control channel (0x88B9): typed [opcode, arg]. Opcode namespace is per-node
+ * (routed by dst MAC); the guitar's own opcode(s) below. */
+#define T1S_CTRL_OP          (0u)     /* payload offset: opcode */
+#define T1S_CTRL_ARG         (1u)     /* payload offset: arg    */
+#define T1S_CTRL_LEN         (2u)     /* min control payload length */
+#define T1S_CTRL_OUTPUT_EN   (0x01u)  /* arg 0|1: enable/disable the button outputs */
 
 /* Heartbeat (docs/t1s-podl-link.md §7.2): followers periodically announce
  * presence to the coordinator. v2 payload (20 B): ver, node_type, node_id, flags,
@@ -48,8 +56,17 @@ static volatile bool     s_plca_op;      /* cached PLCA_STATUS bit 15 (PLCA oper
 static uint32_t          s_plca_poll_ms;
 static volatile bool     s_spi_busy;
 
+/* Output gate: while clear, a received mask is recorded but not driven onto the
+ * button GPIOs. Authoritative wherever the command comes from — marvin's 0x88B5
+ * frames or the fretboard driving the guitar peer-to-peer. Default on so the node
+ * plays with no coordinator; marvin pushes its own state over 0x88B9. */
+static volatile bool     s_output_en = true;
+
 /* Diagnostics (read by the CLI + reported in the extended heartbeat). */
 static volatile uint8_t  s_last_cmd;
+static volatile uint8_t  s_last_ctrl_op;   /* last 0x88B9 control opcode applied */
+static volatile uint8_t  s_last_ctrl_arg;
+static volatile uint32_t s_ctrl_count;     /* accepted control frames */
 static volatile uint32_t s_rx_count;    /* all frames received (any ethertype) */
 static volatile uint32_t s_tx_count;    /* frames this node has completed sending */
 static volatile uint32_t s_err_count;   /* total TC6 driver errors since boot */
@@ -114,6 +131,10 @@ static void buttons_release_all(void)
 
 static void buttons_apply_mask(uint8_t mask)
 {
+    if (!s_output_en) {
+        buttons_release_all();
+        return;
+    }
     BTN_APPLY(mask, 0u, FRET_GREEN);
     BTN_APPLY(mask, 1u, FRET_RED);
     BTN_APPLY(mask, 2u, FRET_YELLOW);
@@ -190,7 +211,11 @@ static void send_heartbeat(void)
     s_hb_frame[14] = T1S_HB_VERSION;
     s_hb_frame[15] = T1S_HB_TYPE_GUITAR;
     s_hb_frame[16] = (uint8_t)T1S_NODE_ID;
-    s_hb_frame[17] = synced ? 0x01u : 0x00u;   /* flags: bit0 = synced */
+    /* flags: bit0 = TC6 synced, bit1 = output gate. The coordinator reconciles
+     * bit1 against what it last commanded, so this is how a local `output` change
+     * or a reboot gets corrected instead of silently disagreeing. */
+    s_hb_frame[17] = (uint8_t)((synced ? 0x01u : 0x00u) |
+                              (s_output_en ? 0x02u : 0x00u));
     s_hb_seq++;
     s_hb_frame[18] = (uint8_t)(s_hb_seq);
     s_hb_frame[19] = (uint8_t)(s_hb_seq >> 8);
@@ -344,6 +369,30 @@ void T1SFollower_ReleaseButtons(void)
     buttons_release_all();
 }
 
+void T1SFollower_SetOutputEnabled(bool en)
+{
+    s_output_en = en;
+    if (!en) {
+        /* Release now rather than waiting for the next command, so a mask that was
+         * asserted when the gate closed can't stay held on the guitar. */
+        buttons_release_all();
+    } else {
+        buttons_apply_mask(s_last_cmd);
+    }
+}
+
+bool T1SFollower_IsOutputEnabled(void)
+{
+    return s_output_en;
+}
+
+void T1SFollower_LastCtrl(uint8_t *op, uint8_t *arg, uint32_t *count)
+{
+    if (op    != NULL) { *op    = s_last_ctrl_op; }
+    if (arg   != NULL) { *arg   = s_last_ctrl_arg; }
+    if (count != NULL) { *count = s_ctrl_count; }
+}
+
 /* Diagnostic: log the raw value of a control register (async — the result
  * prints from the service loop a moment later). */
 static void on_id_read(TC6_t *pInst, bool success, uint32_t addr, uint32_t value,
@@ -478,11 +527,30 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
         return;
     }
     uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
+    if (ethertype == T1S_ETHERTYPE_CTRL) {
+        /* Typed control command [opcode, arg]. Guard with `<` (the MAC pads short
+         * frames to the 60-byte minimum, so len counts trailing pad and never
+         * equals the payload length), read fixed offsets, dispatch. */
+        if (len < (T1S_ETH_HDR_LEN + T1S_CTRL_LEN)) {
+            return;
+        }
+        uint8_t op  = s_rx_buf[T1S_ETH_HDR_LEN + T1S_CTRL_OP];
+        uint8_t arg = s_rx_buf[T1S_ETH_HDR_LEN + T1S_CTRL_ARG];
+        switch (op) {
+            case T1S_CTRL_OUTPUT_EN:  T1SFollower_SetOutputEnabled(arg != 0u); break;
+            default: return;   /* unknown opcode: ignore, don't count */
+        }
+        s_last_ctrl_op  = op;
+        s_last_ctrl_arg = arg;
+        s_ctrl_count++;
+        return;
+    }
     if (ethertype != T1S_ETHERTYPE) {
         return;
     }
     /* Command byte is the first payload octet; trailing min-frame padding is
-     * ignored. Apply directly (latest-wins). */
+     * ignored. Recorded even while the output is gated, so the CLI still shows
+     * what the coordinator is asking for. Apply directly (latest-wins). */
     uint8_t mask = (uint8_t)(s_rx_buf[T1S_ETH_HDR_LEN] & T1S_CMD_BIT_MASK);
     s_last_cmd = mask;
     buttons_apply_mask(mask);

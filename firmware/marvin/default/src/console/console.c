@@ -19,6 +19,7 @@
 #include "game/game_timing.h"
 #include "actuator/manual_control.h"
 #include "actuator/fretboard_link.h"
+#include "actuator/actuator_enable.h"
 #include "detector/detector.h"
 #include "detector/cv_marvin_v1.h"
 #include "video/video.h"
@@ -1601,6 +1602,41 @@ static void cmd_play(EmbeddedCli *cli, char *args, void *ctx)
                    (unsigned)s->setlist, (unsigned)s->index, (unsigned)s->difficulty);
 }
 
+/* Report one actuator's output enable: what marvin wants, and whether the node has
+ * confirmed it. A node that isn't on the bus is not an error — the state is held and
+ * pushed when it shows up. */
+static void print_actuator_state(t1s_actuator_t act)
+{
+    const char *name = ActuatorEnable_Name(act);
+    bool        want = ActuatorEnable_Get(act);
+
+    if (!ActuatorEnable_Present(act))
+    {
+        console_printf("%s: output %s — not on the bus, pushed when it appears",
+                       name, want ? "on" : "off");
+        return;
+    }
+    console_printf("%s: output %s (%s)", name, want ? "on" : "off",
+                   ActuatorEnable_Pending(act) ? "pending" : "confirmed");
+}
+
+/* Shared body for the actuator enable commands: no argument reports, on|off sets. */
+static void cmd_actuator(t1s_actuator_t act, char *args)
+{
+    const char *a = embeddedCliGetToken(args, 1);
+
+    if (a != NULL && (strcmp(a, "on") == 0 || strcmp(a, "off") == 0))
+    {
+        ActuatorEnable_Set(act, strcmp(a, "on") == 0);
+    }
+    else if (a != NULL)
+    {
+        console_printf("usage: %s <on|off>", ActuatorEnable_Name(act));
+        return;
+    }
+    print_actuator_state(act);
+}
+
 static int8_t parse_pos_i8(const char *s)
 {
     long v = strtol(s, NULL, 0);
@@ -1622,6 +1658,24 @@ static void cmd_lemmy(EmbeddedCli *cli, char *args, void *ctx)
     }
 
     const char *b = embeddedCliGetToken(args, 2);
+
+    /* Servo output gate — a different knob from `nod`: this stops every source
+     * (the nod, marvin's own positions, beatbox's), while `nod off` only frees the
+     * neck from the beat engine so a manual position sticks. */
+    if (a != NULL && strcmp(a, "output") == 0)
+    {
+        if (b != NULL && (strcmp(b, "on") == 0 || strcmp(b, "off") == 0))
+        {
+            ActuatorEnable_Set(T1S_ACT_LEMMY, strcmp(b, "on") == 0);
+        }
+        else if (b != NULL)
+        {
+            console_printf("usage: lemmy output <on|off>");
+            return;
+        }
+        print_actuator_state(T1S_ACT_LEMMY);
+        return;
+    }
 
     /* Nod control channel (0x88B9): enable/disable + tuning. */
     if (a != NULL && strcmp(a, "nod") == 0)
@@ -1659,7 +1713,8 @@ static void cmd_lemmy(EmbeddedCli *cli, char *args, void *ctx)
 
     if (a == NULL || b == NULL)
     {
-        console_printf("usage: lemmy <neck> <jaw> | center | nod <on|off> | trim <n> | osc <0|1>");
+        console_printf("usage: lemmy <neck> <jaw> | center | output <on|off> | "
+                       "nod <on|off> | trim <n> | osc <0|1>");
         return;
     }
     int8_t neck = parse_pos_i8(a);
@@ -1668,22 +1723,16 @@ static void cmd_lemmy(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("lemmy: neck=%d jaw=%d", (int)neck, (int)jaw);
 }
 
+static void cmd_guitar(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    cmd_actuator(T1S_ACT_GUITAR, args);
+}
+
 static void cmd_lightshow(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli; (void)ctx;
-    const char *a = embeddedCliGetToken(args, 1);
-
-    if (a == NULL || (strcmp(a, "on") != 0 && strcmp(a, "off") != 0))
-    {
-        console_printf("usage: lightshow <on|off>");
-        return;
-    }
-    uint8_t on = (strcmp(a, "on") == 0) ? 1u : 0u;
-    if (!T1SLink_SendLightshowCtrl(T1S_LIGHT_CTRL_OUTPUT_EN, on)) {
-        console_printf("lightshow: link down");
-        return;
-    }
-    console_printf("lightshow: output %s", on ? "on" : "off");
+    cmd_actuator(T1S_ACT_LIGHTSHOW, args);
 }
 
 static void cmd_fretboard(EmbeddedCli *cli, char *args, void *ctx)
@@ -1763,8 +1812,9 @@ static const CliCommandBinding bindings[] = {
         { "manual", "manual <on|off>: manual-control actuation mode",      true, NULL, cmd_manual },
         { "play",   "play [attach|stop|status]: auto-navigate + CV-play the selected song; 'attach' = play a manually-started game (e.g. 2p)", true, NULL, cmd_play },
         { "fauxmote","fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]", true, NULL, cmd_fauxmote },
-        { "lemmy",  "lemmy <neck> <jaw>|center: servo pos; nod <on|off>|trim <n>|osc <0|1>: nod control", true, NULL, cmd_lemmy },
-        { "lightshow","lightshow <on|off>: enable/disable the LED output",   true, NULL, cmd_lightshow },
+        { "guitar", "guitar [on|off]: gate the guitar node's button outputs", true, NULL, cmd_guitar },
+        { "lemmy",  "lemmy <neck> <jaw>|center: servo pos; output <on|off>: gate the servos; nod <on|off>|trim <n>|osc <0|1>: nod control", true, NULL, cmd_lemmy },
+        { "lightshow","lightshow [on|off]: gate the lightshow node's LED output", true, NULL, cmd_lightshow },
         { "fretboard","fretboard <arm|disarm|stream on|off|model <difficulty>>: gate actuation / data stream, select inference model", true, NULL, cmd_fretboard },
         { "fret",   "fret <g|r|y|b|o> <0|1>: press/release a fret",        true, NULL, cmd_fret },
         { "strum",  "strum <down|up>: one strum pulse",                    true, NULL, cmd_strum },

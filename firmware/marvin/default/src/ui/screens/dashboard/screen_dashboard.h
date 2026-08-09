@@ -37,6 +37,11 @@ leWidget *ScreenDashboard_Content(void);
 void ScreenDashboard_ApplySelection(void);
 void ScreenDashboard_ApplyFret(uint8_t mask);
 
+/* Re-read the ACTUATORS rows (node presence + the enable each node reports). Polled
+ * from the feed task's idle tick rather than pushed, because both arrive on heartbeats
+ * with no event behind them; repaints only what changed. */
+void ScreenDashboard_RefreshActuators(void);
+
 /* Show or hide the SMPTE test pattern under the video card: it is only meant to be seen
  * when HEO is not covering it, and the rebind gap after a full-screen view was long
  * enough to flash the bars. Feed-task ctx, render lock held. */

@@ -40,6 +40,7 @@
 #include "video/video.h"
 #include "detector/detector.h"
 #include "game/game_timing.h"
+#include "actuator/actuator_enable.h"
 #include "actuator/fretboard_link.h"
 #include "actuator/manual_control.h"
 #include "net/fauxmote/fauxmote_link.h"
@@ -212,6 +213,11 @@ void App_StartServices(void)
     /* M2 actuator path: fretboard_link owns the submit queue + FLEXCOM1 USART
      * writer and the RX parse task (and brings up the T1S link). */
     FretboardLink_Initialize();
+
+    /* Output enable for the three actuator nodes (guitar / lemmy / lightshow).
+     * Follows FretboardLink_Initialize, which is what brings the T1S link up; the
+     * boot defaults are staged now and reach each node on its first heartbeat. */
+    ActuatorEnable_Initialize();
 
     /* fauxmote command link (ESP32 Wiimote emulator) on its own FLEXCOM5. Mirrors
      * every gameplay mask (FretboardLink_Send taps Fauxmote_SendGuitarMask). Must

@@ -8,7 +8,8 @@
  *
  * marvin is the PLCA coordinator (node 0); this node is follower id 2. It
  * receives marvin's 1-byte button bitmask (ethertype 0x88B5) over T1S and
- * drives the status-indicator GPIOs (5 fret LEDs + 1 strum LED). Transport is
+ * drives the status-indicator GPIOs (5 fret LEDs + 1 strum LED), gated by an
+ * output enable the coordinator sets over the 0x88B9 control channel. Transport is
  * the vendored OPEN Alliance TC6 driver (third_party/oa-tc6-lib) wrapped with
  * the SERCOM0 SPI PLib, a GPIO chip-select held across each transfer, the
  * T1S_RST / T1S_IRQ_N pins (EIC EXTINT2), and a SysTick-based millisecond clock. Bare-metal: the
@@ -34,6 +35,21 @@ uint32_t T1SFollower_ErrCount(void);  /* count of TC6 errors since boot */
  * btn/tap). Note: a subsequent T1S command will overwrite this. */
 void T1SFollower_ApplyButtons(uint8_t mask);
 void T1SFollower_ReleaseButtons(void);
+
+/* Output gate. While disabled, commands are still received and reported by
+ * T1SFollower_LastCmd but nothing reaches the button GPIOs — so it holds against
+ * every source, including the fretboard driving this node peer-to-peer while the
+ * coordinator is silent. Disabling releases whatever was asserted; enabling
+ * re-applies the last commanded mask. Defaults enabled; the coordinator pushes its
+ * own state over 0x88B9 (T1S_CTRL_OUTPUT_EN) and reconciles it against the
+ * heartbeat's flags bit1, so a local change here is corrected within ~1 s while
+ * marvin is on the bus. */
+void T1SFollower_SetOutputEnabled(bool en);
+bool T1SFollower_IsOutputEnabled(void);
+
+/* Last control-channel (0x88B9) opcode/arg applied + accepted-frame count, for
+ * the CLI. NULL args skipped. */
+void T1SFollower_LastCtrl(uint8_t *op, uint8_t *arg, uint32_t *count);
 
 /* Diagnostic: raw-read the MAC-PHY ID registers and log the values (async). */
 void T1SFollower_ReadId(void);

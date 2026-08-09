@@ -120,11 +120,18 @@ void DashboardFeed_PostStreak(uint16_t streak)
     post(&e);
 }
 
-/* Block for new info, then drain everything queued and keep only the latest event of
+/* Wait for new info, then drain everything queued and keep only the latest event of
  * each type — a burst collapses to one apply pass, and a dropped intermediate fret
  * event never loses the final state. Widget mutation is done under the render lock
  * (Legato is single-threaded), so the apply can't race the renderer's damage list;
- * this task is the sole app-side writer of dashboard widgets. */
+ * this task is the sole app-side writer of dashboard widgets.
+ *
+ * The wait is bounded rather than a park, because not everything on the dashboard has
+ * a producer: T1S node presence and the enable each actuator node confirms arrive on
+ * heartbeats, so the ACTUATORS rows are polled on the idle tick. The refresh only
+ * repaints rows that changed, so an idle dashboard still generates no damage. */
+#define DF_IDLE_TICK_MS  500u
+
 static void dashboard_task(void *param)
 {
     (void)param;
@@ -133,20 +140,20 @@ static void dashboard_task(void *param)
     {
         dashboard_evt_t evt;
 
-        if (xQueueReceive(s_q, &evt, portMAX_DELAY) != pdTRUE) { continue; }
-        do
+        if (xQueueReceive(s_q, &evt, pdMS_TO_TICKS(DF_IDLE_TICK_MS)) == pdTRUE)
         {
-            if (evt.type < DASH_EVT_COUNT)
+            do
             {
-                s_latest[evt.type] = evt;
-                s_have[evt.type]   = true;
-            }
-        } while (xQueueReceive(s_q, &evt, 0) == pdTRUE);
+                if (evt.type < DASH_EVT_COUNT)
+                {
+                    s_latest[evt.type] = evt;
+                    s_have[evt.type]   = true;
+                }
+            } while (xQueueReceive(s_q, &evt, 0) == pdTRUE);
 
-        /* Take the status from its mailbox, which cannot have been dropped, rather
-         * than from whatever survived the shared queue. Done after the drain so a
-         * status posted during it is still seen this pass. */
-        {
+            /* Take the status from its mailbox, which cannot have been dropped, rather
+             * than from whatever survived the shared queue. Done after the drain so a
+             * status posted during it is still seen this pass. */
             dashboard_evt_t st;
             if (xQueueReceive(s_status_q, &st, 0) == pdTRUE)
             {
@@ -170,6 +177,7 @@ static void dashboard_task(void *param)
         if (s_have[DASH_EVT_STREAK])    { ScreenDashboard_ApplyStreak(s_latest[DASH_EVT_STREAK].u.streak); }
         if (s_have[DASH_EVT_FRET])      { ScreenDashboard_ApplyFret(s_latest[DASH_EVT_FRET].u.fret_mask); }
         if (s_have[DASH_EVT_VIDEO])     { ScreenDashboard_ApplyVideoState(s_latest[DASH_EVT_VIDEO].u.on); }
+        ScreenDashboard_RefreshActuators();
         UiManager_RenderUnlock();
 
         (void)memset(s_have, 0, sizeof s_have);
@@ -182,10 +190,10 @@ void DashboardFeed_SetShown(bool shown)
 
     s_shown = shown;
 
-    /* A show has to wake the consumer: it is parked on the queue with no timeout, so
-     * without this the deferred set would sit unapplied until the next producer post —
-     * which, outside a run, may be a long time. Only on a real transition, so the
-     * several paths that legitimately re-assert "shown" cost nothing. */
+    /* A show wakes the consumer rather than letting it find out on its idle tick, so
+     * the deferred set lands on this frame instead of up to DF_IDLE_TICK_MS later. Only
+     * on a real transition, so the several paths that legitimately re-assert "shown"
+     * cost nothing. */
     if (shown && !was)
     {
         dashboard_evt_t wake = { .type = DF_EVT_WAKE, .u = { 0 } };

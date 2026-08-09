@@ -21,7 +21,7 @@
 #define T1S_ETHERTYPE       (0x88B5u)  /* data / command frames */
 #define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
 #define T1S_ETHERTYPE_BEAT  (0x88B8u)  /* beatbox beat frame (broadcast) */
-#define T1S_ETHERTYPE_CTRL  (0x88B9u)  /* lemmy control channel (unicast) */
+#define T1S_ETHERTYPE_CTRL  (0x88B9u)  /* per-node control channel (unicast) */
 #define T1S_ETH_HDR_LEN     (14u)
 
 /* Command payload on 0x88B5: two signed position bytes, one per servo, applied
@@ -38,6 +38,7 @@
 #define T1S_CTRL_NOD_EN     (0x01u)  /* arg 0|1        -> BeatNod_SetEnabled     */
 #define T1S_CTRL_NOD_TRIM   (0x02u)  /* arg int8       -> NodEngine_SetPotOffset */
 #define T1S_CTRL_NOD_OSC    (0x03u)  /* arg 0|1        -> NodEngine_SetOscEnabled */
+#define T1S_CTRL_OUTPUT_EN  (0x04u)  /* arg 0|1        -> Servo_SetEnabled       */
 
 /* Heartbeat (docs/t1s-podl-link.md §7.2): followers periodically announce
  * presence to the coordinator. v2 payload (20 B): ver, node_type, node_id, flags,
@@ -180,7 +181,11 @@ static void send_heartbeat(void)
     s_hb_frame[14] = T1S_HB_VERSION;
     s_hb_frame[15] = T1S_HB_TYPE_ANIM;
     s_hb_frame[16] = (uint8_t)T1S_NODE_ID;
-    s_hb_frame[17] = synced ? 0x01u : 0x00u;   /* flags: bit0 = synced */
+    /* flags: bit0 = TC6 synced, bit1 = servo output gate. The coordinator reconciles
+     * bit1 against what it last commanded, so a local `output` change or a reboot
+     * gets corrected instead of silently disagreeing. */
+    s_hb_frame[17] = (uint8_t)((synced ? 0x01u : 0x00u) |
+                              (Servo_IsEnabled() ? 0x02u : 0x00u));
     s_hb_seq++;
     s_hb_frame[18] = (uint8_t)(s_hb_seq);
     s_hb_frame[19] = (uint8_t)(s_hb_seq >> 8);
@@ -485,6 +490,7 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
             case T1S_CTRL_NOD_EN:   BeatNod_SetEnabled(arg != 0u);              break;
             case T1S_CTRL_NOD_TRIM: NodEngine_SetPotOffset((int8_t)arg);        break;
             case T1S_CTRL_NOD_OSC:  NodEngine_SetOscEnabled((arg != 0u) ? 1u : 0u); break;
+            case T1S_CTRL_OUTPUT_EN: Servo_SetEnabled(arg != 0u);               break;
             default: return;   /* unknown opcode: ignore, don't count */
         }
         s_last_ctrl_op  = op;

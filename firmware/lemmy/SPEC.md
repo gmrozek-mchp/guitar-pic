@@ -87,8 +87,17 @@ to `guitar`'s:
   beatbox is quiet. (3) **control channel** — a `0x88B9` unicast frame carrying a typed `[opcode, arg]`
   tunes the nod remotely: `0x01` enable/disable, `0x02` trim, `0x03` oscillator (marvin's
   `lemmy nod|trim|osc`), mapping onto the same `BeatNod`/`NodEngine` setters as lemmy's local `nod` CLI.
-  `nod off` here is what frees the neck for the `0x88B5` manual path. Opcode space is left open for
-  future scripted gestures / jaw talking (L4).
+  `nod off` here is what frees the neck for the `0x88B5` manual path. Opcode `0x04` is the
+  **servo output enable** (marvin's `lemmy output on|off`) → `Servo_SetEnabled`; see §4. Opcode space is
+  left open for future scripted gestures / jaw talking (L4).
+  - **`nod enable` and `output enable` are different knobs, deliberately.** The first detaches the neck
+    from the beat engine so a manual position sticks; the second gates the servos outright, against
+    *every* source — the nod, marvin's `0x88B5` positions, and beatbox's. Only the second answers "lemmy
+    must not move".
+- **Heartbeat echo.** The `0x88B6` heartbeat's `flags` byte carries **bit1 = output enabled**
+  (`Servo_IsEnabled()`), the return leg of opcode `0x04`: marvin compares it against what it last
+  commanded and re-pushes on mismatch, so the gate converges after a lost frame, a reboot, or a local
+  `output` command.
 
 The marvin-side reference is [`firmware/marvin/default/src/net/t1s/t1s_link.c`](../marvin/default/src/net/t1s/t1s_link.c)
 (coordinator); the follower reference is [`guitar`](../guitar/config.mcc/src/t1s_follower.c).
@@ -103,9 +112,18 @@ layer:
 2. **Service:** call `TC6_Service` from the main loop / tick, woken by `IRQ_N`.
 3. **Heartbeat:** periodic (≈500 ms) `0x88B6` presence frame to the coordinator.
 4. **CLI** (debug aid, SERCOM1 UART via embedded-cli, static allocation): `t1s` (link / sync /
-   chipRev / PLCA / counters), `servo`/`pos`/`cal` (exercise + calibrate the mechanism), and `nod`
-   (beat-nod status; `on|off` / `trim <n>` / `osc <0|1>`).
+   chipRev / PLCA / counters), `servo`/`pos`/`cal` (exercise + calibrate the mechanism), `nod`
+   (beat-nod status; `on|off` / `trim <n>` / `osc <0|1>`), and `output <on|off>` (the gate below).
+   `servo`/`pos`/`cal` say so explicitly when the gate is closed — otherwise calibrating a gated node
+   looks like broken hardware. The local setting is a bench aid, not an override: marvin reconciles it
+   against the heartbeat echo while it is on the bus.
 5. **Servo layer** (L2): TCC0 PWM for the two servos + a position/calibration layer (`servo.{c,h}`).
+   - **Output gate.** `Servo_SetEnabled` gates `Servo_SetPulseUs`, the single hardware write every path
+     funnels through (`Servo_SetPosition` maps through calibration and then calls it), so one flag stops
+     the nod engine, marvin, beatbox and the CLI alike. Requested pulses/positions are still recorded
+     while gated and re-applied on enable, so the motion source resumes where it believes it is;
+     disabling parks both servos at neutral first rather than freezing mid-nod. Defaults enabled, and
+     marvin's boot default is also enabled.
 6. **Beat-driven nod** (L3, `nod_engine.{c,h}` + `beat_nod.{c,h}`): the `0x88B8` consumer. `beat_nod`
    stashes each beat frame from the RX path; `BeatNod_Tasks()` (main loop) reconstructs per-band beat
    onsets from the frame flags, lifts `energy` into the engine's loudness domain, ticks the pure
@@ -136,4 +154,5 @@ Static allocation only (no malloc), per project rule.
 | ✅ | **L2** — servo motion: TCC0 PWM for the 2 servos. Raw driver (`servo.{c,h}`) + `servo <neck\|jaw> <us>` CLI, verified driving real servos. Puppet-relative pose + calibration and a `nod`/`jaw` envelope layer come next (L3) |
 | 🚧 | **L3** — beat-driven head nod: `nod_engine.{c,h}` (ported, decoupled integer DSP) + `beat_nod.{c,h}` consume beatbox's `0x88B8` beat frame → neck head-bang; `nod` CLI (status / `on\|off` / `trim` / `osc`). Wired; pending on-hardware verification against a live beatbox |
 | ✅ | **L3.5** — `0x88B9` control channel: remote nod enable/disable + trim + osc (`[opcode, arg]`), driven by marvin's `lemmy nod\|trim\|osc`. `nod off` frees the neck for the `0x88B5` manual path. Wired; pending on-hardware verification |
+| ✅ | **L3.6** — servo **output enable** (`0x88B9` op `0x04`) gating `Servo_SetPulseUs`, so one switch stops every motion source; echoed back as heartbeat `flags` bit1 so marvin reconciles it. Drives marvin's dashboard LEMMY toggle. Wired; pending on-hardware verification |
 | 🔭 | **L4** (future) — jaw "talking" animation; scripted gestures on the `0x88B9` channel (new opcodes) |

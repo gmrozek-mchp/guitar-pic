@@ -289,6 +289,14 @@ Direct **FLEXCOM1 USART** link between marvin and the fretboard MCU — a plain 
 - **Standalone fallback:** when marvin's timing pipeline is disabled (see §4.4 and §6), the fretboard runs its own existing chord FIFO (`fret_button.c`) and continues to stream ADC + emitted-command telemetry to marvin for capture/display.
 - **Fauxmote link (all builds):** marvin brings up a link to the fauxmote board (ESP32 Wiimote emulator, §7 top-level SPEC) on its own **FLEXCOM5 USART** (`PA16`/`PA15`, 1 Mbaud, `net/fauxmote/fauxmote_link.c`, `Fauxmote_Initialize`). Because FLEXCOM5 is dedicated to fauxmote (not shared with the guitar transport), this runs regardless of `MARVIN_FRETBOARD_TRANSPORT`. It mirrors every gameplay bitmask — `FretboardLink_Send` taps `Fauxmote_SendGuitarMask` — and is inspected/controlled via the `fauxmote` console command (§4.9).
 
+#### 4.3.1 Actuator output enables
+
+Each of the three actuator nodes — guitar (buttons), lemmy (servos), lightshow (LEDs) — has an **output enable that gates its own physical output**, commanded by marvin over that node's `0x88B9` control channel. `actuator/actuator_enable.c` owns marvin's wanted state for all three (**default enabled**, so a cold boot plays untouched) and is driven from the dashboard ACTUATORS toggles and the `guitar` / `lemmy output` / `lightshow` console commands.
+
+The gate is at the node, not on marvin's send path, because marvin is not always the one driving: inside a song with the fretboard selected marvin goes silent and the fretboard drives the guitar peer-to-peer (`Detector_FretboardDriving()`), and lemmy's servos are also driven by beatbox. Muting marvin would leave both uncovered.
+
+Because a follower boots on its own defaults and `0x88B9` carries no ACK, the state is kept converged rather than merely sent: a send is retried until accepted, every known opcode is re-pushed when a node (re)appears or restarts, and each actuator **reports its gate back in its heartbeat** (flags bit1) so marvin re-pushes on mismatch — which also catches a node's local CLI changing it. Steady-state agreement costs no bus traffic. The dashboard dot therefore reflects what a node *reports*, with a pending state while a command is unconfirmed. Wire details: [`docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md) §7.1–§7.2.
+
 ### 4.4 Timing pipeline 🚧
 
 Centralized on marvin by default. It is the **decide layer** — a peer of the detector (§4.2) and the actuator link (§4.3), not part of either — and lives in the game-control subsystem (`game/timing_pipeline.c`) alongside `game_controller` (§4.8), the other autonomous command producer. The two are mutually exclusive (note-highway gameplay vs. menu navigation); coordinating them is open **Q11**. It schedules **in the strike-line time base** — it acts on each detector record's `strike_at_ms` (§4.2.3) rather than holding an observation-delay constant of its own; the observation lead now lives with the detector. Owns:
