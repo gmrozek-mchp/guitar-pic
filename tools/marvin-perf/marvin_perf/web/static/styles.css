@@ -68,6 +68,35 @@ body {
   opacity: 0.4; cursor: not-allowed;
 }
 
+/* The track background is set inline by renderScrubTrack() — an accent-lit span
+ * marking where strip pixels exist — so the native track must be suppressed. */
+.scrub {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 240px;
+  height: 6px;
+  margin: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-3);
+  cursor: pointer;
+}
+.scrub:disabled { opacity: 0.4; cursor: not-allowed; }
+.scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px; height: 14px;
+  border: none;
+  border-radius: 2px;
+  background: var(--yellow);
+}
+.scrub::-moz-range-thumb {
+  width: 10px; height: 14px;
+  border: none;
+  border-radius: 2px;
+  background: var(--yellow);
+}
+
 /* ── Mode toggle / live controls ───────────────────────────────────────── */
 
 .mode-toggle { gap: 0; }
@@ -226,6 +255,19 @@ body {
 .strip-card.positioned canvas {
   display: block;
   image-rendering: pixelated;
+}
+
+/* No strip within the playhead's tolerance window. Black pixels and an
+ * unpainted canvas look identical, so the card says which one it is. */
+.strip-card.stale { outline-style: dashed; }
+.strip-card.stale canvas { opacity: 0.25; }
+.strip-card.stale::after {
+  content: "no data";
+  position: absolute;
+  inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 10px; color: var(--fg-dim);
+  pointer-events: none;
 }
 
 .strip-empty-list {

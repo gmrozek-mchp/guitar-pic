@@ -197,16 +197,21 @@ async function loadCapture(captureId, manifest) {
   state.records = recs.records;
   state.timerFreqHz = summary.timer_freq_hz || 0;
   state.ts0 = state.records.length ? state.records[0].ts_counter : 0;
-  state.playheadTs = state.ts0;
   state.fsm = "loaded";
 
   indexByKind();
+  // Open on the first strip rather than on ts0. A capture's pixel span can be
+  // a short tail of its ts range, and a playhead outside that span renders
+  // every card as an empty black box — which reads as "bad data".
+  const firstPixel = firstStripTs();
+  state.playheadTs = firstPixel !== null ? firstPixel : state.ts0;
   renderManifestBanner();
   renderInspector();
   renderBadges();
   renderTimeline();
   renderRtosPanel();
   renderStripSlots();
+  renderScrubTrack();
   updatePlayheadDisplay();
   setBanner("");
 }
@@ -220,6 +225,38 @@ function indexByKind() {
   for (const k of Object.keys(state.byKind)) {
     state.byKind[k].sort((a, b) => a.ts_counter - b.ts_counter);
   }
+}
+
+// ts_counter of the earliest strip of any kind, or null when the capture holds
+// no pixels at all. Strips are the only records the pane can draw.
+function firstStripTs() {
+  let best = null;
+  for (const recs of Object.values(state.byKind)) {
+    if (!recs.length) continue;
+    if (best === null || recs[0].ts_counter < best) best = recs[0].ts_counter;
+  }
+  return best;
+}
+
+// ts_counter of the last strip of any kind, or null. Paired with firstStripTs
+// to mark the pixel-bearing span on the scrubber track.
+function lastStripTs() {
+  let best = null;
+  for (const recs of Object.values(state.byKind)) {
+    if (!recs.length) continue;
+    const ts = recs[recs.length - 1].ts_counter;
+    if (best === null || ts > best) best = ts;
+  }
+  return best;
+}
+
+// Seekable ts_counter span — the full record range, which is what the timeline
+// x-axis and the scrubber both map onto. null when there's nothing to seek.
+function tsRange() {
+  if (!state.records.length) return null;
+  const first = state.records[0].ts_counter;
+  const last = state.records[state.records.length - 1].ts_counter;
+  return { first, last, span: Math.max(1, last - first) };
 }
 
 // ── Manifest / banner ───────────────────────────────────────────────────────
@@ -617,13 +654,16 @@ function updateStripsAtPlayhead() {
   for (const kindStr of Object.keys(state.byKind)) {
     const kind = Number(kindStr);
     const recs = state.byKind[kind];
-    const rec = nearestAtOrBefore(recs, state.playheadTs);
-    if (!rec) continue;
-    if (state.playheadTs - rec.ts_counter > tolTicks) continue;
     const cfg = STRIP_KIND_REGISTRY[kind];
     const id = cfg ? cfg.id : `kind-${kind}`;
     const canvas = document.getElementById(`strip-canvas-${id}`);
     if (!canvas) continue;
+    const rec = nearestAtOrBefore(recs, state.playheadTs);
+    // Outside the tolerance window there is no frame to show. Say so on the
+    // card — an untouched canvas is indistinguishable from black pixels.
+    const fresh = !!rec && (state.playheadTs - rec.ts_counter) <= tolTicks;
+    canvas.parentElement?.classList.toggle("stale", !fresh);
+    if (!fresh) continue;
     if (rec.bgr_b64) {
       paintBgrIntoCanvas(canvas, rec.bgr_b64, rec.w, rec.h);
       continue;
@@ -704,7 +744,34 @@ function renderTimeline() {
     marker: { color: "#f87171", size: 10, symbol: "triangle-down" },
   };
 
-  const traces = [...stampTraces, dropTrace];
+  // One row per observed strip kind, so where pixels exist is visible rather
+  // than inferred. A strip-only capture would otherwise plot an empty chart.
+  // The GL threshold counts all kinds together — live mode buffers 30 s of up
+  // to three 60 Hz region streams, which crosses it on point count alone.
+  const stripPoints = Object.values(state.byKind)
+    .reduce((n, recs) => n + recs.length, 0);
+  const glStrips = stripPoints > 5000;
+  const stripTraces = Object.keys(state.byKind).map((kindStr) => {
+    const kind = Number(kindStr);
+    const recs = state.byKind[kind];
+    const cfg = STRIP_KIND_REGISTRY[kind];
+    const label = cfg ? cfg.label : `Kind ${kind}`;
+    return {
+      x: recs.map((r) => tickToMs(r.ts_counter)),
+      y: recs.map(() => label),
+      text: recs.map((r) => `epoch ${r.frame_epoch}`),
+      name: label,
+      mode: "markers",
+      type: glStrips ? "scattergl" : "scatter",
+      marker: {
+        color: cfg ? cfg.color : STAGE_FALLBACK,
+        size: 7,
+        symbol: glStrips ? "line-ns" : "line-ns-open",
+      },
+    };
+  });
+
+  const traces = [...stampTraces, ...stripTraces, dropTrace];
 
   const lastTs = state.records.length
     ? state.records[state.records.length - 1].ts_counter
@@ -764,6 +831,48 @@ function refreshPlayheadShape() {
   Plotly.relayout(node, { shapes: [playheadShape()] });
 }
 
+// ── Scrubber ────────────────────────────────────────────────────────────────
+
+const SCRUB_STEPS = 1000;  // must match the range input's max attribute
+
+// Light the pixel-bearing span on the track and enable seeking. The timeline
+// chart only seeks on a data-point click, so without this a capture whose
+// strips sit in a narrow slice of its ts range is effectively unreachable.
+function renderScrubTrack() {
+  const el = $("#scrub");
+  if (!el) return;
+  const range = tsRange();
+  const first = firstStripTs();
+  const last = lastStripTs();
+  // Live mode pins the view to the stream head; seeking is offline-only.
+  el.disabled = !range || state.mode === "live";
+  if (!range || first === null || last === null) {
+    el.style.background = "";
+    return;
+  }
+  const a = ((first - range.first) / range.span) * 100;
+  const b = ((last - range.first) / range.span) * 100;
+  el.style.background =
+    "linear-gradient(to right," +
+    ` var(--bg-3) 0% ${a}%,` +
+    ` var(--accent) ${a}% ${b}%,` +
+    ` var(--bg-3) ${b}% 100%)`;
+}
+
+function updateScrubber() {
+  const el = $("#scrub");
+  const range = tsRange();
+  if (!el || !range) return;
+  const f = (state.playheadTs - range.first) / range.span;
+  el.value = String(Math.round(Math.min(1, Math.max(0, f)) * SCRUB_STEPS));
+}
+
+function seekToFraction(f) {
+  const range = tsRange();
+  if (!range) return;
+  seekTo(range.first + f * range.span);
+}
+
 // ── Playhead / playback FSM ─────────────────────────────────────────────────
 
 function updatePlayheadDisplay() {
@@ -773,6 +882,7 @@ function updatePlayheadDisplay() {
   updatePlayheadInspector();
   updateStripsAtPlayhead();
   refreshPlayheadShape();
+  updateScrubber();
 }
 
 function seekTo(ticks) {
@@ -884,7 +994,7 @@ function setMode(mode) {
 }
 
 function setLiveTransportEnabled(enabled) {
-  for (const id of ["#step-prev", "#play-pause", "#step-next", "#speed"]) {
+  for (const id of ["#step-prev", "#play-pause", "#step-next", "#speed", "#scrub"]) {
     const el = $(id);
     if (el) el.disabled = !enabled;
   }
@@ -924,6 +1034,7 @@ function resetCaptureState() {
   setBadge("badge-rtos", null, "rtos ●");
   $("#ph-epoch").textContent = "—";
   $("#ph-ts").textContent = "—";
+  renderScrubTrack();
 }
 
 // ── Live: serial ports ──────────────────────────────────────────────────────
@@ -1565,6 +1676,10 @@ function setupControls() {
   $("#play-pause").addEventListener("click", togglePlay);
   $("#step-prev").addEventListener("click", () => stepEvent(-1));
   $("#step-next").addEventListener("click", () => stepEvent(1));
+  $("#scrub").addEventListener("input", (e) => {
+    pause();
+    seekToFraction(Number(e.target.value) / SCRUB_STEPS);
+  });
   $("#speed").addEventListener("change", (e) => {
     state.speed = parseFloat(e.target.value);
   });

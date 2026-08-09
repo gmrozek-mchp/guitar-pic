@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 from marvin_perf.capture import BIN_NAME, MANIFEST_NAME
+from marvin_perf.decode import decode_record
 from marvin_perf.framing import FrameStats, frame_encode, iter_frames
 from marvin_perf.records import (
     DEFAULT_REGION_RECT,
@@ -379,6 +380,64 @@ def test_record_start_stop_finalizes_capture(tmp_path: Path) -> None:
         assert loaded["n_records"] == 4
         assert "Session" in loaded["producer_capabilities"]
         assert "Stamp" in loaded["producer_capabilities"]
+    finally:
+        sess.stop()
+
+
+def test_prepended_records_restamped_to_recording_head(tmp_path: Path) -> None:
+    """A cached SESSION must not drag the capture's ts origin back to when the
+    device emitted it — every consumer reads record[0].ts_counter as t=0."""
+    sess = _make_session()
+    captured: dict[str, _FakeSerial] = {}
+
+    def factory(port: str) -> _FakeSerial:
+        ser = _FakeSerial(port)
+        captured["ser"] = ser
+        return ser
+
+    sess.start("/dev/null", ser_factory=factory)
+    ser = captured["ser"]
+    try:
+        # A stale SESSION lands, then a long gap, then recording starts.
+        ser.feed(frame_encode(_encode_session_payload(ts=1_000)))
+        ser.feed(frame_encode(_encode_stamp_payload(epoch=1, ts=9_000_000)))
+        _wait_for(lambda: sess._state.last_ts_counter == 9_000_000)
+
+        out_dir = tmp_path / "rec_restamp"
+        sess.record_start(out_dir)
+        ser.feed(frame_encode(_encode_stamp_payload(epoch=2, ts=9_000_100)))
+        _wait_for(lambda: sess._rec is not None and sess._rec.n_frames >= 2)
+        sess.record_stop()
+
+        stats = FrameStats()
+        data = (out_dir / BIN_NAME).read_bytes()
+        recs = [decode_record(f.payload) for f in iter_frames([data], stats)]
+        assert stats.fcs_mismatches == 0  # re-framed payload carries a valid FCS
+        assert isinstance(recs[0], Session)
+        # Re-stamped to the newest ts seen, not the 1_000 it arrived with.
+        assert recs[0].hdr.ts_counter == 9_000_000
+        assert recs[0].timer_freq_hz == 1_000_000  # body survived the patch
+        span = recs[-1].hdr.ts_counter - recs[0].hdr.ts_counter
+        assert span == 100
+    finally:
+        sess.stop()
+
+
+def test_prepend_untouched_when_no_ts_seen_yet(tmp_path: Path) -> None:
+    """Nothing decoded yet means there's no better stamp — keep the original."""
+    sess = _make_session()
+    captured: dict[str, _FakeSerial] = {}
+
+    def factory(port: str) -> _FakeSerial:
+        ser = _FakeSerial(port)
+        captured["ser"] = ser
+        return ser
+
+    sess.start("/dev/null", ser_factory=factory)
+    try:
+        assert sess._state.last_ts_counter is None
+        sess.record_start(tmp_path / "rec_empty")
+        sess.record_stop()
     finally:
         sess.stop()
 

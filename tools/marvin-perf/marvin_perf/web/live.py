@@ -34,6 +34,7 @@ from ..capture import (
 from ..decode import decode_record
 from ..framing import FrameStats, frame_encode, iter_frames
 from ..records import (
+    HDR_SIZE,
     PERF_OVERLAY_STRIP,
     DEFAULT_REGION_RECT,
     RECORD_TYPE_BY_NAME,
@@ -44,6 +45,7 @@ from ..records import (
     Strip,
     StripKind,
     encode_region_stream_payload,
+    payload_with_ts_counter,
     encode_set_mask_payload,
     encode_set_overlay_payload,
     encode_snapshot_payload,
@@ -74,6 +76,21 @@ _QUEUE_MAX = 512
 # the device re-locking HDMI before the first band. If no complete frame lands
 # in this window the request is abandoned and the UI told it timed out.
 _SNAPSHOT_TIMEOUT_S = 8.0
+
+
+def _restamp_framed(framed: bytes, ts_counter: int | None) -> bytes:
+    """Re-stamp a wire frame's record header ts_counter and re-frame it.
+
+    `framed` is SOF(4) + LEN(2) + payload + FCS(2). Returned unchanged when
+    `ts_counter` is None (nothing seen yet, so nothing better to stamp) or the
+    frame is too short to hold a record header.
+    """
+    if ts_counter is None:
+        return framed
+    payload = framed[6:-2]
+    if len(payload) < HDR_SIZE:
+        return framed
+    return frame_encode(payload_with_ts_counter(payload, ts_counter))
 
 
 @dataclass
@@ -109,6 +126,12 @@ class _State:
     # capture might end before the next heartbeat — prepending keeps
     # STRIP-overlay rendering correct even on sub-second captures.
     prepend_framed: dict[str, bytes] = field(default_factory=dict)
+    # Device ts_counter of the most recent decoded record. Prepended records
+    # are re-stamped to it so a capture's first record sits at the moment
+    # recording started, not at whenever the device happened to emit it —
+    # a cached SESSION can otherwise be minutes stale, and every host-side
+    # consumer treats the first record's ts_counter as the timeline origin.
+    last_ts_counter: int | None = None
 
 
 @dataclass
@@ -361,11 +384,16 @@ class _LiveSession:
             # DETECTOR_CONFIG) in _PREPEND_TYPES order so the bin is
             # self-contained from byte 0 even when recording starts
             # mid-session. Skipped silently if a type wasn't seen yet.
+            # Each is re-stamped to the newest ts_counter seen so it lands at
+            # the head of the recording's own time span (error bounded by one
+            # record interval) instead of dragging the origin back to when the
+            # device emitted it.
             bytes_written = 0
             n_frames = 0
             for cls in _PREPEND_TYPES:
                 framed = self._state.prepend_framed.get(cls.__name__)
                 if framed is not None:
+                    framed = _restamp_framed(framed, self._state.last_ts_counter)
                     fh.write(framed)
                     bytes_written += len(framed)
                     n_frames += 1
@@ -585,6 +613,8 @@ class _LiveSession:
                     rec = decode_record(frame.payload)
                 except Exception:
                     continue
+                with self._lock:
+                    self._state.last_ts_counter = rec.hdr.ts_counter
                 if isinstance(rec, Strip) and rec.kind == int(StripKind.SNAPSHOT):
                     # Snapshot bands feed the assembler and never enter the
                     # normal record stream / strip slots.

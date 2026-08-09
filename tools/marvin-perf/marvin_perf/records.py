@@ -165,6 +165,24 @@ class Header:
         return cls(*_HDR_FMT.unpack_from(buf, 0))
 
 
+# ts_counter is the header's trailing u64.
+TS_COUNTER_OFFSET = HDR_SIZE - 8
+
+
+def payload_with_ts_counter(payload: bytes, ts_counter: int) -> bytes:
+    """Return `payload` with its header `ts_counter` replaced.
+
+    Operates on an unframed record payload — the caller re-frames (the FCS
+    covers the patched bytes). Used to place a cached record on the timeline
+    where it was written rather than where it was originally stamped.
+    """
+    if len(payload) < HDR_SIZE:
+        raise ValueError(f"payload {len(payload)} B shorter than header {HDR_SIZE} B")
+    out = bytearray(payload)
+    struct.pack_into("<Q", out, TS_COUNTER_OFFSET, ts_counter & 0xFFFFFFFFFFFFFFFF)
+    return bytes(out)
+
+
 # ─── Record dataclasses ───────────────────────────────────────────────────────
 
 

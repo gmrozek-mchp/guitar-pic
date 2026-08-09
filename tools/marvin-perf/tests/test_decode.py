@@ -26,10 +26,12 @@ from marvin_perf.records import (
     StripKind,
     TaskHighwater,
     TaskId,
+    TS_COUNTER_OFFSET,
     TaskRuntime,
     TaskState,
     Timing,
     UnknownRecord,
+    payload_with_ts_counter,
 )
 
 from .conftest import (
@@ -339,3 +341,25 @@ def test_fretboard_raw_round_trip() -> None:
     assert rec.applied_mask == 0x61
     assert rec.hdr.frame_epoch == 7
     assert FretboardRaw.SIZE == 32
+
+
+def test_payload_with_ts_counter_patches_only_the_stamp() -> None:
+    original = build_fretboard_raw_payload(
+        frame_epoch=9, ts_counter=1234, adc=(11, 22, 33, 44, 55), fb_sample_seq=7
+    )
+    patched = payload_with_ts_counter(original, 0xDEADBEEFCAFE)
+    assert len(patched) == len(original)
+    assert patched[:TS_COUNTER_OFFSET] == original[:TS_COUNTER_OFFSET]
+    assert patched[HDR_SIZE:] == original[HDR_SIZE:]
+
+    rec = _round_trip_via_iter_frames(patched)
+    assert isinstance(rec, FretboardRaw)
+    assert rec.hdr.ts_counter == 0xDEADBEEFCAFE
+    assert rec.hdr.frame_epoch == 9
+    assert rec.adc == (11, 22, 33, 44, 55)
+    assert rec.fb_sample_seq == 7
+
+
+def test_payload_with_ts_counter_rejects_short_payload() -> None:
+    with pytest.raises(ValueError):
+        payload_with_ts_counter(b"\x00" * (HDR_SIZE - 1), 1)
