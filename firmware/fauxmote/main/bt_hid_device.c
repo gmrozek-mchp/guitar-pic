@@ -278,6 +278,14 @@ void Fauxmote_Reconnect(void)
         ESP_LOGW(TAG, "reconnect: no bonded Wii yet — run `pair` first");
         return;
     }
+    if (Wiimote_IsConnected()) {
+        ESP_LOGW(TAG, "reconnect: already connected");
+        return;
+    }
+    if (s_reconnecting) {
+        ESP_LOGW(TAG, "reconnect: already in progress");
+        return;
+    }
     log_bda("reconnect: connecting to", s_wii_bda);
     s_reconnecting = true;
     esp_bt_l2cap_connect(ESP_BT_L2CAP_SEC_NONE, PSM_HID_CONTROL, s_wii_bda);

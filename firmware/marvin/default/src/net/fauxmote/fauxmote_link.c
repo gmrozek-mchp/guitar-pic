@@ -432,6 +432,40 @@ bool Fauxmote_GetStatus(uint8_t *flags, uint8_t *player_slot,
     return true;
 }
 
+/* Stale STATUS is not status. fauxmote heartbeats one every MF_STATUS_PERIOD_MS (500),
+ * so silence well past that means it is gone — and a latched "connected" from before it
+ * went would otherwise talk us out of the reconnect we are here to do. */
+#define FX_STATUS_STALE_MS  2000u
+
+fauxmote_link_state_t Fauxmote_ReconnectIfNeeded(void)
+{
+    static TickType_t s_last_req;
+    static bool       s_requested;
+
+    uint8_t  flags;
+    uint32_t age_ms;
+
+    if (!Fauxmote_GetStatus(&flags, NULL, NULL, NULL, &age_ms)) { return FAUXMOTE_LINK_UNKNOWN; }
+    if (age_ms > FX_STATUS_STALE_MS)                            { return FAUXMOTE_LINK_UNKNOWN; }
+
+    if (flags & MF_ST_CONNECTED) { return FAUXMOTE_LINK_CONNECTED; }
+    if (!(flags & MF_ST_BONDED)) { return FAUXMOTE_LINK_UNPAIRED; }
+
+    if (s_requested &&
+        (TickType_t)(xTaskGetTickCount() - s_last_req) < pdMS_TO_TICKS(FAUXMOTE_RECONNECT_GAP_MS))
+    {
+        return FAUXMOTE_LINK_RECONNECTING;
+    }
+
+    s_last_req  = xTaskGetTickCount();
+    s_requested = true;
+
+    LOG_INFO("FX: link down but bonded; requesting reconnect\r\n");
+    Fauxmote_SendCmd(MF_CMD_RECONNECT);
+
+    return FAUXMOTE_LINK_RECONNECTING;
+}
+
 void Fauxmote_Initialize(void)
 {
     s_cmd_queue = xQueueCreateStatic(FX_CMD_QUEUE_DEPTH, sizeof(uint8_t),

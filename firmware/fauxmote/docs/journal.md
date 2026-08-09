@@ -4,6 +4,10 @@ Running log of planning, decisions, open questions, and work-in-progress for fau
 
 ---
 
+**2026-08-09 — `reconnect` is now a no-op when the link is already up.** `Fauxmote_Reconnect()` (`main/bt_hid_device.c`) bails out if `Wiimote_IsConnected()` (HID interrupt channel open) or if `s_reconnecting` is still set from an attempt in flight; the bonded-address guard is unchanged. Reason: a client connect on top of a live session risks dropping it and leaks an L2CAP slot (servers are armed per pairing window, so slots don't come back), and `MF_CMD_RECONNECT` arriving repeatedly from marvin could stack up connects. `s_reconnecting` is cleared in the `L2CAP_OPEN` handler before the interrupt-channel connect, so the in-progress window is short and a genuinely stalled attempt can be retried. Guard sits in the one entry point, so both callers (CLI `reconnect`, marvin-link `MF_CMD_RECONNECT`) get it. **Pending build + on-hardware check.**
+
+---
+
 **2026-08-08 — T1S SPI dropped 15 → 4 MHz. TEMPORARY, test hardware only — do not carry into the real system.** `T1S_SPI_HZ` in `main/mf_t1s.c`. The T1S Click board on the current test rig is unreliable at the higher rate; 4 MHz is a workaround for that board, not a change to the link design. Revert to 15 (or pick a rung deliberately) when running against good hardware.
 
 Worth knowing for whoever reverts: the ESP32 SPI2 divider is an integer off the 80 MHz APB, so only 80/N is reachable and IDF snaps to the *nearest* rung, rounding up if that's closer. **The old 15 MHz request was actually clocking 16 MHz** (80/5 = 16 beats 80/6 = 13.33), which is what Greg measured. 4 MHz is exactly 80/20, so it lands dead-on. Rungs: 40 · 26.67 · 20 · 16 · 13.33 · 11.43 · 10 · 8.89 · 8 · … Two ceilings if raising it: LAN8651 SCLK maxes at **25 MHz** (`docs/t1s-podl-link.md` §67), and the configured pins (SCK 5 / MO 19 / MI 21) are **not** SPI2's IOMUX pins on the ESP32 (14/13/12), so signals route through the GPIO matrix — the added MISO input delay in full-duplex is the practical limit well below 40 MHz. `spi_device_get_actual_freq()` reports what the divider really produced.

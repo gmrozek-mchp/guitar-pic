@@ -7,6 +7,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "log.h"
+
 #include "ui/ui_manager.h"   /* CANVAS_WIIMOTES, BASE_W, BASE_H */
 #include "ui/titlebar.h"     /* shared hamburger + logos titlebar */
 #include "ui/gfx/video_frame.h"
@@ -477,6 +479,37 @@ static void gate_show(bool on)
     }
 }
 
+/* Ask fauxmote to bring the Wii link up if it is down. Called on both of this screen's
+ * edges, and cheap on both: the call sends nothing when the link is already up, and
+ * debounces so the second edge cannot restart what the first one began.
+ *
+ * Doing it on SHOW is what makes the latency free — the slide is a deliberate one-second
+ * gesture, so the reconnect runs underneath it and is usually done by the time the
+ * controls go live. The unlock edge then covers a link that dropped while the screen sat
+ * open, or one whose STATUS had not arrived yet on entry.
+ *
+ * Never blocks: this is the UI task, and the blocking wait belongs to game_controller. */
+static void link_kick(const char *when)
+{
+    switch (Fauxmote_ReconnectIfNeeded())
+    {
+        case FAUXMOTE_LINK_UNPAIRED:
+            LOG_WARN("UI: wiimotes (%s): fauxmote never synced to the Wii; needs red-SYNC\r\n",
+                     when);
+            break;
+        case FAUXMOTE_LINK_UNKNOWN:
+            LOG_WARN("UI: wiimotes (%s): no fauxmote status; cannot manage the Wii link\r\n",
+                     when);
+            break;
+        case FAUXMOTE_LINK_RECONNECTING:
+            LOG_INFO("UI: wiimotes (%s): Wii link down, reconnect requested\r\n", when);
+            break;
+        case FAUXMOTE_LINK_CONNECTED:
+        default:
+            break;
+    }
+}
+
 /* The gate opening is the edge that takes the override — not the screen being shown. Push the
  * current (all-released) state right after, so fauxmote starts from a known pose instead of
  * whatever the gameplay mirror last left latched. */
@@ -489,6 +522,8 @@ static void gate_unlocked(void)
     send_guitar();
     send_nav();
     Fauxmote_SendTilt((int16_t)Tilt_Degrees());
+
+    link_kick("unlock");
 }
 
 /* Scrim over the card row, with the heading and the slider as LATER siblings: later paints on
@@ -602,6 +637,9 @@ void ScreenWiimotes_SetShown(bool shown)
     s_unlocked = false;
     SlideUnlock_Reset();
     gate_show(true);
+
+    /* On the way in, so the reconnect overlaps the slide the user is about to make. */
+    if (shown) { link_kick("show"); }
 }
 
 /* ── render probe ────────────────────────────────────────────────────────────*/

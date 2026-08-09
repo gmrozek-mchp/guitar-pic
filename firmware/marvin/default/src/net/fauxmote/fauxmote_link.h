@@ -63,4 +63,25 @@ void Fauxmote_SendTilt(int16_t degrees);
 bool Fauxmote_GetStatus(uint8_t *flags, uint8_t *player_slot,
                         uint8_t *report_mode, uint8_t *last_result, uint32_t *age_ms);
 
+/* What the BT link to the Wii is doing, as Fauxmote_ReconnectIfNeeded found it. */
+typedef enum
+{
+    FAUXMOTE_LINK_CONNECTED,      /* up already; nothing was sent                        */
+    FAUXMOTE_LINK_RECONNECTING,   /* bonded but down: a RECONNECT is now in flight       */
+    FAUXMOTE_LINK_UNPAIRED,       /* never synced — only a manual red-SYNC pairing helps */
+    FAUXMOTE_LINK_UNKNOWN,        /* no fresh STATUS: fauxmote is down or not running    */
+} fauxmote_link_state_t;
+
+/* Bring the Wii link up if it is down, without blocking: sends MF_CMD_RECONNECT and
+ * returns what it decided, leaving the caller to watch Fauxmote_GetStatus (or just to
+ * log it). The blocking variant that waits for the link belongs to a task that can
+ * afford to — see game_controller's ensure_wii_connected; this one is for the UI.
+ *
+ * Repeated calls inside FAUXMOTE_RECONNECT_GAP_MS report RECONNECTING without sending
+ * again: a second RECONNECT would restart the attempt the first one started, so
+ * calling this on two nearby edges must not be slower than calling it on one. */
+#define FAUXMOTE_RECONNECT_GAP_MS  3000u
+
+fauxmote_link_state_t Fauxmote_ReconnectIfNeeded(void);
+
 #endif
