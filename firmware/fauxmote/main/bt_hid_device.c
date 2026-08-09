@@ -457,6 +457,7 @@ void Fauxmote_Unlink(void)
 }
 
 bool Fauxmote_IsDiscoverable(void) { return s_discoverable; }
+bool Fauxmote_IsConnecting(void)   { return s_reconnect != RC_IDLE; }
 
 int Fauxmote_ChannelsOpen(void)
 {

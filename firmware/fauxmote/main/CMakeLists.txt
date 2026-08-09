@@ -19,12 +19,12 @@ else()
     list(APPEND link_srcs "marvin_link.c")
 endif()
 
-idf_component_register(SRCS "bt_role.c" "ext_crypto.c" "guitar.c" "console_cli.c" "main.c"
+idf_component_register(SRCS "neopixel.c" "bt_role.c" "ext_crypto.c" "guitar.c" "console_cli.c" "main.c"
                             "bt_hid_device.c" "wiimote_sdp.c" "wiimote.c" "status_led.c"
                             ${link_srcs}
                        INCLUDE_DIRS "." ${link_incs}
                        REQUIRES bt nvs_flash esp_driver_gpio console
-                                esp_driver_spi esp_timer esp_driver_uart)
+                                esp_driver_spi esp_timer esp_driver_uart esp_driver_rmt)
 
 # The vendored OPEN Alliance TC6 sources are compiled as-is (do not edit third_party);
 # their designated-init style trips ESP-IDF's -Werror=missing-field-initializers.

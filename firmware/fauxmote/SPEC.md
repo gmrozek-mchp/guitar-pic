@@ -23,6 +23,7 @@ in marvin/fretboard/edge-ai changes as part of this subproject.
 | Board | **Adafruit ESP32 Feather V2** (product 5400) — *original* dual-core ESP32 (Tensilica LX6), 8 MB flash, 2 MB PSRAM, USB-C. |
 | Radio | ESP32 has a **Bluetooth Classic (BR/EDR)** radio — required, because the Wiimote link is Classic HID. (ESP32-S3/C3 are BLE-only and would *not* work.) |
 | Wii console | Real retail Wii; pairing via the sync button or the controller's 1+2 button. |
+| Status light | The board's onboard **NeoPixel** (data GPIO 0, power-enable GPIO 2, active high). Red heartbeat + blue Wii-link state, time-sliced so only one colour is lit — see `main/status_led.c`. The discrete GPIO 13 LED is unused. |
 
 ## 3. The link fauxmote emulates (verified protocol facts)
 

@@ -26,6 +26,7 @@ void Fauxmote_BtReset(void);
 void Fauxmote_Reboot(void);
 
 bool Fauxmote_IsDiscoverable(void);
+bool Fauxmote_IsConnecting(void);        /* a device-initiated reconnect is in flight */
 const uint8_t *Fauxmote_WiiAddr(void);   /* last bonded Wii address, or NULL */
 
 /* HID L2CAP channels the stack has opened and not yet finished closing. Channels stuck in

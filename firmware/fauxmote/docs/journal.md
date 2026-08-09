@@ -4,6 +4,17 @@ Running log of planning, decisions, open questions, and work-in-progress for fau
 
 ---
 
+**2026-08-09 — status moved to the onboard NeoPixel: red heartbeat + blue link state, time-sliced.** The Feather V2's RGB pixel (data GPIO 0, power-enable GPIO 2 active-high — both already dodged by the T1S pin choices, see below) replaces the discrete GPIO 13 LED, which is now retired so there's one place to look. One pixel can only show one colour, so the two indicators take turns inside a **2 s cycle**: red in `0..240 ms`, blue from `350 ms`. No overlap by construction, no ambiguous purple.
+
+- **Red = heartbeat, lemmy's pattern verbatim** (`firmware/lemmy/config.mcc/src/status_led.c`): 70 ms pulses, "lub-dub" (2nd pulse at 170 ms) when this node is on the T1S bus, single blip when it isn't. Bus test is `MfT1s_IsSynced()` — PLCA synced to marvin's beacon, the same sense as lemmy's `T1SFollower_IsConnected()`. UART-transport builds have no equivalent state and just blip.
+- **Blue = Wii link:** N blinks = connected as player N (120 ms on / 280 ms period, so 4 fits comfortably); fast flash (100/200) = pairing, reconnecting (`Fauxmote_IsConnecting()`, new), or connected-but-unassigned; one 40 ms blip = idle. Connected shows *only* the count — heartbeat, pause, count, nothing else.
+
+  A host-silent marker after the count was tried and dropped: the Wii sends output reports only on state changes, so it is normally quiet for long stretches during healthy play and `Wiimote_MsSinceRx()` crosses `MF_HOST_SILENT_MS` constantly. **That also makes `MF_ST_HOST_SILENT` (STATUS bit6) a poor fault signal as currently defined** — rx silence is the norm, and what actually distinguished the broken sessions was the Wii not *draining* our writes (tx stall). Either redefine bit6 off the tx-stall state or retire it; marvin doesn't act on it yet, so nothing depends on the answer.
+
+Implementation: `neopixel.c` drives the WS2812 over RMT (10 MHz resolution → 0.3/0.9 µs bit cells, GRB order) — no registry component needed, so the build stays offline-friendly. **Do not call `rmt_tx_wait_all_done()` per update**: it is the function that recycles completed transaction descriptors, and on timeout it returns *before* decrementing `num_trans_inflight` (`rmt_tx.c:576`), so a single late completion makes every later call fail forever — on hardware that showed up as endless `rmt: rmt_tx_wait_all_done(585): flush timeout` after a few minutes, one per LED edge. `rmt_transmit()` already recycles descriptors itself (READY queue, else pop from COMPLETE), so the fix is to queue and move on: nonblocking transmit, a small ring of colour buffers since nothing waits for the transmit to finish, and the failure logged on its edge only. `status_led.c` is now phase-driven off the tick count like lemmy's rather than a chain of blocking delays, and only pushes the pixel when the colour actually changes. `LED_LEVEL` is 24/255; the pixel is fierce at full scale. **Pending on-hardware check.**
+
+---
+
 **2026-08-09 — SOLVED: the GH3 drop is recoverable. A torn-down session poisons the *next* connect; restarting the L2CAP layer on every teardown fixes it, and no reboot is needed.** Third hardware round, and the two reconnects in it isolate the cause exactly:
 
 - **Reconnect without a layer restart** (`t=76574`): both channels open, `data channel adopted (fd 4)`, and the Wii never says a word or drains our writes — tx stalls 4 s later and the link is dropped again. Our stack believes the channels are fine; the peer plainly doesn't see them.
@@ -83,10 +94,9 @@ both `mtu 640`), then starts sending us data. Wii BD_ADDR `00:17:ab:07:2c:21`.
 `wiimote.c` answers the Wii's output reports (`0x17` read→`0x21`, `0x15`→`0x20`
 status, `0x16` write→`0x22` ack, `0x11` LEDs, `0x12` reporting mode, `0x13`/`0x1a`
 IR-enable acks) and streams `0x30` core-button reports (~15 ms) for keep-alive.
-On hardware: clean full handshake, the Wii assigns a player slot (`0x11`), and the
-GPIO13 status LED (no real player LEDs on a Feather) goes **solid = assigned**
-(heartbeat=waiting, fast-blink=connected). IR is acked but not implemented (only
-needed for the pointer, not guitar gameplay).
+On hardware: clean full handshake and the Wii assigns a player slot (`0x11`), which
+the status pixel reports as **N blue blinks** (a Feather has no real player LEDs).
+IR is acked but not implemented (only needed for the pointer, not guitar gameplay).
 
 **Core-Wiimote + test-CLI workstream (before guitar).**
 
@@ -100,8 +110,9 @@ needed for the pointer, not guitar gameplay).
   (`0x12` → builds that report ID; buttons populated, accel/IR/ext zeroed). Disconnect
   fully resets state (`Wiimote_NotifyDisconnected`) and readers exit by L2CAP handle
   (robust to fd reuse). Bond persists in NVS (recalled at boot via
-  `esp_bt_gap_get_bond_device_list`); `unlink` removes it. Status LED on GPIO13:
-  blip/~3 s = idle, fast blink = pairing/connecting, N flashes = assigned player N.
+  `esp_bt_gap_get_bond_device_list`); `unlink` removes it. Status on the onboard
+  NeoPixel (`status_led.c` + `neopixel.c`): red heartbeat, then blue for the Wii link
+  — blip = idle, fast flash = pairing/connecting, N blinks = assigned player N.
 - **Step B DONE — IR pointer.** Pointer `(x,y)` is a state variable in `wiimote.c`
   (`Wiimote_SetPointer`/`ClearPointer`), CLI `point x y` / `point off`. `build_ir_extended`
   synthesizes two sensor-bar dots into mode `0x33`'s 12-byte extended-IR field + a
