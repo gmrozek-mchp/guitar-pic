@@ -4,6 +4,14 @@ Running log of planning, decisions, open questions, and work-in-progress for fau
 
 ---
 
+**2026-08-08 — T1S SPI dropped 15 → 4 MHz. TEMPORARY, test hardware only — do not carry into the real system.** `T1S_SPI_HZ` in `main/mf_t1s.c`. The T1S Click board on the current test rig is unreliable at the higher rate; 4 MHz is a workaround for that board, not a change to the link design. Revert to 15 (or pick a rung deliberately) when running against good hardware.
+
+Worth knowing for whoever reverts: the ESP32 SPI2 divider is an integer off the 80 MHz APB, so only 80/N is reachable and IDF snaps to the *nearest* rung, rounding up if that's closer. **The old 15 MHz request was actually clocking 16 MHz** (80/5 = 16 beats 80/6 = 13.33), which is what Greg measured. 4 MHz is exactly 80/20, so it lands dead-on. Rungs: 40 · 26.67 · 20 · 16 · 13.33 · 11.43 · 10 · 8.89 · 8 · … Two ceilings if raising it: LAN8651 SCLK maxes at **25 MHz** (`docs/t1s-podl-link.md` §67), and the configured pins (SCK 5 / MO 19 / MI 21) are **not** SPI2's IOMUX pins on the ESP32 (14/13/12), so signals route through the GPIO matrix — the added MISO input delay in full-duplex is the practical limit well below 40 MHz. `spi_device_get_actual_freq()` reports what the divider really produced.
+
+Rate is per-node and buys nothing by matching marvin — each node's SPI is a private link to its own LAN8651, and the 10 Mbit/s T1S wire is the shared bottleneck. A 68-byte TC6 chunk goes ~34 µs → ~136 µs, still well inside the 2 ms `T1S_POLL_MS` service cadence.
+
+---
+
 **2026-08-04 — extended heartbeat to v2: report per-node telemetry for marvin's bus-stats UI.** Same contract as the PIC followers (`mf_t1s.c`, ESP-IDF side). `0x88B6` payload 8→20 bytes (`T1S_HB_VERSION` 1→2, `T1S_HB_LEN` 8→20): append LE `tx_count_u32, rx_count_u32, crc_err_u16, sym_err_u16`. `s_tx_count` already counted all sends (HB + mf) and is reported as-is; `s_rx_count` moved up to count **all** received frames (was mf-branch only); new `s_crc_err`/`s_sym_err` in `TC6Regs_CB_OnEvent`. Wire contract: `docs/t1s-podl-link.md` §7.2; marvin parses gated on length → standalone reflash. App logic only. **Pending build + on-hardware check.** Completes Phase 2 — all six follower nodes now emit the v2 heartbeat.
 
 ---
@@ -106,7 +114,7 @@ all inputs to safe defaults when the link goes quiet.
 The transport-neutral message layer now lives in `mf_link.c` (`MfLink_Init`/
 `HandleMessage`/`Service`); a Kconfig `choice` selects the backend that provides
 `MarvinLink_Start()` + the `mf_send_fn`:
-- **T1S (default)** — `mf_t1s.c`: LAN8651 MAC-PHY over SPI (SPI2_HOST, mode 0, 15 MHz)
+- **T1S (default)** — `mf_t1s.c`: LAN8651 MAC-PHY over SPI (SPI2_HOST, mode 0, 4 MHz — temporarily lowered for the test rig, see the 2026-08-08 entry)
   driven by the vendored OPEN Alliance TC6 library. PLCA follower id `CONFIG_FAUXMOTE_T1S_NODE_ID`
   (default 3), MAC `02:00:00:00:00:<id>`; each mf_proto message = one Ethernet frame on
   ethertype **`0x88B7`** to the coordinator, plus a 500 ms `0x88B6` heartbeat (node_type 3).
