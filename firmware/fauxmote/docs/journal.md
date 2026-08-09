@@ -4,6 +4,52 @@ Running log of planning, decisions, open questions, and work-in-progress for fau
 
 ---
 
+**2026-08-09 — SOLVED: the GH3 drop is recoverable. A torn-down session poisons the *next* connect; restarting the L2CAP layer on every teardown fixes it, and no reboot is needed.** Third hardware round, and the two reconnects in it isolate the cause exactly:
+
+- **Reconnect without a layer restart** (`t=76574`): both channels open, `data channel adopted (fd 4)`, and the Wii never says a word or drains our writes — tx stalls 4 s later and the link is dropped again. Our stack believes the channels are fine; the peer plainly doesn't see them.
+- **Reconnect after `btreset`** (`t=112524`): identical sequence, and the Wii re-inits immediately (`0x30` → `0x33` → `0x33` → `0x37`); `tap a` / `tap green` register **in GH3**.
+
+The only difference is `esp_bt_l2cap_deinit()` + re-init, so the stale state is inside the btc/L2CAP layer — recycled `handle=0/1` / `fd=3/4` slots that our writes go into while nothing reaches the air. **`reboot` is not needed**; the earlier "only reboot works" reading was reboot doing this the expensive way.
+
+So a teardown now ends with `l2cap_layer_restart()` (deinit → UNINIT → init → VFS re-register), triggered from the last reader's exit path — after the drain, while nothing is using the layer, and skipped during a pairing window where a deinit would drop armed listeners. That makes a **plain `reconnect` the recovery**, which is what marvin already sends; `btreset` / `MF_CMD_BT_RESET` and `reboot` stay as escalation. **Ladder: `reconnect` ✅ (with auto-restart) · `btreset`+`reconnect` ✅ · `reboot` ✅ but unnecessary.**
+
+The drain fix from earlier in the day is also confirmed: both CLOSE events now arrive within 10 ms of the close, the blocked write returns at once, and `status` reads `tx_stall=0`, `channels open=0 closes_pending=0`.
+
+**Confirmed on hardware:** with the auto-restart in, `reconnect` alone recovers the GH3 drop — no `disconnect`/`btreset`/`reboot` first. marvin's existing `Fauxmote_ReconnectIfNeeded()` / `ensure_wii_connected()` therefore need no escalation logic; `MF_ST_HOST_SILENT` is there if that ever stops holding. Still to do on the marvin side: console verbs for the new opcodes (`fauxmote disconnect|btreset|reboot`) — `Fauxmote_SendCmd()` already carries any opcode over T1S, nothing calls it with these three.
+
+---
+
+**2026-08-09 — the teardown was leaving half the session allocated; `status` crashed the device.** Second hardware round, two concrete finds:
+
+- **`esp_bt_l2cap_get_protocol_status()` is not safe to call from the console.** `status` froze inside it mid-teardown and the device died on `assert failed: xTaskPriorityDisinherit tasks.c:5156` (a mutex given by a task that doesn't hold it). Removed; `status` now prints our own channel bookkeeping (`open` / `closes_pending`) instead, which is what the diagnostic was for anyway.
+- **Only one of the two channels actually closed.** `L2CAP CLOSE handle=0` arrived, `handle=1` never did, and `tx_stall` was still climbing (9090 ms) — the sender was *still* parked in `write()` after we'd "disconnected". Cause: in the IDF, a slot whose rx queue still holds data is **not** freed on close; it arms a 20 s `close_alarm` instead, and until the slot is freed `SLOT_CLOSE_BIT` is never set, so the CLOSE never surfaces and the blocked write never returns. We were setting `stop` on the readers *before* closing, so nobody drained those queues. Fix: `Fauxmote_Disconnect()` no longer stops the readers — it marks them `closing` (drain, discard, don't dispatch) and lets `read()` empty the queue, which is exactly what triggers the deferred free. The tx-stall watchdog likewise keeps its reader looping instead of breaking out.
+- Corroborating the leak: `bta_jv_free_set_pm_profile_cb(jv_handle: 0x0/0x1): p_pm_cb: 2/3: no link to pm_cb?` on **both** channels during teardown — BTA-JV failing to release the PM profile cb, which is the pool the 2026-06-13 entry blamed for "reconnect fails → power-cycle". A half-completed close plausibly explains both that and the silent connect refusal.
+
+Also quieted `btc_l2cap_stop_srv can not find any server!` by only stopping servers when a pairing window is actually armed.
+
+---
+
+**2026-08-09 — on hardware: the streaming fix works (the Wii *does* re-init us in-game), and the real remaining bug is that our own teardown wedges the local stack.** Results of the ladder test, and they reframe the whole GH3-handoff item:
+
+- **`reconnect` now produces a usable session, in-game.** Both times the adopt path ran (`data channel adopted (fd 4), streaming mode 0x30`) the Wii answered within ~100 ms with its init sequence — `0x30` → `0x33` → `0x37` — and after the reboot rung, `tap green` registered in GH3. **So the "Wii silently ignores an in-game reconnect" theory is dead**: it was ignoring us because we weren't reporting. Streaming on adopt is what turns a reconnect into a session.
+- **The tx-stall watchdog fires correctly**: `tx stalled 2010 ms on fd 4 — dropping the link`, both channels closed, and the sender's blocked write returned immediately (`l2cap_vfs_write exit for L2CAP close`) — instead of the old 40 s freeze.
+- **`disconnect` + `reconnect` does not recover; `reboot` + `reconnect` does.** After the stall teardown, two successive `reconnect`s logged `reconnect: connecting to …` and then produced **no HCI activity at all** — no `conn complete`, no OPEN, no error. The request never reached the air, so this is local: some Bluedroid/BTA-JV/GAP resource from the closed session is not being released (the historical suspect is the BTA PM/JV pool — see 2026-06-13). A reboot cleared it and the very next `reconnect` worked with GH3 still running.
+- **The ACL force-down didn't do what it was for.** `L2CA_SetIdleTimeoutByBdAddr(bda, 0, …)` should tear the link down as the last channel goes; the log shows the disconnect issued 10 s later on the default idle timeout. Removed — it bought nothing and it was the one novel internal-API call in the teardown path, so it's out of the suspect list too.
+
+Next pass adds the instrumentation to name the exhausted resource rather than guess it: the ignored return of `esp_bt_l2cap_connect()` is now logged (a local rejection would have been invisible), `CL_INIT`/`UNINIT`/`SRV_STOP` events are logged with status, and `status` prints `esp_bt_l2cap_get_protocol_status()`'s `inited`/`conn_num` so a leaked connection shows up directly. Plus a middle rung — `btreset` / `MF_CMD_BT_RESET 0x0A` = disconnect then `esp_bt_l2cap_deinit()` + re-init (its `l2cap_free_pending_slots()` is exactly the kind of cleanup that might be missing). If `btreset` doesn't restore the ability to initiate, the wedge is above L2CAP (GAP/PM/BTM) and the next rung is a bluedroid+controller cycle — or marvin simply uses `reboot`, which works today. **Ladder result to date: `reconnect` ✅ when the stack is healthy · `disconnect` ❌ · `btreset` untested · `reboot` ✅.**
+
+---
+
+**2026-08-09 — GH3-drop recovery: fauxmote streams on reconnect, drops zombie links fast, and gains a real `disconnect` + `reboot`.** A full failure log (menu reconnect works → GH3 launch → drop → in-game reconnect dead) pinned down three separate things, two of them ours:
+
+1. **We never resumed streaming after a device-initiated reconnect.** `s_data_fd` was set in exactly one place (`Wiimote_HandleRx`) and `s_streaming` only on the Wii's `0x12`. In the log's second reconnect both channels open cleanly (fds 3/4, handles 0/1 reused — no slot leak) and the Wii then says *nothing*: no `reporting mode` line, no output reports. So fauxmote didn't stream either, `Wiimote_IsConnected()` stayed false, marvin's STATUS said disconnected, and both ends waited for the other. Fix: `Wiimote_NotifyConnected(fd)` adopts the interrupt channel from the reconnect's second `L2CAP_OPEN`, keeps `s_report_mode`, forces the next report out, and sends an unsolicited `0x20` status as a nudge (hosts react to status reports by re-reading the extension). The Wii-initiated pairing path is untouched.
+2. **A stalled link froze the sender for 40 s.** `l2cap_vfs_write exit for time out, fd:4!` at t=67 s and t=107 s is Bluedroid's `VFS_WRITE_TIMEOUT` (hardcoded 40 s, `btc_l2cap.c:38`): `write()` blocks while the 10-deep tx queue is full, so `sender_task` parks for 40 s at a stretch — silent exactly when we most need to look alive. `O_NONBLOCK` is not an option (the L2CAP VFS registers only read/write/close, so `fcntl` does nothing), so the stall is detected from the reader task instead — it's never the blocked one — via `Wiimote_TxStallMs() > TX_STALL_MS` (2000, past the Wii's ~1 s supervision timeout and worst-case sniff at `intv(400 800)`), and the link is torn down cleanly. marvin now sees `MF_ST_CONNECTED` drop in ~2 s instead of ~40.
+3. **There was no clean-disconnect path at all.** Nothing ever called `close()` on an L2CAP fd, and `l2cap_vfs_close` is what issues `btc_l2cap_disconnect(handle)` (`btc_l2cap.c:1155`) — so every drop we've had, the Wii saw as a supervision timeout. `Fauxmote_Disconnect()` sets the ACL idle timeout to 0 (`L2CA_SetIdleTimeoutByBdAddr`, internal stack API, same precedent as `bt_role.c`), closes both channels, and drops the servers: a real disconnect, staying bonded and reconnectable.
+
+New mechanisms, no new policy: CLI `disconnect` / `reboot` (`esp_restart`, the known-good workaround made callable) + `MF_CMD_DISCONNECT 0x08` / `MF_CMD_REBOOT 0x09`, and `MF_ST_HOST_SILENT` (bit6, set when connected but no RX for `MF_HOST_SILENT_MS` = 3000) so marvin can tell "up and talking" from "up and being ignored". `status` prints `last rx`/`tx_stall`. All three `mf_proto.h` copies synced. Escalation policy stays marvin's (2026-06-13 decision): the ladder is `RECONNECT` → `DISCONNECT`+`RECONNECT` → `REBOOT`+`RECONNECT`, and which rung GH3 actually needs is the open hardware question. **Builds clean; pending on-hardware ladder test.**
+
+---
+
 **2026-08-09 — `reconnect` is now a no-op when the link is already up.** `Fauxmote_Reconnect()` (`main/bt_hid_device.c`) bails out if `Wiimote_IsConnected()` (HID interrupt channel open) or if `s_reconnecting` is still set from an attempt in flight; the bonded-address guard is unchanged. Reason: a client connect on top of a live session risks dropping it and leaks an L2CAP slot (servers are armed per pairing window, so slots don't come back), and `MF_CMD_RECONNECT` arriving repeatedly from marvin could stack up connects. `s_reconnecting` is cleared in the `L2CAP_OPEN` handler before the interrupt-channel connect, so the in-progress window is short and a genuinely stalled attempt can be retried. Guard sits in the one entry point, so both callers (CLI `reconnect`, marvin-link `MF_CMD_RECONNECT`) get it. **Pending build + on-hardware check.**
 
 ---
@@ -142,16 +188,19 @@ is now the explicit `reconnect` command; keep-awake is better served by occasion
 input/state changes (which Marvin's command stream provides during use).
 
 **OPEN — GH3 game-launch handoff (needs a BT sniffer):** when a game disc boots, the
-Wii goes HID-silent toward fauxmote for many seconds, then drops the link (`rsn 0x08`).
-A manual `reconnect` re-establishes the link, but the session isn't reliably usable in-game.
-A real Wiimote rides the handoff with a quick ~2 s LED off/on. fauxmote's own logs
-don't show *why* the Wii goes silent on us vs a real Wiimote — there's no command we
-visibly mishandle (zero RX reports during the gap). Diagnosing needs a Bluetooth
-sniffer to diff a real Wiimote vs fauxmote through the GH3 launch. **Workaround for
-now: restart fauxmote after the game has started** (a fresh boot reconnects cleanly).
-The recurring `mode 3 … BASIC mode` reconnect warning is likely a red herring (real
-Wiimotes use Basic-mode L2CAP for HID). Revisit after the guitar extension — GH3 may
-engage the controller differently once it sees a guitar.
+Wii stops draining our channel, and the link dies (either a supervision timeout, or our
+own tx-stall watchdog dropping it after 2 s). A real Wiimote rides the handoff with a
+quick ~2 s LED off/on; why the Wii singles us out is still unanswered, and diffing a real
+Wiimote against fauxmote through the launch still needs a Bluetooth sniffer. The
+recurring `mode 3 … BASIC mode` warning is likely a red herring (real Wiimotes use
+Basic-mode L2CAP for HID).
+
+**Recovery from the drop is solved** (2026-08-09): `reconnect` gives a working in-game
+session — the Wii re-runs its init the moment we start reporting — provided the L2CAP
+layer is restarted as part of the teardown, which fauxmote now does itself. Two of the
+three original culprits were ours (we never resumed streaming; our teardown left the
+layer poisoned). What remains open is only the handoff itself: why the Wii stops draining
+our channel when a disc boots, when a real Wiimote rides it out.
 
 **Other notes:**
 - **Keep-awake:** the Wii idle-disconnects on lack of *input*; streaming reports +

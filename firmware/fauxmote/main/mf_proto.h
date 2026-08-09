@@ -89,6 +89,11 @@ enum {
     MF_CMD_EXT_ATTACH = 0x05,
     MF_CMD_EXT_DETACH = 0x06,
     MF_CMD_STATUS_REQ = 0x07,
+    /* Teardown/escalation beyond RECONNECT, which is the normal recovery: fauxmote
+     * restarts its L2CAP layer on every teardown by itself (see MF_ST_HOST_SILENT). */
+    MF_CMD_DISCONNECT = 0x08,   /* close both HID channels (stays bonded) */
+    MF_CMD_REBOOT     = 0x09,   /* restart fauxmote; last resort, bond survives */
+    MF_CMD_BT_RESET   = 0x0A,   /* disconnect + explicit L2CAP deinit/re-init */
 };
 
 /* --- STATUS (4B): [0] flags, [1] player_slot, [2] report_mode, [3] last_result */
@@ -98,6 +103,11 @@ enum {
 #define MF_ST_EXT_ATTACHED (1u << 3)
 #define MF_ST_PAIRING      (1u << 4)
 #define MF_ST_BONDED       (1u << 5)
+/* Both HID channels are open but the Wii has said nothing for MF_HOST_SILENT_MS — the
+ * session is up and being ignored. Escalate: MF_CMD_BT_RESET + MF_CMD_RECONNECT, then
+ * MF_CMD_REBOOT + MF_CMD_RECONNECT. A plain MF_CMD_RECONNECT should suffice. */
+#define MF_ST_HOST_SILENT  (1u << 6)
+#define MF_HOST_SILENT_MS  3000u
 
 /* CRC-8/CCITT, poly 0x07, init 0x00, no reflection. Over TYPE, LEN, payload. */
 static inline uint8_t mf_crc8(const uint8_t *data, size_t len)

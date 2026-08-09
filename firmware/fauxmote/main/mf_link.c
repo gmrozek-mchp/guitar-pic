@@ -80,6 +80,9 @@ static void handle_link_cmd(uint8_t op)
     case MF_CMD_PAIR:       Fauxmote_EnterPairing();     break;
     case MF_CMD_STOP:       Fauxmote_StopPairing();      break;
     case MF_CMD_RECONNECT:  Fauxmote_Reconnect();        break;
+    case MF_CMD_DISCONNECT: Fauxmote_Disconnect();       break;
+    case MF_CMD_BT_RESET:   Fauxmote_BtReset();          break;
+    case MF_CMD_REBOOT:     Fauxmote_Reboot();           break;
     case MF_CMD_UNLINK:     Fauxmote_Unlink();           break;
     case MF_CMD_EXT_ATTACH: Wiimote_SetExtension(true);  break;
     case MF_CMD_EXT_DETACH: Wiimote_SetExtension(false); break;
@@ -92,7 +95,11 @@ static void build_status(uint8_t out[MF_LEN_STATUS])
 {
     uint8_t flags = 0;
     if (Fauxmote_IsDiscoverable()) flags |= MF_ST_DISCOVERABLE | MF_ST_PAIRING;
-    if (Wiimote_IsConnected())     flags |= MF_ST_CONNECTED;
+    if (Wiimote_IsConnected())
+    {
+        flags |= MF_ST_CONNECTED;
+        if (Wiimote_MsSinceRx() > MF_HOST_SILENT_MS) { flags |= MF_ST_HOST_SILENT; }
+    }
     if (Wiimote_IsAssigned())      flags |= MF_ST_ASSIGNED;
     if (Wiimote_ExtAttached())     flags |= MF_ST_EXT_ATTACHED;
     if (Fauxmote_WiiAddr())        flags |= MF_ST_BONDED;

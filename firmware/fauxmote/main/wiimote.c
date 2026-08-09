@@ -53,6 +53,14 @@ static uint8_t s_accel[3] = { ACCEL_ZERO_G_RAW, ACCEL_ZERO_G_RAW, ACCEL_ONE_G_RA
                                      /* raw accel bytes (X,Y,Z); default = held level */
 static uint8_t s_eeprom[EEPROM_SIZE];
 
+/* Link liveness. s_rx_at is the last frame from the Wii, or the moment the data channel
+ * was adopted when it was taken without one (see Wiimote_NotifyConnected), so silence is
+ * always measured from something. s_tx_at is when the in-flight write() started: the
+ * L2CAP VFS blocks for up to 40 s when the tx queue backs up, so a caller outside the
+ * sender needs a way to notice and drop the link. */
+static volatile TickType_t s_rx_at;
+static volatile TickType_t s_tx_at;   /* 0 = no write in flight */
+
 static const wiimote_extension_t *s_ext;   /* registered extension, or NULL */
 static bool    s_ext_connected;            /* report the extension as attached */
 
@@ -101,7 +109,10 @@ static void wm_send(int fd, uint8_t report_id, const uint8_t *payload, int payle
     if (paylen > 0) {
         memcpy(frame + 2, payload, paylen);
     }
+    TickType_t started = xTaskGetTickCount();
+    s_tx_at = (started == 0) ? 1 : started;   /* 0 is reserved for "idle" */
     write(fd, frame, 2 + paylen);
+    s_tx_at = 0;
 }
 
 static void send_status(int fd)
@@ -211,6 +222,7 @@ void Wiimote_HandleRx(int fd, const uint8_t *data, int len)
         return;   /* not a HID output report (e.g. control-channel HIDP transaction) */
     }
     s_data_fd = fd;                 /* this fd is the data channel — reply / stream here */
+    s_rx_at = xTaskGetTickCount();
     uint8_t report = data[1];
     const uint8_t *p = data + 2;
     int plen = len - 2;
@@ -440,9 +452,37 @@ void Wiimote_NotifyDisconnected(void)
     }
 }
 
+void Wiimote_NotifyConnected(int fd)
+{
+    s_data_fd = fd;
+    s_streaming = true;      /* stream without waiting for a 0x12 — keeps s_report_mode */
+    s_last_tx_len = -1;      /* force the first report out even if the state is unchanged */
+    s_rx_at = xTaskGetTickCount();
+    ESP_LOGI(TAG, "data channel adopted (fd %d), streaming mode 0x%02x", fd, s_report_mode);
+    send_status(fd);         /* unsolicited 0x20: tells the host we're here + ext state */
+}
+
 bool Wiimote_IsConnected(void)  { return s_data_fd >= 0; }
 bool Wiimote_IsAssigned(void)   { return s_leds != 0; }
 uint8_t Wiimote_ReportMode(void) { return s_report_mode; }
+int Wiimote_DataFd(void)        { return s_data_fd; }
+
+uint32_t Wiimote_MsSinceRx(void)
+{
+    if (s_data_fd < 0) {
+        return UINT32_MAX;
+    }
+    return (uint32_t)pdTICKS_TO_MS((TickType_t)(xTaskGetTickCount() - s_rx_at));
+}
+
+uint32_t Wiimote_TxStallMs(void)
+{
+    TickType_t started = s_tx_at;
+    if (started == 0) {
+        return 0;
+    }
+    return (uint32_t)pdTICKS_TO_MS((TickType_t)(xTaskGetTickCount() - started));
+}
 
 int Wiimote_PlayerSlot(void)
 {

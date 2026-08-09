@@ -51,6 +51,28 @@ static int cmd_reconnect(int argc, char **argv)
     return 0;
 }
 
+static int cmd_disconnect(int argc, char **argv)
+{
+    (void)argc; (void)argv;
+    Fauxmote_Disconnect();
+    return 0;
+}
+
+static int cmd_btreset(int argc, char **argv)
+{
+    (void)argc; (void)argv;
+    Fauxmote_BtReset();
+    return 0;
+}
+
+static int cmd_reboot(int argc, char **argv)
+{
+    (void)argc; (void)argv;
+    printf("restarting…\n");
+    Fauxmote_Reboot();
+    return 0;
+}
+
 static int cmd_status(int argc, char **argv)
 {
     (void)argc; (void)argv;
@@ -59,6 +81,18 @@ static int cmd_status(int argc, char **argv)
     printf("discoverable=%d connected=%d assigned=%d report_mode=0x%02x\n",
            Fauxmote_IsDiscoverable(), Wiimote_IsConnected(), Wiimote_IsAssigned(),
            Wiimote_ReportMode());
+    uint32_t since_rx = Wiimote_MsSinceRx();
+    if (since_rx == UINT32_MAX) {
+        printf("last rx    (none)  tx_stall=%lu ms\n", (unsigned long)Wiimote_TxStallMs());
+    } else {
+        printf("last rx    %lu ms ago  tx_stall=%lu ms\n",
+               (unsigned long)since_rx, (unsigned long)Wiimote_TxStallMs());
+    }
+    /* Channels the stack has opened and not yet closed — a nonzero count with no session
+     * is a channel whose close never completed. (Counted here rather than read from
+     * esp_bt_l2cap_get_protocol_status(), which deadlocks the caller mid-teardown.) */
+    printf("channels   open=%d closes_pending=%d\n",
+           Fauxmote_ChannelsOpen(), Fauxmote_ChannelsClosing());
     return 0;
 }
 
@@ -228,6 +262,9 @@ void Cli_Start(void)
     register_cmd("pair", "enter pairing/sync mode (then press the Wii SYNC button)", cmd_pair);
     register_cmd("stop", "leave pairing mode (idle)", cmd_stop);
     register_cmd("reconnect", "device-initiated reconnect to the last bonded Wii", cmd_reconnect);
+    register_cmd("disconnect", "close both HID channels + drop the ACL (stays bonded)", cmd_disconnect);
+    register_cmd("btreset", "close the link + deinit/re-init the L2CAP layer", cmd_btreset);
+    register_cmd("reboot", "restart fauxmote (heaviest reset; bond survives)", cmd_reboot);
     register_cmd("unlink", "erase the bond (link key) from NVS", cmd_unlink);
     register_cmd("status", "show BT / connection state", cmd_status);
     register_cmd("role", "role [slave|master] — show/switch the ACL role to the Wii (real Wiimotes are slave)", cmd_role);

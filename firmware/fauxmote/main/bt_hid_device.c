@@ -9,6 +9,7 @@
 #include "esp_bt_device.h"
 #include "esp_gap_bt_api.h"
 #include "esp_l2cap_bt_api.h"
+#include "esp_system.h"
 
 #include "bt_hid_device.h"
 #include "wiimote_sdp.h"
@@ -21,15 +22,63 @@ static const char *TAG = "fauxmote.bt";
 #define PSM_HID_CONTROL  0x0011
 #define PSM_HID_INTERRUPT 0x0013
 
+/* A device-initiated reconnect opens the control channel, then the interrupt channel from
+ * that channel's OPEN event, then adopts the interrupt fd as the data channel. */
+typedef enum {
+    RC_IDLE = 0,
+    RC_WANT_CONTROL,     /* control connect issued */
+    RC_WANT_INTERRUPT,   /* control open; interrupt connect issued */
+} reconnect_stage_t;
+
+/* An attempt that never completes must not block later ones forever. */
+#define RECONNECT_TIMEOUT_MS  8000u
+
+/* How long a blocked write() means the link is dead rather than merely slow. The Wii's
+ * supervision timeout is ~1 s and sniff at intv(400 800) adds up to ~500 ms, so anything
+ * past this is a zombie channel — and the L2CAP VFS would otherwise block for 40 s. */
+#define TX_STALL_MS  2000u
+
 static uint8_t s_wii_bda[6];     /* last bonded Wii address (from auth) */
 static bool    s_have_wii;
 static bool    s_discoverable;
-static bool    s_reconnecting;   /* a device-initiated (manual) reconnect is in progress */
+static reconnect_stage_t s_reconnect;
+static TickType_t s_reconnect_at;
+static volatile bool s_disconnecting;   /* Fauxmote_Disconnect in progress (re-entry guard) */
+static bool    s_l2cap_restart;   /* re-init L2CAP when the pending deinit completes */
 
 static void log_bda(const char *what, const uint8_t *bda)
 {
     ESP_LOGI(TAG, "%s %02x:%02x:%02x:%02x:%02x:%02x", what,
              bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+}
+
+/* Deinit + re-init the L2CAP layer. A torn-down session leaves state behind that a later
+ * connect inherits: on hardware the channels reopen and look healthy while the Wii sees
+ * nothing on them and never answers. Re-initing clears the slot pool and the next
+ * reconnect works — so every link teardown ends with this (see docs/journal.md). */
+static void l2cap_layer_restart(void)
+{
+    s_l2cap_restart = true;          /* UNINIT_EVT re-inits, which re-registers the VFS */
+    esp_err_t err = esp_bt_l2cap_deinit();
+    if (err != ESP_OK) {
+        s_l2cap_restart = false;
+        ESP_LOGE(TAG, "l2cap deinit failed: %s", esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "l2cap layer restarting after teardown");
+    }
+}
+
+/* A stage left hanging (the peer never opened the channel) expires so `reconnect` works
+ * again without a restart. */
+static reconnect_stage_t reconnect_stage(void)
+{
+    if (s_reconnect != RC_IDLE &&
+        (TickType_t)(xTaskGetTickCount() - s_reconnect_at) > pdMS_TO_TICKS(RECONNECT_TIMEOUT_MS))
+    {
+        ESP_LOGW(TAG, "reconnect: attempt timed out at stage %d", (int)s_reconnect);
+        s_reconnect = RC_IDLE;
+    }
+    return s_reconnect;
 }
 
 /* Advertise as a Wiimote: Class of Device 0x002504 (peripheral/joystick, with the
@@ -80,6 +129,7 @@ static void gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param)
 typedef struct {
     bool          in_use;
     volatile bool stop;     /* set by the CLOSE handler to make this reader exit */
+    volatile bool closing;  /* closed locally: keep draining rx, but stop dispatching it */
     int           fd;
     uint32_t      handle;   /* L2CAP connection handle, matched against CLOSE events */
     StaticTask_t  tcb;
@@ -99,16 +149,34 @@ static void hid_reader_task(void *arg)
         int n = read(l->fd, l->rx, sizeof(l->rx));
         if (l->stop) break;
         if (n > 0) {
+            if (l->closing) {
+                continue;               /* draining a closed channel: discard, don't act */
+            }
             ESP_LOGD(TAG, "fd %d RX report 0x%02x (%d B)", l->fd,
                      n > 1 ? l->rx[1] : 0, n);
             Wiimote_HandleRx(l->fd, l->rx, n);
         } else if (n < 0) {
             break;                          /* genuine close of our fd */
         } else {
+            /* The sender can be parked inside write() for 40 s when the Wii stops
+             * draining the channel (the VFS write timeout), so the stall is detected
+             * from here — this task is never the blocked one — and the link is dropped
+             * cleanly instead of going quiet for the whole timeout. */
+            if (l->fd == Wiimote_DataFd() && Wiimote_TxStallMs() > TX_STALL_MS) {
+                ESP_LOGW(TAG, "tx stalled %u ms on fd %d — dropping the link",
+                         (unsigned)Wiimote_TxStallMs(), l->fd);
+                Fauxmote_Disconnect();   /* keep looping: this task drains its own queue */
+            }
             vTaskDelay(pdMS_TO_TICKS(10));  /* non-blocking VFS: 0 = no data yet */
         }
     }
     l->in_use = false;
+    /* Last channel of a session gone — restart the layer now, while nothing is using it,
+     * so whoever reconnects next (marvin or the CLI) needs no extra step. Skipped during a
+     * pairing window, where a deinit would drop the armed listeners. */
+    if (!s_discoverable && !s_l2cap_restart && Fauxmote_ChannelsOpen() == 0) {
+        l2cap_layer_restart();
+    }
     vTaskDelete(NULL);
 }
 
@@ -118,6 +186,7 @@ static void hid_link_start(int fd, uint32_t handle)
         if (!s_links[i].in_use) {
             s_links[i].in_use = true;
             s_links[i].stop = false;
+            s_links[i].closing = false;
             s_links[i].fd = fd;
             s_links[i].handle = handle;
             xTaskCreateStatic(hid_reader_task, "hid_rx", HID_RX_STACK,
@@ -159,9 +228,29 @@ static void l2cap_cb(esp_bt_l2cap_cb_event_t event, esp_bt_l2cap_cb_param_t *par
     case ESP_BT_L2CAP_VFS_REGISTER_EVT:
         ESP_LOGI(TAG, "L2CAP VFS registered status=%d", param->vfs_register.status);
         break;
+    case ESP_BT_L2CAP_UNINIT_EVT:
+        ESP_LOGI(TAG, "L2CAP deinit status=%d", param->uninit.status);
+        if (s_l2cap_restart) {
+            s_l2cap_restart = false;
+            esp_err_t err = esp_bt_l2cap_init();   /* INIT_EVT re-registers the VFS */
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "l2cap re-init failed: %s", esp_err_to_name(err));
+            }
+        }
+        break;
     case ESP_BT_L2CAP_START_EVT:
         ESP_LOGI(TAG, "L2CAP server up status=%d handle=%u",
                  param->start.status, (unsigned)param->start.handle);
+        break;
+    case ESP_BT_L2CAP_CL_INIT_EVT:
+        /* A client connect that never reaches the air fails here — this status is the
+         * difference between "the stack refused us" and "the Wii didn't answer". */
+        ESP_LOGI(TAG, "L2CAP client init status=%d handle=%u",
+                 param->cl_init.status, (unsigned)param->cl_init.handle);
+        break;
+    case ESP_BT_L2CAP_SRV_STOP_EVT:
+        ESP_LOGI(TAG, "L2CAP server stopped status=%d psm=0x%02x",
+                 param->srv_stop.status, param->srv_stop.psm);
         break;
     case ESP_BT_L2CAP_OPEN_EVT:
         log_bda("L2CAP OPEN from", param->open.rem_bda);
@@ -181,10 +270,22 @@ static void l2cap_cb(esp_bt_l2cap_cb_event_t event, esp_bt_l2cap_cb_param_t *par
          * matching a real Wiimote which doesn't advertise once connected. */
         esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
         s_discoverable = false;
-        if (s_reconnecting) {
+        if (reconnect_stage() == RC_WANT_CONTROL) {
             /* control channel re-opened — now open the interrupt channel. */
-            s_reconnecting = false;
-            esp_bt_l2cap_connect(ESP_BT_L2CAP_SEC_NONE, PSM_HID_INTERRUPT, s_wii_bda);
+            s_reconnect = RC_WANT_INTERRUPT;
+            s_reconnect_at = xTaskGetTickCount();
+            esp_err_t err = esp_bt_l2cap_connect(ESP_BT_L2CAP_SEC_NONE, PSM_HID_INTERRUPT,
+                                                 s_wii_bda);
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "reconnect: interrupt connect rejected: %s", esp_err_to_name(err));
+                s_reconnect = RC_IDLE;
+            }
+        } else if (reconnect_stage() == RC_WANT_INTERRUPT) {
+            /* Both channels are up. On a reconnect the Wii may never re-run its init
+             * sequence (it does at the menu, not once a game owns the slot), so adopt
+             * this channel and start reporting rather than waiting to be spoken to. */
+            s_reconnect = RC_IDLE;
+            Wiimote_NotifyConnected(param->open.fd);
         }
         break;
     case ESP_BT_L2CAP_CLOSE_EVT:
@@ -282,13 +383,65 @@ void Fauxmote_Reconnect(void)
         ESP_LOGW(TAG, "reconnect: already connected");
         return;
     }
-    if (s_reconnecting) {
+    if (reconnect_stage() != RC_IDLE) {
         ESP_LOGW(TAG, "reconnect: already in progress");
         return;
     }
     log_bda("reconnect: connecting to", s_wii_bda);
-    s_reconnecting = true;
-    esp_bt_l2cap_connect(ESP_BT_L2CAP_SEC_NONE, PSM_HID_CONTROL, s_wii_bda);
+    s_reconnect = RC_WANT_CONTROL;
+    s_reconnect_at = xTaskGetTickCount();
+    esp_err_t err = esp_bt_l2cap_connect(ESP_BT_L2CAP_SEC_NONE, PSM_HID_CONTROL, s_wii_bda);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "reconnect: control connect rejected: %s", esp_err_to_name(err));
+        s_reconnect = RC_IDLE;
+    }
+}
+
+void Fauxmote_Disconnect(void)
+{
+    if (s_disconnecting) {
+        return;                     /* both readers can spot the same stall */
+    }
+    s_disconnecting = true;
+
+    Wiimote_NotifyDisconnected();   /* stop the sender writing into a dying channel */
+
+    /* Close, but deliberately leave the readers running: a slot whose rx queue still
+     * holds data doesn't get freed on close, it arms a 20 s timer instead — and until it
+     * is freed the channel's CLOSE never arrives and a blocked write() never returns.
+     * Draining is what releases it, so the readers keep reading until read() fails. */
+    int closed = 0;
+    for (int i = 0; i < HID_LINK_MAX; i++) {
+        if (s_links[i].in_use) {
+            s_links[i].closing = true;
+            close(s_links[i].fd);    /* the VFS close is what disconnects the channel */
+            closed++;
+        }
+    }
+    if (s_discoverable) {
+        esp_bt_l2cap_stop_all_srv();   /* armed-but-unconsumed HID listeners */
+    }
+    esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
+    s_discoverable = false;
+    s_reconnect = RC_IDLE;
+    s_disconnecting = false;
+    ESP_LOGI(TAG, "disconnect: closed %d HID channel(s); idle, bonded, reconnectable", closed);
+}
+
+void Fauxmote_BtReset(void)
+{
+    Fauxmote_Disconnect();
+    /* With channels still closing, the last reader's exit path does the restart. */
+    if (!s_l2cap_restart && Fauxmote_ChannelsOpen() == 0) {
+        l2cap_layer_restart();
+    }
+}
+
+void Fauxmote_Reboot(void)
+{
+    ESP_LOGW(TAG, "reboot: restarting (the bond survives in NVS)");
+    vTaskDelay(pdMS_TO_TICKS(200));   /* let the console and a queued STATUS drain */
+    esp_restart();
 }
 
 void Fauxmote_Unlink(void)
@@ -304,5 +457,23 @@ void Fauxmote_Unlink(void)
 }
 
 bool Fauxmote_IsDiscoverable(void) { return s_discoverable; }
+
+int Fauxmote_ChannelsOpen(void)
+{
+    int n = 0;
+    for (int i = 0; i < HID_LINK_MAX; i++) {
+        if (s_links[i].in_use) { n++; }
+    }
+    return n;
+}
+
+int Fauxmote_ChannelsClosing(void)
+{
+    int n = 0;
+    for (int i = 0; i < HID_LINK_MAX; i++) {
+        if (s_links[i].in_use && s_links[i].closing) { n++; }
+    }
+    return n;
+}
 
 const uint8_t *Fauxmote_WiiAddr(void) { return s_have_wii ? s_wii_bda : NULL; }

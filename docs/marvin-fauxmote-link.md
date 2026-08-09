@@ -100,7 +100,7 @@ Framing overhead is 4 bytes; a 3-byte `GUITAR` payload is 7 bytes on the wire.
 |---|---|---|---|---|---|
 | `0x01` | `GUITAR` | m→f | 3 | v1 | Hot gameplay input (frets/strum/whammy/aux). |
 | `0x02` | `WIIMOTE` | m→f | 4 | v1 | Menu-nav input (core buttons, D-pad, analog stick). |
-| `0x03` | `LINK_CMD` | m→f | 1 | v1 | Bluetooth link management (pair/stop/reconnect/unlink/ext). |
+| `0x03` | `LINK_CMD` | m→f | 1 | v1 | Bluetooth link management (pair/stop/reconnect/disconnect/btreset/reboot/unlink/ext). |
 | `0x04` | `ACCEL` | m→f | 3 | v1 | Wiimote accelerometer state (X/Y/Z acceleration in g). |
 | `0x05` | `POINTER` | m→f | 3 | v1 | IR pointer position (bare-Wiimote menu nav). |
 | `0x81` | `STATUS` | f→m | 4 | v1 | Link/connection/extension state + last-command result. |
@@ -214,7 +214,21 @@ the result is reflected in the next `STATUS`.
 
 | Byte | Field | Values |
 |---|---|---|
-| 0 | opcode | `0x01` PAIR (enter sync/pairing) · `0x02` STOP (leave pairing) · `0x03` RECONNECT · `0x04` UNLINK (erase bond) · `0x05` EXT_ATTACH · `0x06` EXT_DETACH · `0x07` STATUS_REQ (send a `STATUS` now) |
+| 0 | opcode | `0x01` PAIR (enter sync/pairing) · `0x02` STOP (leave pairing) · `0x03` RECONNECT · `0x04` UNLINK (erase bond) · `0x05` EXT_ATTACH · `0x06` EXT_DETACH · `0x07` STATUS_REQ (send a `STATUS` now) · `0x08` DISCONNECT · `0x09` REBOOT · `0x0A` BT_RESET |
+
+`RECONNECT` is a no-op when the link is already up or an attempt is in flight.
+`DISCONNECT` closes both HID channels, staying bonded and reconnectable. `BT_RESET` does
+that plus an explicit L2CAP deinit/re-init. `REBOOT` restarts fauxmote (the bond lives in
+NVS and survives) — last resort; it costs a heartbeat gap of about a second, and the T1S
+link re-establishes on its own.
+
+**`RECONNECT` alone is the normal recovery from the GH3 game-launch drop.** fauxmote
+restarts its L2CAP layer as part of every link teardown, because a torn-down session
+leaves state that the *next* connect inherits — on hardware the channels reopen and look
+healthy while the Wii sees nothing on them and never answers. With the layer restarted,
+a reconnect gets a full re-init from the Wii (`0x30` → `0x33` → `0x37`) and a usable
+in-game session. `BT_RESET` and `REBOOT` remain as escalation if that ever stops holding;
+watch `STATUS` bit6 (host-silent) to decide.
 
 ### 5.4 `STATUS` (f→m, 4 bytes) — the uplink
 
@@ -223,10 +237,14 @@ is alive and gate/annotate commands.
 
 | Byte | Field | Encoding |
 |---|---|---|
-| 0 | flags | `bit0` discoverable, `bit1` connected (HID data channel), `bit2` assigned (Wii gave a player slot), `bit3` ext-attached, `bit4` pairing-active, `bit5` bonded (bond in NVS), `bit6`–`7` reserved. fauxmote sets `bit0` and `bit4` **together** — discoverable and pairing-active are the same state in the current code |
+| 0 | flags | `bit0` discoverable, `bit1` connected (HID data channel), `bit2` assigned (Wii gave a player slot), `bit3` ext-attached, `bit4` pairing-active, `bit5` bonded (bond in NVS), `bit6` host-silent, `bit7` reserved. fauxmote sets `bit0` and `bit4` **together** — discoverable and pairing-active are the same state in the current code |
 | 1 | player_slot | `0` = none, else `1..4` |
 | 2 | report_mode | the Wii's last-requested report ID (e.g. `0x37`); defaults to `0x30` (core buttons) before the Wii sets a mode, never `0` |
 | 3 | last_result | result of the most recent `LINK_CMD`: `0` = ok/idle, nonzero = error code |
+
+`bit6` (host-silent) means both HID channels are open but the Wii has sent nothing for
+3 s — the session exists and is being ignored. `bit1` alone is therefore not proof the
+Wii is listening; `bit1 && !bit6` is.
 
 ## 6. Semantics & timing
 

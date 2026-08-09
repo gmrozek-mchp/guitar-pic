@@ -9,10 +9,23 @@ void Wiimote_Start(void);                              /* init EEPROM + start th
 void Wiimote_HandleRx(int fd, const uint8_t *data, int len);  /* feed one HIDP frame from the Wii */
 void Wiimote_NotifyDisconnected(void);                 /* link dropped: stop streaming + reset state */
 
+/* Adopt fd as the HID data channel and start streaming at once, without waiting for the
+ * Wii to send anything. Used on a device-initiated reconnect, where the Wii may never
+ * re-run its init sequence — a real Wiimote reports as soon as its link is up. */
+void Wiimote_NotifyConnected(int fd);
+
 bool Wiimote_IsConnected(void);                        /* HID data channel open */
 bool Wiimote_IsAssigned(void);                         /* Wii assigned a player slot (0x11 received) */
 int  Wiimote_PlayerSlot(void);                         /* assigned player 1..4, or 0 if none */
 uint8_t Wiimote_ReportMode(void);                      /* report ID the Wii last requested (0x12) */
+
+/* Link liveness. MsSinceRx counts from the last frame from the Wii, or from link-up on a
+ * channel adopted without one, and is UINT32_MAX while disconnected — so a large value
+ * with the channel open means the Wii is ignoring us. TxStallMs is how long the current
+ * write() has been blocked (0 = no write in flight). */
+uint32_t Wiimote_MsSinceRx(void);
+uint32_t Wiimote_TxStallMs(void);
+int      Wiimote_DataFd(void);                         /* data-channel fd, or -1 */
 
 /* Set a core button by name (a, b, one, two, plus, minus, home, up, down, left,
  * right). Returns false if the name is unknown. */

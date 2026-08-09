@@ -57,7 +57,7 @@ References: wiibrew [`Wiimote`](https://wiibrew.org/wiki/Wiimote) and
   [`docs/marvin-fauxmote-link.md`](../../docs/marvin-fauxmote-link.md). marvin sends a
   tiny fixed `GUITAR` hot message (fret/strum mask + whammy + aux), a `WIIMOTE` nav
   message (core buttons/D-pad/stick), and `LINK_CMD` (Bluetooth link management:
-  pair/stop/reconnect/unlink/ext); fauxmote returns `STATUS`. Absolute/latest-wins;
+  pair/stop/reconnect/disconnect/reboot/unlink/ext); fauxmote returns `STATUS`. Absolute/latest-wins;
   a link timeout releases all inputs. The link is a second front-end over the same
   module APIs the CLI uses. Early bring-up still uses the local CLI (§ below).
 - **Debug:** USB-C CDC serial for flashing + logs (`idf.py monitor`).
