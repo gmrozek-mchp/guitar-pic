@@ -22,9 +22,12 @@ matcher. Cells are matched by integer coverage L1 against a bank of ten template
 (`covcore`, shared with `score.py`), because the font is not segment-decodable:
 `1` is a centred bar and `4`/`7` carry diagonals.
 
-The grid table covers 1-5 digits. A 6-digit score re-lays-out the strip and that
-geometry is unmeasured, so `read_amp2p_score` reports `layout_unknown` rather than
-returning a number the grid cannot justify.
+The grid table covers 1-5 digits, all measured. **6 digits cannot use it**: the
+container is 49 px wide and six cells at pitch 9 need 52, so the strip re-lays-out.
+Such a frame announces itself physically — ink appears left of the 5-cell grid,
+which never happens otherwise — and is then read on the widest layout that fits
+(`AMP2P_GRID_6`), flagged `layout_measured=False` so the extrapolated pitch is
+confirmed by the first real 6-digit capture rather than trusted silently.
 """
 
 from __future__ import annotations
@@ -41,8 +44,10 @@ from .metadata import (
     AMP2P_BAND_Y0,
     AMP2P_BLANK_CONTRAST,
     AMP2P_BLOCK,
+    AMP2P_CONTAINER_W,
     AMP2P_GLYPH_COLS,
     AMP2P_GLYPH_ROWS,
+    AMP2P_GRID_6,
     AMP2P_GRID,
     AMP2P_INK_DEN,
     AMP2P_INK_NUM,
@@ -183,6 +188,23 @@ def build_reference(side: str, images: list[np.ndarray] | None = None) -> AmpRef
     return AmpReference(side=side, ref=ref, mask=mask)
 
 
+def calibrate_on_corpus(
+    side: str, samples: list[Sample], search: int = 4, limit: int = 4
+) -> AmpCalibration:
+    """Register `side` against the labelled corpus frames *of that side*.
+
+    The corpus holds both sides, and a block crop only carries the chrome of the
+    side it was cut from, so registering against the wrong side's frames yields a
+    junk offset that silently slides the digit grid off the digits. Falls back to
+    the nominal offset when the corpus has no frames for this side.
+    """
+    imgs = [s.image for s in samples
+            if (p := amp2p_score_from_filename(s.path.name)) is not None and p[0] == side]
+    if not imgs:
+        return AmpCalibration(side=side)
+    return calibrate(side, imgs[:limit], build_reference(side), search=search)
+
+
 def calibrate(
     side: str,
     images: list[np.ndarray],
@@ -235,23 +257,37 @@ class Amp2pScoreRead:
     n_cells: int              # powered cells found (0 = display blank/off)
     dist: float               # worst (max) per-cell best-distance
     margin: float             # weakest (min) per-cell runner-up gap
-    layout_unknown: bool      # grid table cannot describe what is on screen
+    layout_unknown: bool      # no layout, measured or candidate, describes the strip
     reason: str = ""          # why `value` is None (empty when it is set)
+    layout: tuple[int, int] | None = None  # (cell_w, pitch) the cells were read on
+    layout_measured: bool = True           # False = an extrapolated AMP2P_GRID_6 fit
 
 
-def cell_bounds(side: str, n: int) -> list[tuple[int, int]]:
-    """Block-local x spans [x0, x1) of `n` right-aligned digit cells, left->right."""
-    if n not in AMP2P_GRID:
-        raise KeyError(f"no amp2p grid for {n} digits")
-    w, pitch = AMP2P_GRID[n]
+def cell_bounds(side: str, n: int, layout: tuple[int, int] | None = None) -> list[tuple[int, int]]:
+    """Block-local x spans [x0, x1) of `n` right-aligned digit cells, left->right.
+
+    `layout` overrides the tabulated (cell_w, pitch) — used for the extrapolated
+    6-digit candidates, which have no AMP2P_GRID row by design.
+    """
+    if layout is None:
+        if n not in AMP2P_GRID:
+            raise KeyError(f"no amp2p grid for {n} digits")
+        layout = AMP2P_GRID[n]
+    w, pitch = layout
     right = AMP2P_RIGHT_EDGE[side]
     # The rightmost cell ends at `right`; each earlier cell steps back one pitch.
     return [(right - w - (n - 1 - i) * pitch, right - (n - 1 - i) * pitch) for i in range(n)]
 
 
 def grid_span(side: str) -> tuple[int, int]:
-    """Block-local x span [x0, x1) the digit strip can occupy at its widest."""
+    """Block-local x span [x0, x1) the measured grid occupies at its widest."""
     return cell_bounds(side, AMP2P_MAX_CELLS)[0][0], AMP2P_RIGHT_EDGE[side]
+
+
+def container_span(side: str) -> tuple[int, int]:
+    """Block-local x span [x0, x1) of the strip's dark panel — the layout's hard limit."""
+    right = AMP2P_RIGHT_EDGE[side]
+    return right - AMP2P_CONTAINER_W, right
 
 
 def _band_luma(image: np.ndarray, side: str, dx: int = 0, dy: int = 0) -> np.ndarray:
@@ -317,6 +353,14 @@ def _powered_cells(band: np.ndarray, side: str) -> tuple[int, bool]:
     return n, lit[AMP2P_MAX_CELLS - n:] == [True] * n
 
 
+def _spans_aligned(mask: np.ndarray, spans: list[tuple[int, int]]) -> bool:
+    """Whether the ink sits on `spans`: inside every cell, absent from every gap."""
+    if not all(mask[:, x0:x1].any() for x0, x1 in spans):
+        return False
+    gaps = [(a[1], b[0]) for a, b in zip(spans, spans[1:]) if b[0] > a[1]]
+    return not any(mask[:, x0:x1].any() for x0, x1 in gaps)
+
+
 def _grid_aligned(band: np.ndarray, side: str, n: int) -> bool:
     """Whether the band's ink actually sits on the `n`-cell grid.
 
@@ -324,12 +368,62 @@ def _grid_aligned(band: np.ndarray, side: str, n: int) -> bool:
     gaps between them; a strip the game re-laid-out for a wider value fails both,
     which is how an unmeasured layout announces itself instead of being misread.
     """
+    return _spans_aligned(_band_ink(band, side), cell_bounds(side, n))
+
+
+def has_sixth_digit(band: np.ndarray, side: str) -> bool:
+    """Whether ink reaches left of the widest measured grid — i.e. a 6th digit.
+
+    A physical test, not a guess: six digits cannot fit the container at the
+    measured pitch (`AMP2P_CONTAINER_W`), so a 6-digit strip must start left of the
+    5-cell grid, and nothing else there ever inks. Measured over the two 15k-frame
+    gameplay captures: across 22 400 five-digit frames the leftmost inked column is
+    the 5-cell grid's own first column, never one left of it.
+    """
     mask = _band_ink(band, side)
-    spans = cell_bounds(side, n)
-    if not all(mask[:, x0:x1].any() for x0, x1 in spans):
-        return False
-    gaps = [(a[1], b[0]) for a, b in zip(spans, spans[1:]) if b[0] > a[1]]
-    return not any(mask[:, x0:x1].any() for x0, x1 in gaps)
+    cx0, _cx1 = container_span(side)
+    gx0, _gx1 = grid_span(side)
+    return bool(mask[:, cx0:gx0].any())
+
+
+def six_layout_candidates(band: np.ndarray, side: str) -> list[tuple[int, int]]:
+    """The `AMP2P_GRID_6` candidates the band's ink is consistent with.
+
+    Ink alone rarely picks one: a strip laid out at (6, 8) also satisfies (7, 8),
+    whose extra column falls in the same blank gap. So this narrows, and the glyph
+    matcher decides between what is left — the layout on which the cells look most
+    like digits is the layout (`fit_six_layout`).
+    """
+    mask = _band_ink(band, side)
+    return [lay for lay in AMP2P_GRID_6 if _spans_aligned(mask, cell_bounds(side, 6, lay))]
+
+
+def _classify_cells(
+    bank: AmpDigitBank, band: np.ndarray, spans: list[tuple[int, int]]
+) -> tuple[list[int], float, float]:
+    """(digits, worst best-distance, weakest runner-up gap) over `spans`, left->right."""
+    digits, dists, margins = [], [], []
+    for span in spans:
+        d, dist, margin = match_cell(bank, cell_cov(band, span))
+        digits.append(d)
+        dists.append(dist)
+        margins.append(margin)
+    return digits, max(dists), min(margins)
+
+
+def fit_six_layout(
+    bank: AmpDigitBank, band: np.ndarray, side: str
+) -> tuple[int, int] | None:
+    """The `AMP2P_GRID_6` layout that best explains a 6-digit strip, or None.
+
+    Among the candidates the ink permits, the winner is the one with the smallest
+    worst-cell distance to the digit bank: reading a (6, 8) strip through 7 px cells
+    drags a neighbouring column into every glyph, which the bank sees immediately.
+    """
+    cands = six_layout_candidates(band, side)
+    if not cands:
+        return None
+    return min(cands, key=lambda lay: _classify_cells(bank, band, cell_bounds(side, 6, lay))[1])
 
 
 def _variant_means(exemplars: list[np.ndarray], k: int) -> list[np.ndarray]:
@@ -362,10 +456,12 @@ def _variant_means(exemplars: list[np.ndarray], k: int) -> list[np.ndarray]:
 def build_amp2p_bank(samples: list[Sample], variants: int = AMP2P_VARIANTS) -> AmpDigitBank:
     """Build the 0-9 coverage templates from the labelled 2-player corpus.
 
-    Each frame's powered cells map left->right onto the digits of its filename value
-    (the counts must agree, else the frame is skipped). Each digit contributes up to
+    Each frame's cells map left->right onto the digits of its filename value (the
+    counts must agree, else the frame is skipped). Each digit contributes up to
     `variants` templates rather than one average — see AMP2P_VARIANTS. Both sides
-    feed one bank: same glyph art at the same scale, only the block origin differs.
+    feed one bank: measured on the two 15k-frame gameplay captures, a bank built
+    from either side alone reads the other identically, so the sides differ only in
+    where the block sits, not in the glyph art.
     """
     acc: dict[int, list[np.ndarray]] = {}
     for s in samples:
@@ -375,12 +471,19 @@ def build_amp2p_bank(samples: list[Sample], variants: int = AMP2P_VARIANTS) -> A
         side, value = parsed
         band = _band_luma(s.image, side)
         digits = str(value)
-        if len(digits) not in AMP2P_GRID:
+        if len(digits) == 6:
+            layout = fit_six_layout(band, side)
+            if layout is None:
+                continue
+            spans = cell_bounds(side, 6, layout)
+        elif len(digits) in AMP2P_GRID:
+            n, aligned = _powered_cells(band, side)
+            if n != len(digits) or not aligned:
+                continue  # the display disagrees with the label — skip this frame
+            spans = cell_bounds(side, n)
+        else:
             continue
-        n, aligned = _powered_cells(band, side)
-        if n != len(digits) or not aligned:
-            continue  # the display disagrees with the label — skip this frame
-        for span, ch in zip(cell_bounds(side, n), digits):
+        for span, ch in zip(spans, digits):
             acc.setdefault(int(ch), []).append(cell_cov(band, span))
     templates = [
         AmpDigitTemplate(digit=d, vec=np.round(v).astype(np.uint8))
@@ -407,15 +510,22 @@ def read_amp2p_score(
     calibration: AmpCalibration | None = None,
     side: str | None = None,
 ) -> Amp2pScoreRead:
-    """Read one amp's score: powered-cell count, then classify each cell.
+    """Read one amp's score: locate the digit cells, then classify each one.
 
-    The digit count comes from the display (which cells are lit), the cell
-    positions from `AMP2P_GRID`, and the digits from an argmin integer L1 against
-    the bank. `value` is None — with `reason` set — whenever the grid or the match
-    cannot justify a number: a non-right-aligned lit pattern, a digit count the
-    grid table does not cover, ink that does not sit on the grid, or a cell that
-    fails the distance/margin gates. `calibration` supplies the locked block
+    The digit count comes from the display (which cells are lit, plus the 6-digit
+    ink test), the cell positions from `AMP2P_GRID` — or from an `AMP2P_GRID_6`
+    candidate at 6 digits — and the digits from an argmin integer L1 against the
+    bank. `value` is None, with `reason` set, whenever the layout or the match
+    cannot justify a number: a non-right-aligned lit pattern, ink that sits on no
+    layout at all, or a cell that fails the distance/margin gates. A 6-digit read
+    carries `layout_measured=False`, because that pitch is extrapolated from the
+    container width rather than measured. `calibration` supplies the locked block
     offset; if omitted the nominal position is used.
+
+    The chrome-presence probe (`present.py`) is the caller's job and is not
+    optional: this reader only asks what the digit band says, so on a frame where
+    the amp is off screen entirely it can still find lit cells in whatever art is
+    there. Gate on presence first.
     """
     if side is None:
         side = calibration.side if calibration is not None else None
@@ -431,36 +541,90 @@ def read_amp2p_score(
         )
 
     band = _band_luma(image, side, dx, dy)
-    n, aligned = _powered_cells(band, side)
-    if n == 0:
-        return fail(0, "no powered cells")
-    if not aligned:
-        return fail(n, "lit cells are not right-aligned", layout_unknown=True)
-    if n == AMP2P_MAX_CELLS and not _grid_aligned(band, side, n):
-        # Every cell lit *and* the ink off-grid is what a re-laid-out wider strip
-        # looks like through the widest grid we have measured.
-        return fail(n, f"ink does not sit on the {n}-cell grid", layout_unknown=True)
+    layout: tuple[int, int] | None = None
+    measured = True
 
-    digits: list[int] = []
-    dists: list[float] = []
-    margins: list[float] = []
-    for span in cell_bounds(side, n):
-        d, dist, margin = match_cell(bank, cell_cov(band, span))
-        digits.append(d)
-        dists.append(dist)
-        margins.append(margin)
+    if has_sixth_digit(band, side):
+        # Ink left of the widest measured grid: six digits, on a layout we can only
+        # bound (see AMP2P_GRID_6).
+        n, layout, measured = 6, fit_six_layout(bank, band, side), False
+        if layout is None:
+            return fail(6, "6-digit strip fits no candidate layout", layout_unknown=True)
+    else:
+        n, aligned = _powered_cells(band, side)
+        if n == 0:
+            return fail(0, "no powered cells")
+        if not aligned:
+            return fail(n, "lit cells are not right-aligned", layout_unknown=True)
+        if n == AMP2P_MAX_CELLS and not _grid_aligned(band, side, n):
+            return fail(n, f"ink does not sit on the {n}-cell grid", layout_unknown=True)
 
-    worst, weakest = max(dists), min(margins)
+    digits, worst, weakest = _classify_cells(bank, band, cell_bounds(side, n, layout))
+    used = layout if layout is not None else AMP2P_GRID[n]
     if worst > AMP2P_UNK_DIST or weakest < AMP2P_UNK_MARGIN:
         return Amp2pScoreRead(
             side=side, value=None, digits=tuple(digits), n_cells=n,
             dist=worst, margin=weakest, layout_unknown=False,
             reason=f"weak match (dist={worst:.0f} margin={weakest:.0f})",
+            layout=used, layout_measured=measured,
         )
     return Amp2pScoreRead(
         side=side, value=int("".join(str(x) for x in digits)), digits=tuple(digits),
         n_cells=n, dist=worst, margin=weakest, layout_unknown=False,
+        layout=used, layout_measured=measured,
     )
+
+
+# ─── temporal filter ──────────────────────────────────────────────────────────
+#
+# Some captured frames hold the amp's *idle* composite — score 0, no multiplier, no
+# streak odometer, no star-power pills, and the amp itself a pixel or two off — in
+# the middle of a song. They are single frames (523 of 525 in the left capture are
+# one frame long; the right capture has none), and every gate upstream passes them:
+# the digits are a crisp `0`, so the match gates see distance 347 with 2999 of
+# margin, and the chrome probe scores them *better* than a real gameplay frame
+# (SAD 4.1-5.9 against 4.1-13.5) because the committed reference is itself a
+# score-0 crop. So neither the glyph matcher nor presence can reject them — only
+# time can.
+#
+# The lever is that a play's score never falls. A rise is accepted at once, so
+# tracking adds no latency to the value marvin actually cares about; a fall has to
+# repeat before it counts, which an isolated frame cannot do and a real song reset
+# does trivially (the strip sits at 0 for many frames).
+
+AMP2P_FALL_CONFIRM = 3  # consecutive equal reads needed to accept a *decrease*
+
+
+@dataclass
+class Amp2pTracker:
+    """Fold per-frame reads into a score that ignores single-frame idle composites."""
+
+    side: str
+    value: int | None = None
+    n_rejected: int = 0          # reads dropped as unconfirmed falls
+    _pending: int | None = None
+    _pending_n: int = 0
+
+    def update(self, read: Amp2pScoreRead) -> int | None:
+        """Fold one frame's read in and return the tracked score (None until known)."""
+        if read.value is None:  # unreadable: hold, and forget any pending fall
+            self._pending, self._pending_n = None, 0
+            return self.value
+        if self.value is None or read.value >= self.value:
+            self._pending, self._pending_n = None, 0
+            self.value = read.value
+            return self.value
+        # A fall — real only if it persists.
+        if read.value == self._pending:
+            self._pending_n += 1
+        else:
+            self._pending, self._pending_n = read.value, 1
+        if self._pending_n >= AMP2P_FALL_CONFIRM:
+            self.value = read.value
+            self._pending, self._pending_n = None, 0
+        else:
+            self.n_rejected += 1
+        return self.value
 
 
 # ─── corpus growth ─────────────────────────────────────────────────────────────

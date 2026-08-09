@@ -273,11 +273,9 @@ AMP2P_RIGHT_EDGE: dict[str, int] = {"left": 60, "right": 63}
 # The cell is the glyph *core* (7 px) — the 2 px between cores are gap, and must
 # stay out: they carry the glyph's bloom, which tracks the LED's brightness phase
 # rather than its shape, and including them lets a dim 9 out-match a bright 9.
-# Counts 1-4 are measured (the pitch and the right edge are unchanged across the
-# 3->4 digit crossing); 5 extends the same grid onto clean panel. There is
-# deliberately no 6+ entry: the strip re-lays-out when a 6th digit appears and
-# that geometry is unmeasured, so a 6-digit frame must be *flagged*, not guessed
-# (see docs/journal.md). Adding it later is one row here.
+# Counts 1-5 are measured on both sides: per-column ink occupancy lands on 7-px
+# cores at pitch 9 with clean 2-px gaps, and the pitch and right edge do not move
+# across the 3->4 or 4->5 crossings. 6+ is not here on purpose — see AMP2P_GRID_6.
 AMP2P_GRID: dict[int, tuple[int, int]] = {
     1: (7, 9),
     2: (7, 9),
@@ -285,6 +283,24 @@ AMP2P_GRID: dict[int, tuple[int, int]] = {
     4: (7, 9),
     5: (7, 9),
 }
+
+# Interior width of the strip's dark container, measured on both sides: it runs
+# from AMP2P_RIGHT_EDGE - 49 to AMP2P_RIGHT_EDGE (block-local 11..60 left,
+# 14..63 right), with the amp's bright bezel immediately left of it. This is the
+# measurement that constrains the unseen 6-digit layout: six cells at the measured
+# pitch 9 need 52 px, so they cannot fit — the strip must re-lay-out tighter, which
+# is what Greg reports seeing once the score passes 99999.
+AMP2P_CONTAINER_W = 49
+
+# Candidate 6-digit layouts as (cell_w, pitch), right-aligned like AMP2P_GRID.
+# **Extrapolated, not measured** — no capture has passed 99999 yet. They are the
+# layouts that fit AMP2P_CONTAINER_W (5*pitch + w <= 49), so pitch 9 is absent by
+# measurement and pitch 8 is the widest that fits. A frame read on one of these
+# reports `layout_measured=False` plus the fitted layout, so the first real 6-digit
+# capture confirms or corrects the pitch instead of a number quietly depending on
+# it. Tighter than pitch 8 is deliberately not offered: a strip that compressed
+# that far would not trip the 6-digit ink trigger, and is flagged instead of read.
+AMP2P_GRID_6: tuple[tuple[int, int], ...] = ((7, 8), (6, 8))
 
 # Canonical glyph grid. 10x7 is the cell's native size at the measured pitch, so
 # no resampling happens there; `covcore.cov_grid` still resizes into it, which is

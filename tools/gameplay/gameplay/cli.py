@@ -148,9 +148,10 @@ def cmd_amp2p(args: argparse.Namespace) -> int:
     calib = amp2p.calibrate(args.side, [image], ref, search=args.search)
     r = amp2p.read_amp2p_score(image, bank, calib, args.side)
     shown = r.value if r.value is not None else f"none ({r.reason})"
+    layout = f" layout={r.layout}{'' if r.layout_measured else ' EXTRAPOLATED'}" if r.layout else ""
     print(f"amp2p {args.side}: {shown}\t(digits={_digit_str(r.digits)} cells={r.n_cells} "
           f"dist={r.dist:.0f} margin={r.margin:.0f} reg=({calib.dx},{calib.dy})"
-          f"{' LAYOUT-UNKNOWN' if r.layout_unknown else ''})")
+          f"{layout}{' LAYOUT-UNKNOWN' if r.layout_unknown else ''})")
     parsed = amp2p_score_from_filename(args.image.rsplit("/", 1)[-1])
     if parsed is not None:
         true_v = parsed[1]
@@ -162,10 +163,14 @@ def cmd_amp2p_monotonic(args: argparse.Namespace) -> int:
     """Label-free 2-player score check over an extracted-capture dir."""
     res = evaluate.amp2p_score_monotonic_eval(args.frames_dir, side=args.side)
     print(
-        f"amp2p-monotonic ({res.side}): {res.n_frames} frames, {res.n_violations} violations "
-        f"({res.clean_frac:.2%} clean), {res.n_unreadable} unreadable, "
-        f"{res.n_layout_unknown} layout-unknown; range {res.first}..{res.last}; "
-        f"cell-count hist {res.digit_hist}; worst dist {res.worst_dist:.0f}, "
+        f"amp2p-monotonic ({res.side}): {res.n_frames} frames, {res.n_absent} with no amp "
+        f"on screen, {res.n_present} gated in; {res.n_resets} song reset(s), "
+        f"{res.n_violations} violations ({res.clean_frac:.2%} clean), "
+        f"{res.n_false_reads} false reads, {res.n_unreadable} unreadable, "
+        f"{res.n_layout_unknown} layout-unknown, {res.n_extrapolated} on an "
+        f"extrapolated 6-digit layout; {res.first}..{res.last}, peak {res.max_value}; "
+        f"cell-count hist {res.digit_hist}; {res.n_idle_composite} idle-composite "
+        f"frames filtered (tracked {res.tracked_value}); worst dist {res.worst_dist:.0f}, "
         f"min margin {res.min_margin:.0f}"
     )
     print(f"  distinct deltas: {res.deltas}")
@@ -173,7 +178,7 @@ def cmd_amp2p_monotonic(args: argparse.Namespace) -> int:
         print(f"  violation {name}: running-max {prev} -> read {got}")
     for name, reason in res.unreadable:
         print(f"  unreadable {name}: {reason}")
-    return 0 if res.n_violations == 0 and res.n_unreadable == 0 else 1
+    return 0 if res.n_violations == 0 and res.n_false_reads == 0 else 1
 
 
 def cmd_amp2p_grow(args: argparse.Namespace) -> int:
@@ -185,8 +190,7 @@ def cmd_amp2p_grow(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return 2
     bank = amp2p.build_amp2p_bank(samples)
-    ref = amp2p.build_reference(args.side)
-    calib = amp2p.calibrate(args.side, [s.image for s in samples[:4]], ref, search=4)
+    calib = amp2p.calibrate_on_corpus(args.side, samples)
     have = {v for v in (amp2p_score_from_filename(s.path.name) for s in samples) if v}
     cands, n_settled, n_frames = amp2p.grow_candidates(
         args.frames_dir, bank, args.side, calib, limit=args.limit,

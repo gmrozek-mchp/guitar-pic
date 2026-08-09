@@ -141,13 +141,15 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
    ✅; screen classifier / selection / song / **score / multiplier / streak** readers ported
    (code-complete, pending Greg's MPLAB build); navigator/controller (M10) ported earlier. See
    Current focus.
-7. 🚧 **2-player amp scoreboards (host-only)** — per-side chrome registration ✅ (2026-07-14) and
-   the **score digit reader** ✅ (2026-08-09): fixed 7 px/pitch-9 grid inside the registered
-   block, powered-cell digit count, per-cell relative ink coverage matched against a 2-variants-
-   per-digit bank. **3027/3027 frames of the reference capture, 0 monotonic violations**, and a
-   right-side bank reads the left amp exactly. Deferred (data-blocked, see Open questions): the
-   6-digit re-layout, a left-side stream capture, star power, the face-off gauge, the multiplier,
-   and the firmware port.
+7. 🚧 **2-player amp scoreboards (host-only)** — per-side chrome registration ✅ (2026-07-14),
+   the **score digit reader** ✅ (2026-08-09), and **re-validated on both sides at the locked
+   block origins** ✅ (2026-08-10): fixed 7 px/pitch-9 grid inside the registered block,
+   powered-cell digit count, per-cell relative ink coverage matched against a 2-variants-per-digit
+   bank, then an `Amp2pTracker` temporal filter. **28 497 gameplay frames across the two 15k
+   captures: 0 ordering violations, 0 reads on a frame with no amp, 5-digit scores exercised
+   (peak 66 098).** The 6-digit re-layout is now *read* on an extrapolated pitch and flagged
+   rather than refused. Deferred (see Open questions): star power, the face-off gauge, a
+   6-digit capture to confirm the pitch, and the firmware port.
 
 ---
 
@@ -155,6 +157,10 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-08-10 | **Some captured gameplay frames hold the amp's *idle* composite, and nothing spatial can reject them — so the reader gets a temporal filter (`Amp2pTracker`): a rise is accepted at once, a fall only after `AMP2P_FALL_CONFIRM` (3) consecutive equal reads.** | Roughly one frame in 11 of the left capture (525 frames) shows score 0, no multiplier, no streak odometer, no star-power pills, and the amp shifted a pixel or two — mid-song, on strictly consecutive frame epochs with no dropped or duplicated records, so it is real captured content and not a decode artefact. Every spatial gate passes it: the digits are a crisp `0` (distance 347, margin 2999), and the **chrome probe scores it *better* than a real gameplay frame** (SAD 4.1–5.9 vs 4.1–13.5) because `amp2p_<side>_ref.png` is itself a score-0 crop — so raising or lowering TAU cannot separate them, and there is no threshold to tune. What does separate them is time: 523 of the 525 are exactly one frame long, while a play's score never falls. Confirming only *falls* means the value marvin acts on gains no latency, and a real song reset (the strip sits at 0 for many frames) still lands. Filters all 527 left / 424 right occurrences. |
+| 2026-08-10 | **6 digits is now read rather than refused: the container width rules out the measured pitch, so `AMP2P_GRID_6` carries the layouts that physically fit, the ink says a 6th digit is present, and the *bank* picks between candidates. The read is flagged `layout_measured=False`.** | Reversal of the 2026-08-09 "report, don't decode" decision, on a measurement that was not available then. The strip's dark container is **49 px** on both sides (`AMP2P_CONTAINER_W`, block-local 11..60 left / 14..63 right, bright bezel immediately left of it), and six cells at the measured pitch 9 need 52 — so pitch 9 is excluded *by measurement*, and pitch 8 is the widest that fits. That turns the guess from "what does the layout look like" into "which of two layouts", which is small enough to decide per frame. Detection is physical, not heuristic: six digits cannot fit at pitch 9, so a 6-digit strip must ink left of the 5-cell grid, and across **22 400 five-digit frames the leftmost inked column is never left of the grid's own first column**. Between candidates the glyph bank decides, because reading a (6,8) strip through 7 px cells drags a neighbouring column into every glyph. Still not measured, hence the flag and the `layout` field: the first real 6-digit capture confirms or corrects the pitch, and only then does it become an `AMP2P_GRID` row. |
+| 2026-08-10 | **The two amps share one algorithm *and* one template bank; only the block origin and `AMP2P_RIGHT_EDGE` differ.** | Worth testing rather than assuming, since the sides were registered independently and their right edges differ by 3 px. Measured on the two captures: per-column ink occupancy lands on 7 px cores at pitch 9 on both sides, and a bank built from the **left** capture alone reads the right capture identically (same 13 739 frames, same range, 0 violations), and vice versa (14 400 of 14 758, the shortfall all gate rejections, no wrong values). The combined bank is best on both. So no per-side banks, no per-side thresholds. |
+| 2026-08-10 | **`amp2p-monotonic` gates every read on the chrome probe, and scores a decrease as a violation only when it is small (`PLAY_RESET_DROP` 1000).** | Two corrections the multi-song captures forced. (a) The digit reader only asks what the band says, so on a cutscene frame with no amp it still found lit cells and returned a number — 12 such reads on the left capture before gating, 0 after. Presence is the caller's job and the harness has to model that. (b) A capture spans several songs and the score restarts at zero, so "never decreases" is false across a whole capture; the two cases separate by size, since a misread digit is worth at most ~1000 on a plausible score while a song boundary drops tens of thousands. Also: a misread does **not** always decrease — reading a leading `3` as a `9` reads *higher* — so the distinct-delta list is a co-equal check, and it is now restricted to consecutive frames so it stays diagnostic. |
 | 2026-08-09 | **The 2-player amp score is read on a *fixed grid*, not by ink segmentation — and the digit count comes from the display's unpowered leading cells, not from the glyph matcher.** Cells are 7 px wide at pitch 9, band rows 14–23, right-aligned against a fixed edge (`AMP2P_GRID` / `AMP2P_RIGHT_EDGE`, block-local). | The amp strip is a segment display, so unlike the single-player *proportional* font (which forced `score.py`'s ink-run segmentation) the cell positions are constant and can be tabulated. Measured on the reference capture: the pitch and the right edge are unchanged across the 3→4 digit crossing, and per-column ink occupancy lands exactly on 7-px cores with clean 2-px gaps on **both** sides. Deriving `n` from the powered-cell contrast gate instead of the matcher is what makes it robust: unused cells are genuinely unpowered (contrast ~17 vs 100–140 for a lit cell, a ~6× margin), so the count is a physical measurement independent of glyph quality — a faint leading `1` can't shorten the number. |
 | 2026-08-09 | **The amp font is template-matched, not 7-segment-decoded.** | It *looks* segment-based, and a segment decoder is far cheaper, so it was tried first: it read 1596/3027 frames with 0 monotonic violations and then failed **every** frame containing a `4`. The font is a stylized LED face, not a true 7-segment one — `1` is a centred bar rather than the right-hand pair, and `4` and `7` are drawn with diagonal strokes. Template matching also reuses the integer coverage core already proven and firmware-mirrored for the 1p readers. |
 | 2026-08-09 | **The ink threshold is relative to each *cell*, and each digit keeps two templates instead of one average.** `AMP2P_INK_NUM/DEN` = 1/2 per cell; `AMP2P_VARIANTS` = 2. | The LEDs pulse, so a bright glyph's strokes bloom about a pixel wider than a dim one's. Under a band-wide threshold the brightest digit in the band sets the range, and a dim `9` thins until it matches `5` better than it matches a bloomed `9` — the exact failure seen (48 monotonic violations, all traceable to that pair-family). Thresholding per cell removes the brightness phase, and it moved 114 cells from `5` to `9`, taking the reference capture to 0 violations. Keeping two templates per digit then buys headroom rather than correctness: worst-case distance 1844→1275 and 1st-percentile margin 389→648, with 3 and 4 variants adding templates and moving neither. Same reasoning the streak reader already uses when it thresholds per tumbler. |
@@ -200,34 +206,34 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Open questions
 
-- **2-player amp scoreboard follow-ups (score digits done 2026-08-09).** All of these are
-  data-blocked, and Greg can't capture more until later; the reader is built so each gap is
-  *visible* rather than guessed.
-  1. **The 6-digit layout.** Greg confirms the score climbs past 99999 and the spacing changes
-     when the 6th digit appears. `AMP2P_GRID` has no 6-entry, so such a frame reads
-     `layout_unknown` instead of a wrong number. **Closes with:** any capture whose score passes
-     99999 → measure the new pitch/width and add one table row. Note **5** digits is also
-     unproven (both the capture and the corpus top out at 4); the 5-cell grid is geometrically
-     safe — the cell sits on clean panel — but no frame exercises it.
-  2. **A left-side stream capture** (`marvin-perf score-capture --slot score-2p-left`). The left
-     amp is validated only on the 5 corpus snapshots today. Greg expects future collection to be
-     mostly left-side anyway — marvin plays better than a human, so scores run higher and vary
-     more, which is also the run most likely to produce the 5- and 6-digit values item 1 needs.
-     Fold new frames in with `gameplay amp2p-grow`.
-  3. **Star-power pill count.** The pill column is *mirrored* — left of the left amp, right of
-     the right amp — and both fall **outside** the current 68×78 `AMP2P_BLOCK`, so the committed
-     ROIs clip it. Needs the rects widened (host-supplied, so no reflash) and a fresh capture.
+- **2-player amp scoreboard follow-ups** (score digits done 2026-08-09, re-validated on both
+  sides 2026-08-10). The reader is built so each remaining gap is *visible* rather than guessed.
+  1. **Confirm the 6-digit pitch.** Still no capture past 99999, but this is no longer a refusal:
+     the container is 49 px so pitch 9 cannot fit six cells, and `AMP2P_GRID_6` holds the two
+     layouts that do — read on the widest that the ink and the bank agree with, flagged
+     `layout_measured=False` and reporting the fitted `layout`. **Closes with:** any capture whose
+     score passes 99999 → check `read-amp2p` prints `layout=(7, 8) EXTRAPOLATED` and the right
+     number, then promote it to an `AMP2P_GRID` row and drop the flag. 5 digits is now *measured*
+     (11 199 / 11 306 frames per side).
+  2. **Root-cause the idle-composite frames.** ~1 frame in 11 of the left capture holds the amp's
+     pre-overlay art mid-song (no multiplier, no streak, no pills, amp shifted) on strictly
+     consecutive frame epochs — so marvin's capture is presenting a stale or partially composited
+     picture, which is a **capture-pipeline** question, not a reader one, and it affects every
+     reader that samples a single frame. `Amp2pTracker` makes the score immune; the 1-player
+     score/streak/multiplier readers have no equivalent filter and should be checked against a
+     1-player capture for the same artefact.
+  3. **Star-power pill count.** The pill column is *mirrored* — left of the left amp, right of the
+     right amp. The 76×78 blocks now clip part of it in view (visible at the block edges in both
+     captures), so the rects still need widening (host-supplied, so no reflash) before it can be
+     read.
   4. **The centre face-off gauge** (the tug-of-war meter, roughly `(305,235)-(405,325)`) — a
      separate ROI and its own region slot, unrelated geometry to the amps.
-  5. **The multiplier.** The 2p medallion shows a character portrait, never the 1p purple digit,
-     in every frame available — so whether 2-player displays a multiplier at all is unknown. The
-     reference capture never leaves 1× (deltas are 50/100, consistent with base notes and
-     chords). Needs a capture with the multiplier up.
-  6. **Firmware port** — `export_c` amp bank + a `gp_read_amp2p`, as a separate signed-off phase.
-  7. **Noise robustness.** The per-cell range is a 2-sample statistic (min/max), so one hot pixel
-     can set it. Not worth fixing on current evidence (the pixel-locked stream reads 3027/3027
-     with 510 of margin), but it is the first thing to revisit if a noisier rig ever appears —
-     robust percentiles would cost the bit-exact integer C mirror.
+  5. **Firmware port** — `export_c` amp bank + a `gp_read_amp2p` + the tracker's fall-confirm, as
+     a separate signed-off phase.
+  6. **Noise robustness.** The per-cell range is a 2-sample statistic (min/max), so one hot pixel
+     can set it. Not worth fixing on current evidence (the pixel-locked streams read with 205+ of
+     margin), but it is the first thing to revisit if a noisier rig ever appears — robust
+     percentiles would cost the bit-exact integer C mirror.
 - **section_select FULL SONG reader — still wanted; firmware assumes-and-GREENs for now
   (2026-07-04, Greg).** Variable, song-dependent list, so no fixed-row-index reader; the
   screen is recognized (constant chrome) and FULL SONG is always the top row. The offline
@@ -301,6 +307,90 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-08-10 (later) — the amp digit reader re-cut on both sides; 6 digits becomes readable; and one frame in 11 is lying
+
+Greg's two gameplay captures at the locked rects — `web-20260809-143135` (**left**, 15 455
+frames) and `web-20260809-144032` (**right**, 14 941) — are the re-cut the re-registration entry
+was waiting on. They closed the empty-corpus block, exercised 5 digits for the first time, bounded
+the 6-digit layout, and turned up a capture artefact that no spatial gate can see.
+
+**Geometry: the compensated constants were right.** Measured from scratch per side rather than
+trusted. Green-LED ink (`G>90, G−R>25, G−B>40`) isolates the strip cleanly: band rows **6..15**
+both sides, per-frame column runs at starts 17/26/35/44/53 (left) and 20/29/38/47/56 (right) —
+**pitch 9, 7 px cores, right edges 60 / 63**, exactly `AMP2P_BAND_Y0` / `AMP2P_RIGHT_EDGE` as
+compensated at the re-registration. A first pass at the aggregate column profile looked like ink
+in two of the gaps; that was the **green 3× multiplier glyph** in the medallion, which sits inside
+the grid's column span but 20 rows below the band. Which also answers an open question: **2-player
+does show a multiplier** (4× purple, 3× green, 2× gold over the portrait), and the streak odometer
+is inside the block too.
+
+**Corpus: 36 labelled frames, 18 per side, read by eye off montages**
+(`score2p__<side>__…__c14…f….png`). One label was wrong — a `3` read as a `9` at left frame
+12261 — and it poisoned digit 9's templates badly enough that every real `3` then read as `9` (the
+bank had only 5 nine-exemplars, so the bogus 3-shaped "9" out-matched the blurred 3 means). Caught
+by dumping the glyph as ASCII and checking the upper-left stroke, then pinned by a **self-check
+that reads the corpus back through the bank it built** — 0 mismatches now. Worth remembering: a
+single bad exemplar in a small class does not degrade gracefully, it inverts a digit.
+
+**Validation, both captures, through the real committed corpus and the presence gate:**
+
+| | left | right |
+|---|---|---|
+| frames / amp on screen | 15 455 / 14 939 | 14 941 / 14 093 |
+| read | 14 758 (98.8%) | 13 739 (97.5%) |
+| ordering violations | **0** | **0** |
+| reads on a frame with no amp | **0** | **0** |
+| peak score | 58 806 | 66 098 |
+| cell-count hist | {1:1274, 2:30, 3:524, 4:1912, 5:11199} | {1:245, 2:46, 3:350, 4:2129, 5:11306} |
+| worst dist / min margin | 1621 / 205 | 2386 / 286 |
+
+Unread frames are digit transitions, in runs of 1–4. Adjacent-frame deltas are
+`2,3,4,6,7,8,9,10,12,15,16,18,20,21,24,50,100,150,200,300` (left) and the same plus
+`5,28,32,36,40,76,224` (right) — sustain ticks and note awards scaled by the multiplier, i.e. real
+GH3 scoring, which is the independent check that the numbers are not merely self-consistent.
+
+**The sides need no separate algorithm** — tested, not assumed, since Greg asked for it
+explicitly. A bank built from the left capture alone reads the right capture *identically*, and
+vice versa with only extra gate rejections and no wrong values. Only the block origin and the
+3 px right-edge difference are per-side.
+
+**6 digits went from refused to read**, on a measurement that was missing before: the dark
+container is **49 px** on both sides, and six cells at pitch 9 need 52, so pitch 9 is excluded and
+pitch 8 is the widest that fits. Detection is physical — a 6-digit strip must ink left of the
+5-cell grid, and across 22 400 five-digit frames the leftmost inked column is never left of the
+grid's first column. Validated on synthetics built by re-laying real glyphs at pitch 8 (reads
+exactly, `dist` 858/255 against a gate of 2600); the alternative (6, 8) candidate is *selected*
+correctly and then gated, because chopping 7 px glyphs to 6 px is not a real 6 px font. Flagged
+`layout_measured=False` until a real capture confirms the pitch.
+
+**The find that matters most: about one frame in 11 of the left capture is the amp's *idle*
+composite mid-song** — score 0, no multiplier, no streak odometer, no star-power pills, amp
+shifted a pixel or two. Frame epochs are strictly consecutive with no drops or duplicates and all
+15 455 frames are distinct, so it is real captured content. It defeats every spatial gate: the `0`
+matches at distance 347 with 2999 of margin, and the **chrome probe likes it *better* than a real
+gameplay frame** (SAD 4.1–5.9 vs 4.1–13.5) because the committed reference is itself a score-0
+crop — there is no TAU that separates them. 523 of 525 are single frames, so `Amp2pTracker`
+(accept a rise at once, confirm a fall 3×) removes all 527 left / 424 right occurrences at zero
+latency for a climbing score. Root-causing why marvin's capture presents that frame is a
+**capture-pipeline** item now in Open questions, and the 1-player readers should be checked for
+the same exposure.
+
+**`amp2p-monotonic` was reworked** to be meaningful on a real capture: it gates every read on the
+chrome probe (the reader has no presence notion of its own — now stated in `read_amp2p_score`'s
+docstring), treats only *small* decreases as violations, counts song resets separately, restricts
+the delta list to consecutive frames, and reports the tracker's filtered count.
+
+Also `amp2p.calibrate_on_corpus`: the corpus now holds both sides, and `calibrate` was being
+handed `samples[:4]` regardless of side, which registered `right` against left-side crops and slid
+the grid off the digits (it then read every right frame as a bogus 6-digit strip). Latent since the
+corpus was right-only; the helper filters by side.
+
+Suite: **111 passed** in the non-firmware tests, up from 87 passed + 27 skipped — the 27 skipped
+digit tests now run, plus 11 new ones (6-digit candidates / fit / flagging, the trigger's silence
+on every measured layout, and the tracker). The 4 `test_export_c` / `test_firmware_classify`
+failures in the tree are from the in-flight `faceoff_end_menu` screen (GP_N_SCREENS 19→20 shifted
+the classifier indices), not from this work.
 
 ### 2026-08-10 (later) — P1 READY!-badge probe ported; the 2p guitar-select step verifies its own confirm
 

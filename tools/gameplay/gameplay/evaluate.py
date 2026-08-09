@@ -573,9 +573,9 @@ def score_monotonic_eval(
 class Amp2pMonotonicResult:
     side: str
     n_frames: int
-    n_violations: int           # reads that decreased vs the running max
+    n_violations: int           # reads that decreased vs the running max, within a play
     n_unreadable: int           # value is None (gated, misaligned, or off-grid)
-    n_layout_unknown: int       # the grid table cannot describe what is on screen
+    n_layout_unknown: int       # no layout, measured or candidate, describes the strip
     digit_hist: dict[int, int]  # powered-cell count → frame count
     first: int
     last: int
@@ -584,10 +584,21 @@ class Amp2pMonotonicResult:
     deltas: list[int]           # distinct non-zero frame-to-frame changes
     violations: list[tuple[str, int, int]]  # (filename, prev_max, read) — first few
     unreadable: list[tuple[str, str]]       # (filename, reason) — first few
+    n_absent: int = 0           # frames the chrome probe says hold no amp at all
+    n_false_reads: int = 0      # a value read where the amp is absent — must be 0
+    n_resets: int = 0           # score restarts (song boundaries) seen in the capture
+    n_extrapolated: int = 0     # reads on a 6-digit candidate layout
+    max_value: int = -1         # highest value read (`last` is only the final frame)
+    n_idle_composite: int = 0   # reads Amp2pTracker dropped as unconfirmed falls
+    tracked_value: int | None = None  # the tracked score at the end of the capture
 
     @property
     def clean_frac(self) -> float:
         return 1.0 - (self.n_violations / self.n_frames) if self.n_frames else 0.0
+
+    @property
+    def n_present(self) -> int:
+        return self.n_frames - self.n_absent
 
 
 def amp2p_score_monotonic_eval(
@@ -595,64 +606,108 @@ def amp2p_score_monotonic_eval(
 ) -> Amp2pMonotonicResult:
     """Label-free accuracy proxy over a whole extracted 2-player amp capture.
 
-    A play's score only climbs, so any read that *decreases* vs the running max is a
-    misread. Reads every `*.png` (sorted) with the bank from the committed corpus,
-    registers once on the corpus, and reports violations, gate rejections, the
-    powered-cell histogram and the distinct frame-to-frame deltas — real note/sustain
-    scoring shows up there as small sustain steps plus multiples of 50. Captures are
-    not committed, so this is a local check (see docs/journal.md for the reference
-    numbers).
+    A play's score only climbs, so any read that *decreases* vs the running max
+    within that play is a misread. Reads every `*.png` (sorted) with the bank from
+    the committed corpus and registers once on the corpus. Two things make the
+    result meaningful on a real multi-song capture:
+
+    - **The chrome probe gates every read** (`present.py`), because this reader only
+      asks what the digit band says: on a frame where the amp is off screen it can
+      still find lit cells in whatever art is there. A value read while the probe
+      says absent is counted as a false read, and that count is the one that must
+      be zero.
+    - **A decrease counts as a violation only when it is small.** A capture spans
+      several songs and the score restarts at zero between them, so "never
+      decreases" is false across a whole capture. The two cases separate by size:
+      the failure mode this check exists to catch is a misread digit, worth at most
+      `PLAY_RESET_DROP` on the leading cell of a plausible score, whereas a song
+      boundary drops by tens of thousands. Bigger drops are counted as resets and
+      reported, not scored.
+
+    A misread does not always *decrease* — reading a leading 3 as a 9 makes the
+    score jump up — so `deltas` matters as much as `n_violations`: real GH3 awards
+    are small sustain steps plus multiples of 25/50 times the multiplier, and
+    anything else in that list is a misread the ordering check cannot see.
+
+    Captures are not committed, so this is a local check (see docs/journal.md for the
+    reference numbers).
     """
     from pathlib import Path
+
+    from . import present
 
     if samples is None:
         samples = load_amp2p_corpus()
     bank = amp2p.build_amp2p_bank(samples)
     # Register on the (reliable) corpus, not the target dir's first frame.
-    ref = amp2p.build_reference(side)
-    calib = amp2p.calibrate(side, [s.image for s in samples[:4]], ref, search=4)
+    calib = amp2p.calibrate_on_corpus(side, samples)
+    probe = present.build_probes()["2pL" if side == "left" else "2pR"]
 
     block_shape = amp2p.block_size(side)
     files = [f for f in sorted(Path(frames_dir).glob("*.png"))
              if load_bgr(f).shape[:2] in (block_shape, (CANONICAL_H, CANONICAL_W))]
 
+    PLAY_RESET_DROP = 1000  # a bigger fall is a new song, not a misread digit
+    tracker = amp2p.Amp2pTracker(side=side)
     prev_max = -1
-    viol = unread = unknown = 0
+    viol = unread = unknown = absent = false_reads = extrapolated = resets = 0
     hist: dict[int, int] = defaultdict(int)
-    first = last = -1
+    first = last = max_value = -1
     worst_dist = 0.0
     min_margin = float("inf")
-    seq: list[int] = []
+    deltas: set[int] = set()
+    prev_i = -2  # index of the last frame that produced a value
     violations: list[tuple[str, int, int]] = []
     unreadable: list[tuple[str, str]] = []
-    for f in files:
-        r = amp2p.read_amp2p_score(load_bgr(f), bank, calib, side)
+    for i, f in enumerate(files):
+        image = amp2p._ensure_full_frame(load_bgr(f), side)
+        r = amp2p.read_amp2p_score(image, bank, calib, side)
+        if present.probe_sad(image, probe) > present.TAU:
+            absent += 1
+            if r.value is not None:
+                false_reads += 1
+            continue
         hist[r.n_cells] += 1
         if r.layout_unknown:
             unknown += 1
+        tracker.update(r)
         if r.value is None:
             unread += 1
             if len(unreadable) < 20:
                 unreadable.append((f.name, r.reason))
             continue
+        if not r.layout_measured:
+            extrapolated += 1
         worst_dist = max(worst_dist, r.dist)
         min_margin = min(min_margin, r.margin)
-        seq.append(r.value)
+        if prev_max >= 0 and r.value != last:
+            if r.value > last:
+                # Only consecutive frames: a step across dropped frames spans an
+                # unknown amount of play, so it says nothing about the award sizes.
+                if i == prev_i + 1:
+                    deltas.add(r.value - last)
+            elif prev_max - r.value > PLAY_RESET_DROP:
+                resets += 1
+                prev_max = -1                      # a new song starts from zero
+            else:
+                viol += 1
+                if len(violations) < 20:
+                    violations.append((f.name, prev_max, r.value))
         if first < 0:
             first = r.value
         last = r.value
-        if r.value < prev_max:
-            viol += 1
-            if len(violations) < 20:
-                violations.append((f.name, prev_max, r.value))
+        prev_i = i
+        max_value = max(max_value, r.value)
         prev_max = max(prev_max, r.value)
     return Amp2pMonotonicResult(
         side=side, n_frames=len(files), n_violations=viol, n_unreadable=unread,
         n_layout_unknown=unknown, digit_hist=dict(sorted(hist.items())),
         first=first, last=last, worst_dist=worst_dist,
         min_margin=0.0 if min_margin == float("inf") else min_margin,
-        deltas=sorted({b - a for a, b in zip(seq, seq[1:]) if b != a}),
-        violations=violations, unreadable=unreadable,
+        deltas=sorted(deltas), violations=violations, unreadable=unreadable,
+        n_absent=absent, n_false_reads=false_reads, n_resets=resets,
+        n_extrapolated=extrapolated, max_value=max_value,
+        n_idle_composite=tracker.n_rejected, tracked_value=tracker.value,
     )
 
 
