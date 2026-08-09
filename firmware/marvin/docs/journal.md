@@ -44,6 +44,16 @@ Running log of planning, decisions, open questions, and work-in-progress for mar
 
 ---
 
+**2026-08-10 — marvin-perf now captures the re-registered 2-player amp scoreboards. No firmware change, no reflash.**
+
+- Greg re-registered both amp blocks by eye against a pixel ruler: **2pL (131,172,199,250)**, **2pR (513,172,581,250)**, both 68×78 (the old boxes sat up-and-left of the amps). The `marvin-perf` region rects follow: slot 1 `(131,172,68,78)`, slot 2 `(513,172,68,78)`.
+- **This needed no firmware work at all**, which is the design paying off: `perf_log_records.h` states the region rect is host-selected "so it can be repointed without a firmware rebuild", so the change is `marvin_perf/records.py` `REGION_SLOTS` plus three pinned copies in the marvin-perf tests. 174 host tests pass. Capture can start immediately.
+- Host-side consequences of the move (block-local digit offsets compensated, and the hand-painted registration masks + labelled digit crops invalidated because both are origin-bound) are in the gameplay journal, 2026-08-10.
+- **The 2p presence path on device is updated: `gameplay_metadata.h` re-exported** once Greg re-painted both masks. `gp_probes[]` now carries `{131,172,199,250}` (npix 1382) and `{513,172,581,250}` (npix 1411). **Presence separation is unchanged by the move** — worst present 0.23 vs best absent 0.62, 2.7× around TAU (was 2.9×), 0/187 corpus frames misclassified — which is the expected outcome and the reason moving the blocks was safe: the decision keys on masked static chrome and the mask followed the chrome. C↔Python cross-check passes; all six `game/` TUs syntax-check clean (`xc32-gcc -fsyntax-only -Wall -Wextra`).
+- Files: `game/gameplay_metadata.h` (generated) plus host `tools/marvin-perf/{marvin_perf/records.py,tests/*}` and `tools/gameplay/*`. No hand-written firmware change, no MCC, no MGS Generate. **Pending Greg's MPLAB build** for the device to pick up the new probe geometry; capture already works without it.
+
+---
+
 **2026-08-09 — the controller has a 2-player plan, and the first edges that wait for a human. NOT YET ON HARDWARE.**
 
 - **`build_plan` now branches on `sel->mode`.** The 2P (pro face-off) path is 12 steps: MULTIPLAYER (main_menu idx 3) → guitar → PRO FACE-OFF (idx 1) → character → PLAY SHOW (idx 0) → venue → song → difficulty → loading → `in_song_2p`. Policy is fixed rather than chosen at run time, per Greg: always PRO FACE-OFF, always PLAY SHOW, confirm through whatever venue is up, marvin drives P1 (left) only.

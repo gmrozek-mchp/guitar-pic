@@ -275,6 +275,19 @@ subsampled path costs <1% CPU at 5–10 Hz.
   is now "the absolute-distance gate barely rejects anything; the margin gate is doing the work."
   Worth revisiting as a **per-class** `t_abs` rather than one global threshold, which would stop
   the loosest class from setting everyone's gate.
+- **Presence probes have zero positional headroom (measured 2026-08-09).** All three — 1p score
+  block, both 2p amp panels, and the new READY-badge probe — exceed TAU 18 at a **1 px** shift.
+  The "no offset search; the capture is pixel-locked and the rig is stable" position (2026-07-15)
+  is therefore all that stands between these probes and a false negative, for every one of them at
+  once. If a per-rig offset ever shows up, the fix is the offset search `amp2p.calibrate`
+  prototypes, applied to all probes together — worth doing pre-emptively if the rig is ever
+  re-mounted or the converter changed.
+- **`guitar_select_2p` "is my guitar preselected on the left?" is data-blocked.** Greg wants the
+  controller to assert this before confirming, but all four captures have a guitar in P1's shield,
+  so there is no negative to threshold against (P2's empty shield has different art and can't
+  stand in). Needs a few snapshots of the screen *before* P1's guitar is assigned; the same capture
+  would add badge-absent negatives for `ready.py`, whose absent threshold currently rests on one
+  frame.
 - **Single-sample classes.** `loading`, `in_song`, `section_select`, `tutorials_menu` have
   one snapshot each — can't be cross-validated. Capture a few more variants per class to
   measure their in-class spread rather than leaning on visual-distinctiveness + the slop pass.
@@ -288,6 +301,124 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-08-10 — both amp blocks re-registered by eye; capture rects follow, and it invalidated every origin-bound artefact
+
+Greg reviewed the amp block placement on a real frame and re-registered both — the old boxes
+were up-and-left of the amps. **Final, signed off against a pixel ruler:**
+
+| | old (x0,y0,x1,y1) | new | delta |
+|---|---|---|---|
+| 2pL | (128,164,196,242) | **(131,172,199,250)** | +3, +8 |
+| 2pR | (515,164,583,242) | **(513,172,581,250)** | −2, +8 |
+
+Both stay 68×78 (the code relies on the two sides sharing a block size).
+
+- **Capture works immediately, no reflash.** The `marvin-perf` region rects are *host*-supplied
+  (`perf_log_records.h`: "the rect is host-selected so it can be repointed without a firmware
+  rebuild"), so this is only `records.py` `REGION_SLOTS` → `(131,172,68,78)` / `(513,172,68,78)`,
+  plus three pinned copies in the marvin-perf tests. 174 tests pass. This is what unblocks Greg
+  capturing scoreboards.
+- **The digit cells had to be *compensated*, not moved.** `AMP2P_BAND_Y0` and `AMP2P_RIGHT_EDGE`
+  are **block-local**, so moving the origin drags the digit grid with it — off the digits that were
+  already validated. They move by the negation of the block delta: `BAND_Y0` 14 → **6**,
+  `RIGHT_EDGE` left 55 → **52**, right 61 → **63**. The invariants to preserve are the *absolute*
+  anchors: right edge x=183 (left) / x=576 (right), band top y=178. Verified by overlay — the cells
+  land on exactly the same pixels as before the move. Recorded that derivation in the constants'
+  comment, because nothing previously said they were dependent on the block origin.
+- **Three committed artefact sets are origin-bound, and this is the real cost of the move:**
+  - `amp2p_{left,right}_ref.png` — re-cropped at the new origin from `in_song_2p__0200`. Done.
+  - `amp2p_{left,right}_mask.png` — Greg's hand-painted 6× masks. Shifting them programmatically
+    *is* geometrically correct (it tracks the same physical chrome; magenta count unchanged at
+    1338/5304) but leaves the fiducial **top-heavy**: the block moved down 8, so the amp's whole
+    lower third — panel below the medallion plus the bottom studded trim — ends up unpainted,
+    because those pixels were below the old block and never had paint. Greg's call: **revert the
+    shift and re-paint.** Templates emitted at the new origin as
+    `data/scores/amp2p_{left,right}_ref_6x.png`.
+  - `data/scores/score2p__*.png` — the 10 labelled digit crops are 68×78 blocks cut at the *old*
+    origin, so the compensated block-local offsets find no digits inside them. Moved to
+    `data/scores/superseded-old-origin/` with a README; they are superseded by the fresh capture,
+    not shifted.
+- **Staleness is now checkable instead of silent.** `amp2p.MASK_PAINTED_AT` records the origin each
+  committed mask was painted against, and `mask_origin_mismatch()` returns a reason string when it
+  no longer matches `AMP2P_BLOCK`. `test_amp2p`, `test_present` and the C presence cross-check skip
+  on it with that reason rather than failing — the code isn't broken, the artefacts are pending, and
+  the guard self-clears once `MASK_PAINTED_AT` is updated. Worth having: a stale mask otherwise
+  degrades registration *quietly*, which is plausibly how the block stayed mis-registered unnoticed.
+- **Greg re-painted both masks; presence re-validated and the header re-exported.** He painted the
+  left, then found a mirror would not work for the right (confirmed by overlay: the right amp sits
+  ~11 px further right inside its block — the same offset the digit `RIGHT_EDGE` 52-vs-63 shows — so
+  a mirrored right bar lands on the medallion ring and the top band rides onto the frame) and drew
+  the right fresh. Installed as `amp2p_{left,right}_mask.png`: **1382 / 1411** masked block px
+  (was 1338 / 1338).
+  - **Presence separation is unchanged by the move: worst present 0.23, best absent 0.62 → 2.7×
+    around TAU 0.37** (it was 0.22 / 0.62 → 2.9× before), with **0/187 corpus frames
+    misclassified**. So re-registering the blocks neither helped nor hurt the presence decision —
+    which is the expected result and the reason it was safe to move them: presence keys on masked
+    static chrome, and the mask followed the chrome.
+  - `translate`/`scale` still cross (worst-present 1.14/1.16 vs best-absent 0.85/0.88), consistent
+    with the standing zero-shift-headroom finding — those axes are excluded as unrealistic on a
+    pixel-locked capture, not passed.
+  - `gameplay_metadata.h` re-exported: `gp_probes[]` now carries `{131,172,199,250}` / npix 1382 and
+    `{513,172,581,250}` / npix 1411. C↔Python presence cross-check passes again. All six marvin
+    `game/` TUs syntax-check clean against it. Suite **87 passed, 27 skipped**.
+
+**Still pending (data, not code):** the 21 skipped `test_amp2p` digit tests. Their guard now also
+covers the empty corpus, naming the re-cut needed — a capture at the new `marvin-perf` rects, which
+is the capture Greg is taking next. Until then the digit reader is untested against the new origin,
+though its cell geometry was compensated and visually verified to land on the same pixels.
+
+### 2026-08-09 — P1 READY!-badge probe (host-only), and every presence probe turns out to have zero shift headroom
+
+Two results, one of them systemic and worth more than the feature.
+
+**The badge probe (`gameplay/ready.py`, `READY_BADGE_ROI = (145,265,262,305)`).** The Select
+Guitar screen advances only when *both* sides confirm, so "the screen didn't change" is ambiguous
+between "my GREEN failed" and "the human hasn't confirmed" — the badge disambiguates it. Same
+mechanism as the `present.py` chrome probes (masked per-frame-normalized SAD at nominal coords,
+shared TAU 18), with two differences that fall out of the region: the whole ROI is the fiducial so
+there's no hand-painted mask (badge-present it's the banner, badge-absent it's the guitar body on
+the shield — almost nothing shared), and the reference is cropped from the corpus frame
+`guitar_select_2p__p1_ready` at load time rather than committed as a second asset that could drift.
+- **Clean 0.0–0.5 vs absent 51.7** (~100×), and across the gain/offset/noise envelope worst-present
+  stays 0.5 while best-absent is 51.2 — 2.8× on the absent side. That is a *better* value-slop
+  margin than the shipped chrome probes, which sit at ~10–11 against the same TAU 18.
+- **Getting there needed measurement, not eyeballing.** This screen's art is *animated* (flames):
+  a whole-frame ready-vs-unready diff lights up x 58..645, and coarse/colour formulations I tried
+  in order to be shift-tolerant all collapsed to ~1.1× margins. What makes the fine ROI work is
+  that the animation does not reach inside it — the three badge-present frames differ by only ~0.5
+  there, which is also the premise for one reference frame standing in for all of them (asserted
+  in `test_ready.py`).
+- **Data caveat: one badge-absent frame.** The absent side of the threshold rests on a single
+  exemplar plus its value-slop variants. Reasonable given the ROI is static, but a few more unready
+  captures would retire it.
+
+**The systemic finding: no presence probe has any shift headroom, including the two already
+shipped.** Measured by shifting a known-present frame until the probe exceeds TAU: the 2p amp
+probes exceed at **±1 px** (SAD 31.3), the 1p score block at **±1 px** (25.5), and the badge at
+**±1 px** (27.1). So ±1 px sensitivity is a property of masked-SAD-at-nominal-offset, not of any
+one ROI choice — the badge is not the fragile outlier it first looked like. This makes the standing
+"positional slop is a one-time registration concern, deferred" (2026-07-15) more load-bearing than
+it reads: TAU 18 leaves **zero** shift margin, not "some". If a per-rig offset ever appears, all
+three probes need the offset search `amp2p.calibrate` already prototypes, and they will all break
+together rather than one at a time.
+- All four sampled regions were **verified visually** by drawing the exact boxes the code reads
+  (and, for the menu bands, the exact cells `_cell_bounds` produces) — the practice that caught the
+  `song_select` mis-registration on 2026-07-07. All correct: the menu cells hold one label each
+  with boundaries in the gaps, the amp blocks bound their panels, the 1p block bounds the scoring
+  block, and the badge ROI is centred on the banner.
+
+`tests/test_ready.py` (+7): clean decisions, wide separation, ROI-static premise, value-slop
+envelope. Full suite **114 passed**. Host-only — no export_c/firmware wiring yet, so the
+controller's `ACT_CONFIRM` on guitar-select still presses GREEN without verifying.
+
+**Not done — the assert Greg actually asked for is data-blocked.** "Marvin's guitar is already
+preselected on the left" needs a frame where it *isn't*, and all four captures have a guitar in the
+left shield (the only empty shield in the corpus is P2's, whose art differs, so it can't stand in).
+Same shape of gap as the `section_select` FULL SONG detector. **Closing capture: a few
+`guitar_select_2p` snapshots before P1's guitar is assigned / before confirming** — which would
+also supply the extra badge-absent negatives above. Until then the badge probe verifies the
+*confirm*, not the *precondition*.
 
 ### 2026-08-09 — selection layouts for the two readable 2-player screens (`multiplayer_menu`, `player_ready_2p`)
 

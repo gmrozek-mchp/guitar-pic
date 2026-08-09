@@ -34,6 +34,26 @@ SNAPSHOT_SCORES = {
 
 _VALUE_AXES = ("gain", "offset", "noise")  # per-frame realistic on a pixel-locked capture
 
+# The labelled corpus and the registration masks are both cut/painted against a
+# specific AMP2P_BLOCK origin. Greg re-registered both blocks (2026-08-10), so the
+# committed artefacts are superseded until a fresh capture is cut at the new rects
+# and the masks are re-painted. Skip rather than fail: nothing here is broken code.
+def _pending_reason() -> str | None:
+    """Why this module cannot run yet, or None."""
+    stale = amp2p.mask_origin_mismatch()
+    if stale is not None:
+        return stale
+    from gameplay.corpus import load_amp2p_corpus
+    if not load_amp2p_corpus():
+        return ("no 2p amp digit corpus: the labelled crops were cut at the pre-2026-08-10 "
+                "block origin and moved to data/scores/superseded-old-origin/ when Greg "
+                "re-registered the blocks. Re-cut them from a capture taken with the new "
+                "marvin-perf region rects (131,172,68,78) / (513,172,68,78).")
+    return None
+
+
+pytestmark = pytest.mark.skipif(_pending_reason() is not None, reason=_pending_reason() or "")
+
 
 @pytest.fixture(scope="module")
 def bank(amp2p_corpus):

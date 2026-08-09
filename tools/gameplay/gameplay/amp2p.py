@@ -56,6 +56,35 @@ from .metadata import (
 SIDES = ("left", "right")
 AMP2P_MAX_CELLS = max(AMP2P_GRID)
 
+# The block origin each committed mask was hand-painted against. A mask marks static
+# chrome in *block-local* coordinates, so it is only valid for the origin it was
+# painted at: move AMP2P_BLOCK and the same paint lands on different chrome. Keeping
+# the painted origin here makes that dependency checkable instead of silent — a stale
+# mask otherwise degrades registration quietly rather than failing.
+#
+# Update these together with a re-paint (paint on the emitted amp2p_<side>_ref_6x.png,
+# which is generated at the current AMP2P_BLOCK).
+MASK_PAINTED_AT: dict[str, tuple[int, int]] = {
+    "left":  (131, 172),
+    "right": (513, 172),
+}
+
+
+def masks_match_block() -> bool:
+    """True when every committed mask was painted at the current block origin."""
+    return all(MASK_PAINTED_AT[s] == AMP2P_BLOCK[s][:2] for s in SIDES)
+
+
+def mask_origin_mismatch() -> str | None:
+    """A human-readable reason the masks are stale, or None when they are current."""
+    bad = [f"{s}: painted at {MASK_PAINTED_AT[s]}, block now {AMP2P_BLOCK[s][:2]}"
+           for s in SIDES if MASK_PAINTED_AT[s] != AMP2P_BLOCK[s][:2]]
+    if not bad:
+        return None
+    return ("amp2p registration masks are stale — " + "; ".join(bad)
+            + ". Re-paint on data/scores/amp2p_<side>_ref_6x.png and update "
+              "amp2p.MASK_PAINTED_AT.")
+
 _LUMA_W = np.array([29, 150, 77], dtype=np.float64)  # BGR weights (matches score.py)
 
 

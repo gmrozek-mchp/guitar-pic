@@ -184,9 +184,12 @@ def song_from_filename(filename: str) -> tuple[str, int, str] | None:
 # 0-9. Per gameplay mode, because the font/box differs (training = white
 # proportional; career = green segmented, added later).
 #
-# The digit search band, relative to the chrome-registered block: the glyph rows,
-# spanning the full box interior so up to 6 digits fit (score can exceed 99999).
-# Canonical 720x480 space. See docs/journal.md.
+# The digit search band: the glyph rows, spanning the full box interior so up to 6
+# digits fit (score can exceed 99999). **Absolute canonical 720x480 coordinates**,
+# not block-relative — `read_score` indexes the frame directly and adds only the
+# registration offset (`img[y0+dy:y1+dy, x0+dx:x1+dx]`). Adding SCORE_BLOCK_ROI's
+# origin to these puts the band off the bottom of the frame (y 625). See
+# docs/journal.md.
 SCORE_DIGIT_BAND: dict[str, tuple[int, int, int, int]] = {
     "training": (122, 316, 204, 332),
 }
@@ -216,9 +219,29 @@ SCORE_CHROME_BOX = (127, 311, 190, 397)
 # interior are excluded because they change). Both sides share the block size, so
 # only the origin differs. Canonical 720x480 space. See docs/journal.md.
 AMP2P_BLOCK: dict[str, tuple[int, int, int, int]] = {
-    "left":  (128, 164, 196, 242),
-    "right": (515, 164, 583, 242),
+    "left":  (131, 172, 199, 250),
+    "right": (513, 172, 581, 250),
 }
+
+# ─── guitar_select_2p: P1's READY! badge ────────────────────────────────────────
+#
+# On the Select Guitar screen each side confirms independently and a red READY!
+# banner appears over that side's shield. This is P1's (left) banner — the side
+# marvin plays; it is what lets the controller verify its own GREEN registered
+# instead of pressing and hoping. P2's banner is not modelled: marvin waits for the
+# *screen* to advance, which is what P2 confirming produces.
+#
+# Read as a masked-SAD probe at fixed nominal coords (ready.py), the same mechanism
+# as the scoreboard-chrome probes in present.py. Two properties of this ROI made it
+# the right choice, both measured rather than assumed:
+#  - the surrounding art on this screen is *animated* (flames), so a whole-frame or
+#    wide-box diff is swamped by animation — a full-frame diff of ready vs unready
+#    lights up x 58..645. Inside this ROI the three badge-present corpus frames
+#    differ by only ~0.5 SAD, i.e. the region itself is effectively static.
+#  - present vs absent separates by ~100x here (0.0-0.5 vs 51.7): absent, the box
+#    holds the guitar body on the shield, which shares almost nothing with the banner.
+# Canonical 720x480 space. See docs/journal.md.
+READY_BADGE_ROI = (145, 265, 262, 305)
 
 # ─── 2-player amp score digits (fixed-pitch LED strip) ─────────────────────────
 #
@@ -233,12 +256,18 @@ AMP2P_BLOCK: dict[str, tuple[int, int, int, int]] = {
 # is a centred bar rather than the right-hand pair, and `4`/`7` carry diagonal
 # strokes. So digits are template-matched (integer coverage L1, same core as
 # score.py), not segment-decoded.
-AMP2P_BAND_Y0 = 14   # digit band rows 14..23 inside the block (ink is zero at 13 and 24)
+AMP2P_BAND_Y0 = 6    # digit band rows 6..15 inside the block (ink is zero at 5 and 16)
 AMP2P_BAND_H = 10
 
-# Right edge (exclusive) the strip is anchored to. The two sides' block origins
-# were chosen independently, so this differs by a constant 6 px between them.
-AMP2P_RIGHT_EDGE: dict[str, int] = {"left": 55, "right": 61}
+# Right edge (exclusive) the strip is anchored to, block-local. The two sides'
+# block origins were chosen independently, so this differs between them.
+#
+# These are *derived from* AMP2P_BLOCK, not independent measurements: the digit
+# strip sits at fixed absolute pixels, so whenever a block origin moves these (and
+# AMP2P_BAND_Y0) must move by the negation of the same delta or the cells slide off
+# the digits. Absolute anchors, which are the invariants to preserve: right edge
+# x=183 (left) / x=576 (right), band top y=178.
+AMP2P_RIGHT_EDGE: dict[str, int] = {"left": 52, "right": 63}
 
 # Per digit count: (cell_w, pitch). Cells grow leftward from AMP2P_RIGHT_EDGE.
 # The cell is the glyph *core* (7 px) — the 2 px between cores are gap, and must

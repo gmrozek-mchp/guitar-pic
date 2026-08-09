@@ -47,10 +47,10 @@ def test_region_stream_payload_stop() -> None:
 
 def test_region_stream_payload_slot_in_reserved_byte() -> None:
     """The slot rides the byte that used to be reserved, so the size is unchanged."""
-    payload = encode_region_stream_payload(True, 515, 164, 68, 78, slot=2)
+    payload = encode_region_stream_payload(True, 513, 172, 68, 78, slot=2)
     assert len(payload) == 14
     _magic, _cmd, _r0, enable, slot, x, y, w, h = _REGION_FMT.unpack(payload)
-    assert (enable, slot, x, y, w, h) == (1, 2, 515, 164, 68, 78)
+    assert (enable, slot, x, y, w, h) == (1, 2, 513, 172, 68, 78)
     # Stopping a non-zero slot must carry the slot too, or slot 0 would stop.
     _m, _c, _r, enable, slot, *_rect = _REGION_FMT.unpack(
         encode_region_stream_payload(False, slot=2)
@@ -81,7 +81,7 @@ def test_parse_rect_default_and_explicit() -> None:
 
 def test_parse_rect_defaults_to_slot_rect() -> None:
     slot = REGION_SLOT_BY_ID["score-2p-right"]
-    assert _parse_rect(None, default=slot.rect) == (515, 164, 68, 78)
+    assert _parse_rect(None, default=slot.rect) == (513, 172, 68, 78)
 
 
 def test_score_dir_autoincrement(tmp_path: Path) -> None:

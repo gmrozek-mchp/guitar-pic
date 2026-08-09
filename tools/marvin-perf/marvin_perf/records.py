@@ -514,9 +514,9 @@ class RegionSlot(NamedTuple):
 REGION_SLOTS: tuple[RegionSlot, ...] = (
     RegionSlot(0, "score", "SCORE", StripKind.REGION, DEFAULT_REGION_RECT, "score"),
     RegionSlot(1, "score-2p-left", "2P SC L", StripKind.SCORE_2P_LEFT,
-               (128, 164, 68, 78), "score-2pL"),
+               (131, 172, 68, 78), "score-2pL"),
     RegionSlot(2, "score-2p-right", "2P SC R", StripKind.SCORE_2P_RIGHT,
-               (515, 164, 68, 78), "score-2pR"),
+               (513, 172, 68, 78), "score-2pR"),
 )
 
 REGION_SLOT_BY_ID = {s.id: s for s in REGION_SLOTS}
