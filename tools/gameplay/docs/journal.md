@@ -289,6 +289,37 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Session log
 
+### 2026-08-09 — selection layouts for the two readable 2-player screens (`multiplayer_menu`, `player_ready_2p`)
+
+Prerequisite for the firmware's 2P plan (marvin journal, same date): `select_and_confirm` returns
+false on an unreadable cursor, so without a `MENU_LAYOUTS` entry the plan could only press GREEN
+blind on these two screens — and picking PRO FACE-OFF / PLAY SHOW specifically is the whole point.
+
+- **`multiplayer_menu`** — 3 items (face_off / pro_face_off / battle), band `(195,313,262,402)`.
+  **The band is deliberately narrow in x (65 px)**, which is new for this table: this poster's
+  labels are drawn on a *tilt*, rising ~20 px from the left end of a label to its right, so a
+  full-width band puts one item's glyphs into a neighbouring cell. Measured over x 195..260 the
+  item centres are y 328/358/387 with even ~29.5 px pitch; over the full label width the apparent
+  pitch skews to 30/32 and the per-item runs overlap. This is why the geometry was located by
+  measurement rather than by eye — the tilt is invisible in a whole-frame glance.
+- **`player_ready_2p`** — the **LEFT panel only** (marvin plays P1, so it reads the side it acts
+  on), 4 items, band `(190,284,312,400)`, centres y 298/327/356/385 at an exact 29 px pitch. The
+  band sits below the character art (which varies frame to frame) and well left of the P2 panel at
+  x≈380. P2's cursor is independent and this single-index model can't express it — by design, since
+  nothing needs it. The `p1_ready` frame is excluded from calibration automatically: its suffix
+  isn't in `items`, so `build_selection_calibration` skips it.
+- **Validation.** Selection reader **40/40 clean** (was 33/33): `multiplayer_menu` 3/3,
+  `player_ready_2p` 4/4; slop robustness **99.8%** (up from 99.7%). Positional budget by uniform-
+  shift sweep — the check that caught the `difficulty_select` mis-registration on 2026-07-07 —
+  is **dy ±12 / dx ±24** for `multiplayer_menu` and **dy ±11 / dx ±24** for `player_ready_2p`,
+  i.e. healthier than `main_menu`'s ±5 and in the same band as the well-registered screens.
+- `gameplay_metadata.h` re-exported (`GP_N_MENUS` 8 → **10**, per-cell baselines generated);
+  `tests/test_export_c.py` assert bumped. Full suite **107 passed**.
+- Still unread on this path (unchanged): the `READY!` badge — needed for the guitar-select
+  *assert* Greg asked for, and the natural shape is a masked-SAD probe like `present.py`'s.
+  `guitar_select_2p`, `character_select_2p` and `venue_select` have no layout and don't need one
+  (the controller's new `ACT_CONFIRM` accepts what they already offer).
+
 ### 2026-08-09 — the 5 2-player setup screens are now recognized (corpus + classifier + header)
 
 Closes the "Phase B" deferral from the 2026-08-08 nav-doc work: the setup path was *documented*

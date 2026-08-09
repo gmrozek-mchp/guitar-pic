@@ -84,6 +84,28 @@ MENU_LAYOUTS: dict[str, MenuLayout] = {
         ("lead", "rhythm"),
         band=(377, 185, 563, 249),
     ),
+    # ── 2-player setup path ───────────────────────────────────────────────────
+    # The band is deliberately narrow in x (65 px, the left end of the labels).
+    # This poster's items are drawn on a *tilt* — each label rises ~20 px from its
+    # left end to its right — so a wide rectangular band would put one item's
+    # glyphs in a neighbouring cell. Measured item centres over x 195..260 come out
+    # at y 328 / 358 / 387 (even ~29.5 px pitch); over the full label width the
+    # apparent pitch skews to 30/32 and the runs overlap. Keep this band narrow.
+    "multiplayer_menu": MenuLayout(
+        "multiplayer_menu",
+        ("face_off", "pro_face_off", "battle"),
+        band=(195, 313, 262, 402),
+    ),
+    # LEFT panel only — marvin plays P1, so this reads the side it acts on. The
+    # right panel is P2's and has its own independent cursor, which this
+    # single-index model cannot express and does not need to. Item centres
+    # y 298/327/356/385, exact 29 px pitch; the band sits below the character art
+    # (which varies frame to frame) and well left of the P2 panel at x≈380.
+    "player_ready_2p": MenuLayout(
+        "player_ready_2p",
+        ("play_show", "change_character", "change_outfit", "change_guitar"),
+        band=(190, 284, 312, 400),
+    ),
 }
 
 

@@ -64,7 +64,7 @@ static const uint8_t gp_centroids[GP_N_SCREENS][GP_FP_LEN] = {
 };
 
 /* ── static-list selection reader (per-cell deviation from baseline) ── */
-#define GP_N_MENUS 8
+#define GP_N_MENUS 10
 #define GP_AXIS_V 0
 #define GP_AXIS_H 1
 static const char *const gp_menu_main_menu_items[7] = {"career", "co_op_career", "quickplay", "multiplayer", "training", "options", "nintendo_wfc"};
@@ -83,6 +83,10 @@ static const char *const gp_menu_training_menu_items[2] = {"tutorials", "practic
 static const float gp_menu_training_menu_baseline[6] = {-0.403246f,-0.694054f,-1.53482f,1.67822f,0.112331f,-0.413468f};
 static const char *const gp_menu_part_select_items[2] = {"lead", "rhythm"};
 static const float gp_menu_part_select_baseline[6] = {1.2038f,1.2176f,-0.261375f,-0.414021f,-0.419742f,-1.62862f};
+static const char *const gp_menu_multiplayer_menu_items[3] = {"face_off", "pro_face_off", "battle"};
+static const float gp_menu_multiplayer_menu_baseline[9] = {0.0597299f,0.042152f,-1.21776f,0.154026f,0.151356f,-1.09703f,-0.190344f,-0.195706f,-1.29463f};
+static const char *const gp_menu_player_ready_2p_items[4] = {"play_show", "change_character", "change_outfit", "change_guitar"};
+static const float gp_menu_player_ready_2p_baseline[12] = {-0.49622f,-0.532007f,-0.608577f,-0.508068f,-0.58969f,-0.642166f,-0.508948f,-0.61532f,-0.687501f,-0.494803f,-0.581371f,-0.625214f};
 
 typedef struct {
   uint8_t screen;            /* index into gp_screen_ids */
@@ -101,6 +105,8 @@ static const gp_menu_layout_t gp_menus[GP_N_MENUS] = {
   {GP_SCREEN_quit_confirm, GP_AXIS_V, 2, {278,330,431,384}, gp_menu_quit_confirm_items, gp_menu_quit_confirm_baseline},
   {GP_SCREEN_training_menu, GP_AXIS_H, 2, {285,154,429,336}, gp_menu_training_menu_items, gp_menu_training_menu_baseline},
   {GP_SCREEN_part_select, GP_AXIS_V, 2, {377,185,563,249}, gp_menu_part_select_items, gp_menu_part_select_baseline},
+  {GP_SCREEN_multiplayer_menu, GP_AXIS_V, 3, {195,313,262,402}, gp_menu_multiplayer_menu_items, gp_menu_multiplayer_menu_baseline},
+  {GP_SCREEN_player_ready_2p, GP_AXIS_V, 4, {190,284,312,400}, gp_menu_player_ready_2p_items, gp_menu_player_ready_2p_baseline},
 };
 
 /* ── song_select reader (slot bitmap match + offset search) ── */

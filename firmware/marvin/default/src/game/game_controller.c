@@ -49,6 +49,13 @@
 #define GC_PLAY_POLL_MS     300u
 #define GC_CONNECT_TIMEOUT_MS  12000u  /* wait for fauxmote↔Wii reconnect */
 #define GC_ATTACH_WAIT_MS   120000u    /* attach mode: how long to wait for a gameplay screen */
+/* How long to wait on a step whose transition needs a human (2-player setup: the
+ * screen advances only once the second player confirms their own side). Human-paced,
+ * so it is the same order as GC_ATTACH_WAIT_MS rather than GC_STEP_TIMEOUT_MS.
+ * STOP is honoured throughout the wait, and a timeout ends the run with a status of
+ * its own — never the RED-recovery path, which would back marvin out of the setup
+ * flow while the player was still deciding. */
+#define GC_PLAYER_WAIT_MS   120000u
 
 /* Budgets (mirror the offline NavController). */
 #define GC_MAX_ITERS        60
@@ -59,7 +66,8 @@
 #define GC_MAX_CONFIRM_FAIL 4    /* consecutive un-confirmable steps before FAILED */
 #define GC_SATURATE_STRUMS  24   /* max strum-ups to drive a readable list to its top */
 
-typedef enum { ACT_SELECT_INDEX, ACT_SELECT_SONG, ACT_SATURATE_TOP, ACT_WAIT } gc_act_t;
+typedef enum { ACT_SELECT_INDEX, ACT_SELECT_SONG, ACT_SATURATE_TOP, ACT_WAIT,
+               ACT_CONFIRM } gc_act_t;
 
 typedef struct
 {
@@ -67,6 +75,12 @@ typedef struct
     gc_act_t    act;
     int16_t     index;   /* target cell for ACT_SELECT_INDEX */
     uint8_t     to;      /* GP_SCREEN_* expected next */
+    /* The transition off `from` is gated on the *human* confirming their own side,
+     * not on marvin's input (the 2-player setup screens — see build_plan). Such a
+     * step waits for `to` with the long GC_PLAYER_WAIT_MS budget instead of
+     * GC_STEP_TIMEOUT_MS, and must not re-fire while waiting: pressing GREEN a
+     * second time on a side that is already READY would un-confirm it. */
+    bool        await_player;
     const char *desc;
 } gc_step_t;
 
@@ -82,7 +96,11 @@ static volatile bool s_stop_req;
 static volatile uint8_t s_mode = GC_MODE_NAV;   /* set by Start / StartAttach */
 static void (*s_status_cb)(const char *);
 
-static gc_step_t s_plan[8];
+/* The longest plan today is 2-player at 12 steps (1-player practice uses 8); sized with
+ * slack so adding a step to either doesn't silently run off the end. Both builders
+ * assert their fit. */
+#define GC_PLAN_CAP  16
+static gc_step_t s_plan[GC_PLAN_CAP];
 static int       s_plan_len;
 
 static void status(const char *s)
@@ -232,17 +250,61 @@ static bool wait_screen_change(uint8_t from, uint32_t timeout_ms)
 
 /* ── plan ─────────────────────────────────────────────────────────────────── */
 
-static void build_plan(const game_selection_t *sel)
+/* The 2-player (pro face-off) path, per gh3_navigation.md. Policy is fixed, not
+ * chosen at run time: always PRO FACE-OFF, always PLAY SHOW, confirm through the
+ * venue, and marvin drives P1 (left) only while a human drives P2.
+ *
+ * Two steps are `await_player`: on select-guitar and player-ready, marvin confirms
+ * its own side and the screen advances only once the human confirms theirs.
+ *
+ * The tail from song_select on is deliberately over-specified. Whether pro face-off
+ * shows part_select, and whether section/speed select appear at all, is an open
+ * question (the capture that mapped this path stopped at venue_select). Because the
+ * plan is dispatched by *observed* screen, a step whose screen never appears is
+ * simply never run — so listing them costs nothing and turns a plausible surprise
+ * screen into a handled one instead of a RED-recovery back out of the setup flow.
+ *
+ * Unverified hop: character_select_2p -> player_ready_2p. Since each half advances
+ * independently, the frame right after marvin confirms is "P1 on its panel, P2 still
+ * on the strip" — a mixed state the corpus has no example of (it has the mirror,
+ * P1-strip/P2-panel), so which class it lands in is unknown. If it still reads as
+ * character_select_2p the step re-fires one extra GREEN, which lands on the panel's
+ * already-highlighted PLAY SHOW and therefore confirms the intended destination
+ * early rather than wandering off. Watch the GAME log on the first hardware run.
+ */
+static void build_plan_2p(const game_selection_t *sel)
 {
     int n = 0;
-    s_plan[n++] = (gc_step_t){ GP_SCREEN_main_menu,        ACT_SELECT_INDEX, 4, GP_SCREEN_training_menu,    "TRAINING" };
-    s_plan[n++] = (gc_step_t){ GP_SCREEN_training_menu,    ACT_SELECT_INDEX, 1, GP_SCREEN_song_select,      "PRACTICE" };
-    s_plan[n++] = (gc_step_t){ GP_SCREEN_song_select,      ACT_SELECT_SONG,  0, GP_SCREEN_part_select,      "song" };
-    s_plan[n++] = (gc_step_t){ GP_SCREEN_part_select,      ACT_SELECT_INDEX, 0, GP_SCREEN_difficulty_select,"LEAD" };
-    s_plan[n++] = (gc_step_t){ GP_SCREEN_difficulty_select,ACT_SELECT_INDEX, (int16_t)sel->difficulty, GP_SCREEN_section_select, "difficulty" };
-    s_plan[n++] = (gc_step_t){ GP_SCREEN_section_select,   ACT_SATURATE_TOP, 0, GP_SCREEN_speed_select,     "FULL SONG" };
-    s_plan[n++] = (gc_step_t){ GP_SCREEN_speed_select,     ACT_SATURATE_TOP, 0, GP_SCREEN_loading,          "FULL SPEED" };
-    s_plan[n++] = (gc_step_t){ GP_SCREEN_loading,          ACT_WAIT,         0, GP_SCREEN_in_song,          "loading" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_main_menu,          ACT_SELECT_INDEX, 3, GP_SCREEN_guitar_select_2p,    false, "MULTIPLAYER" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_guitar_select_2p,   ACT_CONFIRM,      0, GP_SCREEN_multiplayer_menu,    true,  "guitar (await P2)" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_multiplayer_menu,   ACT_SELECT_INDEX, 1, GP_SCREEN_character_select_2p, false, "PRO FACE-OFF" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_character_select_2p,ACT_CONFIRM,      0, GP_SCREEN_player_ready_2p,     false, "character" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_player_ready_2p,    ACT_SELECT_INDEX, 0, GP_SCREEN_venue_select,        true,  "PLAY SHOW (await P2)" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_venue_select,       ACT_CONFIRM,      0, GP_SCREEN_song_select,         false, "venue" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_song_select,        ACT_SELECT_SONG,  0, GP_SCREEN_difficulty_select,   false, "song" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_part_select,        ACT_SELECT_INDEX, 0, GP_SCREEN_difficulty_select,   false, "LEAD" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_difficulty_select,  ACT_SELECT_INDEX, (int16_t)sel->difficulty, GP_SCREEN_loading, false, "difficulty" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_section_select,     ACT_SATURATE_TOP, 0, GP_SCREEN_speed_select,        false, "FULL SONG" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_speed_select,       ACT_SATURATE_TOP, 0, GP_SCREEN_loading,             false, "FULL SPEED" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_loading,            ACT_WAIT,         0, GP_SCREEN_in_song_2p,          false, "loading" };
+    configASSERT(n <= GC_PLAN_CAP);
+    s_plan_len = n;
+}
+
+static void build_plan(const game_selection_t *sel)
+{
+    if (sel->mode == (uint8_t)GAME_MODE_2P) { build_plan_2p(sel); return; }
+
+    int n = 0;
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_main_menu,        ACT_SELECT_INDEX, 4, GP_SCREEN_training_menu,    false, "TRAINING" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_training_menu,    ACT_SELECT_INDEX, 1, GP_SCREEN_song_select,      false, "PRACTICE" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_song_select,      ACT_SELECT_SONG,  0, GP_SCREEN_part_select,      false, "song" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_part_select,      ACT_SELECT_INDEX, 0, GP_SCREEN_difficulty_select,false, "LEAD" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_difficulty_select,ACT_SELECT_INDEX, (int16_t)sel->difficulty, GP_SCREEN_section_select, false, "difficulty" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_section_select,   ACT_SATURATE_TOP, 0, GP_SCREEN_speed_select,     false, "FULL SONG" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_speed_select,     ACT_SATURATE_TOP, 0, GP_SCREEN_loading,          false, "FULL SPEED" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_loading,          ACT_WAIT,         0, GP_SCREEN_in_song,          false, "loading" };
+    configASSERT(n <= GC_PLAN_CAP);
     s_plan_len = n;
 }
 
@@ -266,6 +328,12 @@ static bool execute(const gc_step_t *st)
         case ACT_SELECT_SONG:   return select_song();
         case ACT_SATURATE_TOP:  return saturate_top(st->from);
         case ACT_WAIT:          return wait_for(st->to, GC_LOADING_TIMEOUT_MS);
+        /* Accept whatever this screen already offers. For screens with no cursor to
+         * read (no gp_menus layout) and nothing to choose: select-guitar, the
+         * character-select strip, and the venue carousel (any venue is fine). The
+         * dispatcher only calls this after observing st->from, so the screen is
+         * already confirmed and GREEN is not blind. */
+        case ACT_CONFIRM:       send_input(GC_GREEN); return true;
         default:                return false;
     }
 }
@@ -544,10 +612,25 @@ static void run(void)
             LOG_INFO("GC: %s\r\n", st->desc);
             if (execute(st))
             {
+                if (st->await_player)
+                {
+                    /* Marvin has confirmed its side; the screen now moves only when the
+                     * human confirms theirs. Wait for the *expected* screen (not merely
+                     * "changed") on the long budget, and treat running out as its own
+                     * terminal outcome: falling through would re-fire the step and press
+                     * GREEN again on an already-READY side, and recovering would RED out
+                     * of the setup flow while the player was still deciding. */
+                    status("WAITING FOR P2");
+                    if (!wait_for(st->to, GC_PLAYER_WAIT_MS))
+                    {
+                        finish(s_stop_req ? "READY" : "NO PLAYER 2");
+                        return;
+                    }
+                }
                 /* Wait for the transition off this screen before re-evaluating, so
                  * the same step can't re-fire (and a stray input can't hit the next
                  * screen). ACT_WAIT already blocked until its target screen. */
-                if (st->act != ACT_WAIT)
+                else if (st->act != ACT_WAIT)
                 {
                     (void)wait_screen_change(st->from, GC_STEP_TIMEOUT_MS);
                 }
