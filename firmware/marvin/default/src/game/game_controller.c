@@ -15,7 +15,7 @@
 #include "actuator/manual_control.h"
 #include "actuator/fretboard_link.h"
 #include "actuator/guitar_cmd.h"
-#include "detector/cv_marvin_v1.h"   /* select the highway geometry at gameplay entry */
+#include "detector/cv_marvin_v1.h"   /* highway geometry + play difficulty */
 #include "perf_log/perf_log_records.h"
 #include "ui/dashboard_feed.h"   /* playtime → dashboard progress bar */
 #include "net/fauxmote/fauxmote_link.h"   /* pre-flight: ensure the Wii link is up */
@@ -454,6 +454,18 @@ static void run(void)
     }
 
     s_busy = true;
+
+    /* Push the committed difficulty to both detectors: the CV detector picks its
+     * observation lead from it (the highway scrolls faster on harder tiers), and
+     * the fretboard node picks its inference model. Applied once here because the
+     * selection is an input to the run and SELECT SONG is gated while one is in
+     * flight. Guarded on ->valid so attach mode with nothing committed keeps
+     * whatever the console last set. */
+    if (sel->valid)
+    {
+        CvMarvinV1_SetDifficulty(sel->difficulty);
+        FretboardLink_SetDifficulty(sel->difficulty);
+    }
 
     /* Clear the ROBOT telemetry the instant a run is requested — score/multiplier/
      * streak zero out on Play, without waiting to navigate into gameplay. */

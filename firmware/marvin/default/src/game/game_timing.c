@@ -478,6 +478,10 @@ void GameTiming_SetEnabled(bool enabled)
     Detector_SetGameActive(enabled);
     FretboardLink_UpdateArm();
 
+    /* Same edge is the retry point for the node's model selection: the run start
+     * pushed it, and a send that failed then (link down) is re-attempted here. */
+    FretboardLink_UpdateModel();
+
     if (!enabled)
     {
         /* Release the wire on disable so no frets stay held (the actuator's own

@@ -70,4 +70,25 @@ bool FretboardLink_IsConnected(void);
  * transport (no control channel). */
 void FretboardLink_UpdateArm(void);
 
+/* Play difficulty for the fretboard node's inference-model selection. The
+ * index is passed through unchanged: game_difficulty_t 0..3 is the same
+ * numbering as the node's MODEL_SEL_EASY..MODEL_SEL_EXPERT (the node's header
+ * isn't shared with marvin, so this identity is a contract, not a compile-time
+ * check). Set from the committed GameSelection at run start; the console
+ * `fretboard model <x>` writes the same channel by hand and is therefore
+ * overridden by the next run.
+ *
+ * FRETBOARD_DIFFICULTY_COUNT bounds the accepted index. It covers the four
+ * concrete difficulties only — the node's fifth slot (MODEL_SEL_AUTO) is
+ * reachable from the console, not from a play difficulty.
+ *
+ * SetDifficulty stores the wanted selection and pushes it; UpdateModel re-pushes
+ * when it differs from what the node was last told, latching only on a
+ * successful send so a link-down attempt is retried. Both no-op on the UART
+ * transport (no control channel). */
+#define FRETBOARD_DIFFICULTY_COUNT 4u
+
+void FretboardLink_SetDifficulty(uint8_t difficulty);
+void FretboardLink_UpdateModel(void);
+
 #endif

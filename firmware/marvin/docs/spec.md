@@ -156,11 +156,13 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
 |---|---|---|
 | HDMI source → DDR (capture) | ≤ 16.7 ms | One frame @ 60 Hz; bounded by capture pipeline. |
 | Detect on frame | ≤ 16.7 ms | One frame budget for CV; ADC path is separate and faster. |
-| Timing pipeline → command emit | latency dominated by the detector **observation lead** (`observation_lead_ms` ≈ 200–250 ms) — intentional, not waste; compensates for sensor placement above strike line. |
+| Timing pipeline → command emit | latency dominated by the detector **observation lead** (≈ 210–420 ms) — intentional, not waste; compensates for sensor placement above strike line. |
 | UART command → fretboard GPIO | ≤ 5 ms | Short fixed-format frame at ≥ 115 200 Bd. |
-| Total user-visible latency | ≈ 200–250 ms | Tunable via `observation_lead_ms`, set per-detector/per-game by calibration. |
+| Total user-visible latency | ≈ 210–420 ms | Set by calibration per detector, per highway, and per play difficulty. |
 
-The dominant fixed delay (the detector's `observation_lead_ms`) exists by design — the camera sees notes before they reach the strike line, so the detector stamps a strike-line time (§4.2.3) that far ahead and the pipeline schedules to it. Capture + detect + UART jitter is what we actually budget against.
+The dominant fixed delay (the detector's observation lead) exists by design — the camera sees notes before they reach the strike line, so the detector stamps a strike-line time (§4.2.3) that far ahead and the pipeline schedules to it. Capture + detect + UART jitter is what we actually budget against.
+
+The lead is **not one constant**: the note highway scrolls faster on harder difficulties, so it is calibrated per (highway, play difficulty) — roughly 420 ms on easy down to ~210 ms on expert. `cv_marvin_v1` owns the table and takes the active difficulty from the committed `GameSelection` (§4.8); the console `cvdiff` command reads it and retunes cells live.
 
 ---
 
@@ -268,6 +270,7 @@ Fields are fixed-width, naturally aligned, little-endian — this is also the on
 
 - Algorithm changes are versioned (`cv_marvin_v1`, `cv_marvin_v2`, …). The version is stamped into recordings so training data stays attributable.
 - Calibration (sensor/strike-line ROIs in pixel space) is stored in the system config (§4.7) and reproducibly applied at startup.
+- The **observation lead** is calibration too, but per (highway, play difficulty) rather than per detector — see §2.4. It is runtime-tunable and is stamped into every `PERF_REC_DETECTOR_CONFIG` record alongside the difficulty and highway it applied to, so a capture is self-describing.
 - The detector must run within one frame-time (≤ 16.7 ms) on Cortex-A5 — concrete algorithm choice is a future decision, but the budget is set.
 
 #### 4.2.6 Open questions surfaced here
@@ -294,7 +297,7 @@ Centralized on marvin by default. It is the **decide layer** — a peer of the d
 - Pending-chord FIFO with per-chord `press_at` / `strum_at` ticks (both derived from `strike_at_ms`).
 - Per-fret release scheduling.
 - Strum direction alternation and pulse generation.
-- `FRET_EARLY_MS` / `STRUM_PULSE_MS` musical-scheduling constants — initial values port from `tools/fret-tuner/SPEC.md` and `firmware/fretboard/SPEC.md`. (The former `STRUM_DELAY_MS` is now the detector's per-config `observation_lead_ms`.)
+- `FRET_EARLY_MS` / `STRUM_PULSE_MS` musical-scheduling constants — initial values port from `tools/fret-tuner/SPEC.md` and `firmware/fretboard/SPEC.md`. (The former `STRUM_DELAY_MS` is now the detector's observation lead, per highway × play difficulty — §2.4.)
 - **Actuator advance:** subtracts the active actuator node's declared mechanical advance (`FRETBOARD_ACTUATOR_ADVANCE_MS`, 0 for the open-drain guitar node) when deciding when to emit, so a solenoid rig's rise time lands the effect on the strike line. The wire byte stays a bare "assert now" mask (Option A; see journal 2026-07-15).
 
 **Disable / handoff mode:** an operator-mode toggle (§6) deactivates marvin's pipeline. fretboard then runs its own existing pipeline; marvin still ingests ADC + emitted-command telemetry for recording/display, but does not emit commands.

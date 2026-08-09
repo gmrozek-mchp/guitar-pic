@@ -14,7 +14,7 @@ from enum import IntEnum
 from typing import ClassVar, NamedTuple
 
 
-EXPECTED_SCHEMA_VERSION = 6
+EXPECTED_SCHEMA_VERSION = 7
 
 PERF_LOG_HDR_MAGIC = 0x4D56  # 'M','V' little-endian
 PERF_CMD_HDR_MAGIC = 0x4D43  # 'M','C' little-endian — host→device commands
@@ -327,13 +327,21 @@ class TaskRuntime:
 
 @dataclass(frozen=True)
 class DetectorConfig:
-    """cv_marvin_v1 per-fret configuration. Static today; becomes runtime-
-    tunable when M6 calibration UI lands. Floats are IEEE 754 little-endian
-    on the wire — same representation Python's struct delivers.
+    """cv_marvin_v1 per-fret configuration. Coords and thresholds are still
+    compile-time; the observation lead is already runtime-tunable, and the rest
+    follows when M6 calibration UI lands. Floats are IEEE 754 little-endian on
+    the wire — same representation Python's struct delivers.
 
     Sample coords are in capture-frame space, matching STRIP record (x, y)
     anchors so host overlay code computes strip-relative pixels as
     `sample_x - strip.x`, `sample_y - strip.y`.
+
+    `observation_lead_ms` is the lead the detector added to the frame timestamp
+    to stamp `strike_at_ms`. It varies with `difficulty` (0..3, easy → expert:
+    the highway scrolls faster on harder tiers) and with `lead_slot` (which
+    highway's calibration row — 0 = 1p, 1 = 2p-left, matching the
+    SENSING/SENSING_2P strip-kind pairs), so a capture is ambiguous without all
+    three. Emitted on change and at ~1 Hz.
     """
 
     hdr: Header
@@ -350,12 +358,26 @@ class DetectorConfig:
     color_reject_b: tuple[float, ...]
     color_reject_g: tuple[float, ...]
     color_reject_r: tuple[float, ...]
+    observation_lead_ms: int
+    difficulty: int   # 0..3, easy → expert
+    lead_slot: int    # 0 = 1p, 1 = 2p-left
 
-    # 4 × (5×u16) + 3 × f32 + 6 × (5×f32) = 40 + 12 + 120 = 172 B body
+    # 4 × (5×u16) + 3 × f32 + 6 × (5×f32) + u16 + 2×u8
+    #  = 40 + 12 + 120 + 4 = 176 B body
     _BODY: ClassVar[struct.Struct] = struct.Struct(
-        "<5H5H5H5H fff 5f5f5f 5f5f5f"
+        "<5H5H5H5H fff 5f5f5f 5f5f5f HBB"
     )
-    SIZE: ClassVar[int] = HDR_SIZE + _BODY.size  # 16 + 172 = 188
+    SIZE: ClassVar[int] = HDR_SIZE + _BODY.size  # 16 + 176 = 192
+
+    @property
+    def difficulty_name(self) -> str:
+        names = ("easy", "medium", "hard", "expert")
+        return names[self.difficulty] if self.difficulty < len(names) else f"diff_{self.difficulty}"
+
+    @property
+    def lead_slot_name(self) -> str:
+        names = ("1p", "2p-left")
+        return names[self.lead_slot] if self.lead_slot < len(names) else f"slot_{self.lead_slot}"
 
 
 @dataclass(frozen=True)

@@ -351,6 +351,41 @@ void FretboardLink_UpdateArm(void)
 #endif
 }
 
+#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+/* Wanted model selection and what the node was last successfully told. -1 is
+ * "no selection yet" / "node state unknown", which is what keeps the first push
+ * from being suppressed as a no-change and keeps difficulty 0 (easy) from being
+ * pushed before anything asked for it. */
+static int16_t s_model_sel    = -1;
+static int16_t s_model_pushed = -1;
+#endif
+
+void FretboardLink_SetDifficulty(uint8_t difficulty)
+{
+#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+    if (difficulty >= FRETBOARD_DIFFICULTY_COUNT) { return; }
+    s_model_sel = (int16_t)difficulty;
+    FretboardLink_UpdateModel();
+#else
+    (void)difficulty;
+#endif
+}
+
+void FretboardLink_UpdateModel(void)
+{
+#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+    if (s_model_sel < 0)                { return; }
+    if (s_model_sel == s_model_pushed)  { return; }
+
+    /* Latch only on a successful send, so a link-down attempt is retried by the
+     * next call (GameTiming_SetEnabled on the gameplay-window edge). */
+    if (T1SLink_SendFretboardCtrl(T1S_DET_CTRL_MODEL, (uint8_t)s_model_sel))
+    {
+        s_model_pushed = s_model_sel;
+    }
+#endif
+}
+
 void FretboardLink_Send(uint8_t mask, uint8_t producer_id)
 {
     /* No released/held distinction for this producer — the teacher label is the

@@ -46,8 +46,9 @@
 /* Discriminated slot for the state queue. The drain task switches on
  * hdr.type and writes only the populated bytes. Sized to the largest
  * small record so all types fit in one slot — DETECTOR_CONFIG is by far
- * the largest at ~188 B; the others fit in 32-51 B. The slot grew with
- * v3; queue depth × slot size is still trivial against 240 MB DDR. */
+ * the largest at 192 B; the others fit in 32-51 B. The slot grew with
+ * v3 and again with v7; queue depth × slot size is still trivial against
+ * 240 MB DDR. */
 typedef union
 {
     perf_hdr_t                  hdr;

@@ -4,6 +4,15 @@ Running log of planning, decisions, open questions, and work-in-progress for the
 
 ---
 
+**2026-08-08 — model selection is now driven by the difficulty marvin is playing, not only by a typed console command. No fretboard-side change.**
+
+- **The wire path was already complete and had exactly one producer: a human.** `T1S_DET_CTRL_MODEL` (opcode 3 on `0x88B9`) → `model_infer_set_sel` → `MODEL_SEL_*` has worked since the model-select work landed, but the only thing that ever sent it was marvin's `fretboard model <easy|medium|hard|expert|auto>`. So the node's inference model had no relationship to the difficulty actually being played.
+- Marvin now pushes the committed song-select difficulty on every run start (`FretboardLink_SetDifficulty`, edge-triggered, latching only on a successful send and retried on the gameplay-window edge). `game_difficulty_t` 0..3 is the same numbering as `MODEL_SEL_EASY..EXPERT` — a contract, since marvin does not include this project's `model_infer.h`. `MODEL_SEL_AUTO` (slot 4) is deliberately **not** reachable this way: it is not a play difficulty, so it stays console-only.
+- **Consequence to be aware of on the bench:** `fretboard model <x>` is now overridden by the next `play`. Marvin's help text says so. And since `hard` is still the only trained entry in `MODEL_BY_DIFFICULTY`, selecting easy/medium/expert changes which slot is *selected* without changing behaviour until those models exist — see [`models.h`](../models.h) `MODEL_DIFFICULTY_TRAINED`.
+- Related: GH3's scroll speed is confirmed to vary with difficulty, which is why marvin needed per-difficulty timing at all — see marvin journal 2026-08-08 and edge-ai decision log 2026-08-08. That also means a per-tier model needs a per-tier corpus, not just a selector.
+
+---
+
 **2026-08-04 — extended heartbeat to v2: report per-node telemetry for marvin's bus-stats UI.** Same contract as the other followers, but `t1s_detector.c` has four TX paths (data→coordinator, command→guitar, GUITAR→fauxmote, heartbeat) and had no RX counter. `0x88B6` payload 8→20 bytes (`T1S_HB_VERSION` 1→2, `T1S_HB_LEN` 8→20): append LE `tx_count_u32, rx_count_u32, crc_err_u16, sym_err_u16`. New `s_tx_total` counts **completed** transmits in all four `*_tx_done` callbacks (distinct from the existing `s_tx_count` = data-frames-only, kept for the CLI/banner); new `s_rx_count` counts all received frames at the top of `TC6_CB_OnRxEthernetPacket` (this node otherwise only consumes the control channel); new `s_crc_err`/`s_sym_err` in `TC6Regs_CB_OnEvent`. Wire contract: `docs/t1s-podl-link.md` §7.2; marvin parses gated on length → standalone reflash. App logic only. **Pending build + on-hardware check.**
 
 ---

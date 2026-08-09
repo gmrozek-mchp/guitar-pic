@@ -288,6 +288,7 @@ def test_detector_config_round_trip() -> None:
         *hx, *hy, *ex, *ey,
         100.0, 0.78, 25.0,
         *tb, *tg, *tr, *rb, *rg, *rr,
+        315, 1, 1,   # observation_lead_ms, difficulty (medium), lead_slot (2p-left)
     )
     payload = build_header(RecordType.DETECTOR_CONFIG) + body
     rec = _round_trip_via_iter_frames(payload)
@@ -304,6 +305,12 @@ def test_detector_config_round_trip() -> None:
     for got, want in zip(rec.color_reject_r, rr):
         assert got == pytest.approx(want)
     assert len(rec.color_target_g) == n
+    assert rec.observation_lead_ms == 315
+    assert rec.difficulty == 1
+    assert rec.difficulty_name == "medium"
+    assert rec.lead_slot == 1
+    assert rec.lead_slot_name == "2p-left"
+    assert DetectorConfig.SIZE == 192
 
 
 def test_actuator_round_trip() -> None:

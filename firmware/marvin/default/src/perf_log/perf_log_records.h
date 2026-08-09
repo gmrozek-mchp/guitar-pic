@@ -13,7 +13,7 @@
  * are framed on the wire by the drain task (SOF magic + length + CRC);
  * the structs below are the framed payload only. */
 
-#define PERF_LOG_SCHEMA_VERSION   6u
+#define PERF_LOG_SCHEMA_VERSION   7u
 
 #define PERF_LOG_HDR_MAGIC        0x4D56u   /* 'M','V' little-endian */
 
@@ -304,12 +304,13 @@ typedef struct __attribute__((packed))
     uint32_t   reserved2;
 } perf_rec_task_runtime_t;
 
-/* PERF_REC_DETECTOR_CONFIG — cv_marvin_v1 per-fret configuration. Static
- * today (compile-time tables); becomes runtime-tunable when M6 calibration
- * UI lands. Emitted on connect-up edge and on change so the host always
- * has a current copy. Sample coords are in capture-frame space (matching
- * STRIP record (x, y) anchors). Floats are IEEE 754 little-endian — same
- * representation on both sides. Used by the host to render sample
+/* PERF_REC_DETECTOR_CONFIG — cv_marvin_v1 per-fret configuration. Coords and
+ * thresholds are compile-time tables; the observation lead is already runtime-
+ * tunable (per highway × play difficulty), and the rest follows when M6
+ * calibration UI lands. Emitted on connect-up edge, on change, and at ~1 Hz so
+ * the host always has a current copy. Sample coords are in capture-frame space
+ * (matching STRIP record (x, y) anchors). Floats are IEEE 754 little-endian —
+ * same representation on both sides. Used by the host to render sample
  * dots / threshold reference lines onto STRIP canvases. */
 typedef struct __attribute__((packed))
 {
@@ -327,6 +328,9 @@ typedef struct __attribute__((packed))
     float      color_reject_b[FRET_COUNT];     /* per-fret reject weights */
     float      color_reject_g[FRET_COUNT];
     float      color_reject_r[FRET_COUNT];
+    uint16_t   observation_lead_ms;            /* lead added to stamp strike_at_ms */
+    uint8_t    difficulty;                     /* play difficulty index 0..3 */
+    uint8_t    lead_slot;                      /* cv_lead_slot_t: which highway's row */
 } perf_rec_detector_config_t;
 
 /* PERF_REC_ACTUATOR — emitted on every FretboardLink_Send call (i.e. on

@@ -56,7 +56,7 @@ const cv_marvin_v1_config_t CV_MARVIN_CFG_1P =
     .strike_x  = 212u, .strike_y  = 395u, .strike_w  = 290u, .strike_h  = 32u,
     .sensing_kind = PERF_STRIP_SENSING,
     .strike_kind  = PERF_STRIP_STRIKE,
-    .observation_lead_ms = 250u,
+    .lead_slot    = CV_LEAD_SLOT_1P,
 };
 
 const cv_marvin_v1_config_t CV_MARVIN_CFG_2P_LEFT =
@@ -74,12 +74,39 @@ const cv_marvin_v1_config_t CV_MARVIN_CFG_2P_LEFT =
     .strike_x  = 120u, .strike_y  = 395u, .strike_w  = 205u, .strike_h  = 34u,
     .sensing_kind = PERF_STRIP_SENSING_2P,
     .strike_kind  = PERF_STRIP_STRIKE_2P,
-    .observation_lead_ms = 250u,
+    .lead_slot    = CV_LEAD_SLOT_2P_LEFT,
 };
 
 /* Active geometry, and a pending swap picked up by the task on the next frame. */
 static const cv_marvin_v1_config_t *volatile s_active_cfg  = &CV_MARVIN_CFG_1P;
 static const cv_marvin_v1_config_t *volatile s_pending_cfg = NULL;
+
+/* Observation lead per (highway, difficulty), in ms. RAM rather than const so
+ * `cvdiff` can retune a cell live against a running game — calibrating this by
+ * rebuild is impractical.
+ *
+ * Easy (420) and hard (250) are measured, roughly; medium and expert are
+ * *derived*, not measured — taking scroll speed as linear in difficulty index,
+ * the lead is its harmonic interpolation/extrapolation from those two points
+ * (1/420 and 1/250 give ≈313 and ≈208, rounded so they don't read as
+ * measurements). Both highways seed identically because that is the best guess
+ * today, not because they are required to agree. */
+static uint16_t s_lead_ms[CV_LEAD_SLOT_COUNT][CV_DIFF_COUNT] =
+{
+    /*                       easy  medium  hard  expert */
+    [CV_LEAD_SLOT_1P]      = { 420u, 315u, 250u, 210u },
+    [CV_LEAD_SLOT_2P_LEFT] = { 420u, 315u, 250u, 210u },
+};
+
+/* Active difficulty (a CV_DIFF_COUNT-range index matching game_difficulty_t).
+ * Boots to hard: it is a measured tier, and it matches the fretboard node's
+ * MODEL_SEL_DEFAULT. A real run always sets it from the committed selection, so
+ * this only governs a console-driven or attach-mode session. */
+static volatile uint8_t s_difficulty = 2u;   /* hard */
+
+/* Raised by any setter that changes what publish_detector_config would emit;
+ * the task clears it and re-publishes before the next frame. */
+static volatile bool s_cfg_dirty = false;
 
 /* Per-fret BGR target / reject weights. Edge signal is
  * (target·c − max(0, reject·c)) × sat_ratio. Reject totals exceed 1.0
@@ -186,6 +213,17 @@ static float color_signal(const float bgr[3], const color_filter_t *f)
 
 /* ─── Detection ────────────────────────────────────────────────────────── */
 
+/* Lead for the active (highway, difficulty) cell. Both indices are read once so
+ * a concurrent setter can't split them across the two lookups. */
+static uint16_t active_lead_ms(const cv_marvin_v1_config_t *cfg)
+{
+    uint8_t slot = cfg->lead_slot;
+    uint8_t diff = s_difficulty;
+    if (slot >= CV_LEAD_SLOT_COUNT) { slot = CV_LEAD_SLOT_1P; }
+    if (diff >= CV_DIFF_COUNT)      { diff = 0u; }
+    return s_lead_ms[slot][diff];
+}
+
 static void detect_frame(const Video_FrameInfo *frame,
                          const cv_marvin_v1_config_t *cfg)
 {
@@ -194,7 +232,7 @@ static void detect_frame(const Video_FrameInfo *frame,
     state.frame_epoch  = frame->frame_count;
     state.timestamp_us = frame->timestamp_us;   /* capture time, not detect time */
     state.strike_at_ms = (uint32_t)(state.timestamp_us / 1000ull)
-                       + cfg->observation_lead_ms;
+                       + active_lead_ms(cfg);
     state.detector_id  = (uint8_t)DETECTOR_CV_MARVIN_V1;
 
     const float    hold_release = CV_HOLD_THRESH * CV_HOLD_RELEASE_FRAC;
@@ -369,10 +407,11 @@ static void draw_overlay(uint8_t *buf, uint16_t bw, uint16_t bh,
 
 /* ─── Detector-config publish ──────────────────────────────────────────── */
 
-/* Snapshot the static cv_marvin_v1 tables (sample coords, thresholds,
- * color filter weights) into a wire record. Static today; when M6
- * calibration UI lands and these become runtime-tunable, this function
- * is the single point that re-publishes after each tweak. */
+/* Snapshot the cv_marvin_v1 tables (sample coords, thresholds, color filter
+ * weights) plus the active observation lead into a wire record. The coords and
+ * thresholds are still compile-time; the lead is not, which is why every setter
+ * routes back through here so a capture always records the lead that produced
+ * its detector decisions. */
 static void publish_detector_config(const cv_marvin_v1_config_t *geom)
 {
     perf_rec_detector_config_t cfg;
@@ -390,9 +429,12 @@ static void publish_detector_config(const cv_marvin_v1_config_t *geom)
         cfg.color_reject_g[i] = s_color_filter[i].reject[1];
         cfg.color_reject_r[i] = s_color_filter[i].reject[2];
     }
-    cfg.hold_thresh       = CV_HOLD_THRESH;
-    cfg.hold_release_frac = CV_HOLD_RELEASE_FRAC;
-    cfg.edge_thresh       = CV_EDGE_THRESH;
+    cfg.hold_thresh          = CV_HOLD_THRESH;
+    cfg.hold_release_frac    = CV_HOLD_RELEASE_FRAC;
+    cfg.edge_thresh          = CV_EDGE_THRESH;
+    cfg.observation_lead_ms  = active_lead_ms(geom);
+    cfg.difficulty           = s_difficulty;
+    cfg.lead_slot            = geom->lead_slot;
     PerfLog_EmitDetectorConfig(&cfg);
 }
 
@@ -431,17 +473,24 @@ static void cv_marvin_v1_task(void *param)
         if (xQueueReceive(frames, &frame, portMAX_DELAY) != pdTRUE) { continue; }
 
         /* Apply a pending geometry swap before touching the frame, even when
-         * disabled, so a config change while paused takes effect on resume. */
+         * disabled, so a config change while paused takes effect on resume.
+         * A difficulty/lead change arrives through s_cfg_dirty alone: the
+         * sensors haven't moved, so the latch state must survive it. */
         const cv_marvin_v1_config_t *pending = s_pending_cfg;
         if (pending != NULL)
         {
             s_pending_cfg = NULL;
             s_active_cfg  = pending;
             reset_detector_state();
-            publish_detector_config(pending);
+            s_cfg_dirty   = true;
             LOG_INFO("CV: config -> %s\r\n", pending->name);
         }
         const cv_marvin_v1_config_t *cfg = s_active_cfg;
+        if (s_cfg_dirty)
+        {
+            s_cfg_dirty = false;
+            publish_detector_config(cfg);
+        }
 
         /* Always drain, even when disabled, so frames don't back up. */
         if (!Detector_IsEnabled(DETECTOR_CV_MARVIN_V1)) { continue; }
@@ -529,6 +578,32 @@ void CvMarvinV1_SetConfig(const cv_marvin_v1_config_t *cfg)
 const cv_marvin_v1_config_t *CvMarvinV1_GetConfig(void)
 {
     return s_active_cfg;
+}
+
+void CvMarvinV1_SetDifficulty(uint8_t difficulty)
+{
+    if (difficulty >= CV_DIFF_COUNT)   { return; }
+    if (difficulty == s_difficulty)    { return; }
+    s_difficulty = difficulty;
+    s_cfg_dirty  = true;
+}
+
+uint8_t CvMarvinV1_GetDifficulty(void)
+{
+    return s_difficulty;
+}
+
+uint16_t CvMarvinV1_GetLeadMs(uint8_t slot, uint8_t difficulty)
+{
+    if (slot >= CV_LEAD_SLOT_COUNT || difficulty >= CV_DIFF_COUNT) { return 0u; }
+    return s_lead_ms[slot][difficulty];
+}
+
+void CvMarvinV1_SetLeadMs(uint8_t slot, uint8_t difficulty, uint16_t ms)
+{
+    if (slot >= CV_LEAD_SLOT_COUNT || difficulty >= CV_DIFF_COUNT) { return; }
+    s_lead_ms[slot][difficulty] = ms;
+    s_cfg_dirty = true;
 }
 
 void CvMarvinV1_Initialize(void)

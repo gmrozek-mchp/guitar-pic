@@ -138,6 +138,9 @@ def _decode_detector_config(hdr: Header, payload: bytes) -> DetectorConfig:
         color_reject_b=tuple(fields[4 * n + 3 + 3 * n : 4 * n + 3 + 4 * n]),
         color_reject_g=tuple(fields[4 * n + 3 + 4 * n : 4 * n + 3 + 5 * n]),
         color_reject_r=tuple(fields[4 * n + 3 + 5 * n : 4 * n + 3 + 6 * n]),
+        observation_lead_ms=fields[4 * n + 3 + 6 * n + 0],
+        difficulty=fields[4 * n + 3 + 6 * n + 1],
+        lead_slot=fields[4 * n + 3 + 6 * n + 2],
     )
 
 

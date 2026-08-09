@@ -146,6 +146,37 @@ static uint32_t parse_u32(const char *s, uint32_t dflt)
     return v;
 }
 
+/* Play-difficulty names, indices matching game_difficulty_t and the fretboard
+ * node's MODEL_SEL_*. Slot 4 ("auto") is the node's adaptive model select, not a
+ * play difficulty, so only `fretboard model` reaches it — callers pass the count
+ * they accept. */
+static const char *const s_diff_names[] = { "easy", "medium", "hard", "expert", "auto" };
+#define DIFF_NAME_COUNT  (sizeof(s_diff_names) / sizeof(s_diff_names[0]))
+
+static int parse_difficulty(const char *w, unsigned count)
+{
+    if (w == NULL) { return -1; }
+    for (unsigned i = 0u; i < count; i++)
+    {
+        if (strcmp(w, s_diff_names[i]) == 0) { return (int)i; }
+    }
+    return -1;
+}
+
+/* Observation-lead table rows, named with the same tokens as `cvcfg`. */
+static const char *lead_slot_name(uint8_t slot)
+{
+    return (slot == CV_LEAD_SLOT_2P_LEFT) ? "2pl" : "1p";
+}
+
+static int parse_lead_slot(const char *w)
+{
+    if (w == NULL)             { return -1; }
+    if (strcmp(w, "1p") == 0)  { return CV_LEAD_SLOT_1P; }
+    if (strcmp(w, "2pl") == 0) { return CV_LEAD_SLOT_2P_LEFT; }
+    return -1;
+}
+
 /* Pull up to n non-negative integers out of s, separated by any run of
  * non-digit characters (so "2026-06-23" and "14:03:00" both parse). Returns
  * the count parsed. */
@@ -188,6 +219,13 @@ static void cmd_status(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("link:       %s", FretboardLink_IsConnected() ? "up" : "down");
     console_printf("active:     %s", (act == DETECTOR_CV_MARVIN_V1) ? "cv" : "fretboard");
     console_printf("detect cv:  %s", Detector_IsEnabled(DETECTOR_CV_MARVIN_V1) ? "on" : "off");
+    {
+        const cv_marvin_v1_config_t *cvcfg = CvMarvinV1_GetConfig();
+        uint8_t diff = CvMarvinV1_GetDifficulty();
+        console_printf("cv diff:    %s (%u ms lead on %s)", s_diff_names[diff],
+                       (unsigned)CvMarvinV1_GetLeadMs(cvcfg->lead_slot, diff),
+                       cvcfg->name);
+    }
     console_printf("manual:     %s", ManualControl_IsEnabled() ? "on" : "off");
     console_printf("timing:     %s", GameTiming_IsEnabled() ? "on" : "off");
     console_printf("video:      %ux%u frame=%lu",
@@ -910,6 +948,77 @@ static void cmd_cvcfg(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("cvcfg -> %s", w);
 }
 
+#define CVDIFF_USAGE  "usage: cvdiff <easy|medium|hard|expert> [lead_ms] [1p|2pl]"
+
+/* Lead sanity bound. The sensor row sits ~85 px above the strike line, so a
+ * plausible lead is a few hundred ms; this only rejects a fat-fingered entry
+ * that would park every note outside the scheduler's horizon. */
+#define CVDIFF_LEAD_MIN_MS   20u
+#define CVDIFF_LEAD_MAX_MS   2000u
+
+static void cmd_cvdiff(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+
+    uint8_t active_slot = CvMarvinV1_GetConfig()->lead_slot;
+    const char *w = embeddedCliGetToken(args, 1);
+
+    if (w == NULL)
+    {
+        uint8_t d = CvMarvinV1_GetDifficulty();
+        console_printf("cvdiff = %s (%u ms on %s)", s_diff_names[d],
+                       (unsigned)CvMarvinV1_GetLeadMs(active_slot, d),
+                       lead_slot_name(active_slot));
+        console_printf("observation lead (ms):   easy medium   hard expert");
+        for (uint8_t s = 0u; s < CV_LEAD_SLOT_COUNT; s++)
+        {
+            console_printf("  %-21s %6u %6u %6u %6u%s",
+                           lead_slot_name(s),
+                           (unsigned)CvMarvinV1_GetLeadMs(s, 0u),
+                           (unsigned)CvMarvinV1_GetLeadMs(s, 1u),
+                           (unsigned)CvMarvinV1_GetLeadMs(s, 2u),
+                           (unsigned)CvMarvinV1_GetLeadMs(s, 3u),
+                           (s == active_slot) ? "  <- active" : "");
+        }
+        console_printf(CVDIFF_USAGE);
+        return;
+    }
+
+    int d = parse_difficulty(w, CV_DIFF_COUNT);
+    if (d < 0) { console_printf(CVDIFF_USAGE); return; }
+
+    /* Optional retune of that tier's lead. Targets the active highway unless a
+     * third token names one — calibrating the highway you're watching is the
+     * common case and shouldn't need naming. */
+    const char *ms_tok = embeddedCliGetToken(args, 2);
+    if (ms_tok != NULL)
+    {
+        uint32_t ms = parse_u32(ms_tok, 0u);
+        if (ms < CVDIFF_LEAD_MIN_MS || ms > CVDIFF_LEAD_MAX_MS)
+        {
+            console_printf("cvdiff: lead must be %u-%u ms",
+                           (unsigned)CVDIFF_LEAD_MIN_MS, (unsigned)CVDIFF_LEAD_MAX_MS);
+            return;
+        }
+        uint8_t slot = active_slot;
+        const char *slot_tok = embeddedCliGetToken(args, 3);
+        if (slot_tok != NULL)
+        {
+            int s = parse_lead_slot(slot_tok);
+            if (s < 0) { console_printf(CVDIFF_USAGE); return; }
+            slot = (uint8_t)s;
+        }
+        CvMarvinV1_SetLeadMs(slot, (uint8_t)d, (uint16_t)ms);
+        console_printf("cvdiff: %s lead on %s -> %u ms",
+                       s_diff_names[d], lead_slot_name(slot), (unsigned)ms);
+    }
+
+    CvMarvinV1_SetDifficulty((uint8_t)d);
+    console_printf("cvdiff -> %s (%u ms on %s)", s_diff_names[d],
+                   (unsigned)CvMarvinV1_GetLeadMs(active_slot, (uint8_t)d),
+                   lead_slot_name(active_slot));
+}
+
 static void cmd_timing(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli; (void)ctx;
@@ -1608,24 +1717,20 @@ static void cmd_fretboard(EmbeddedCli *cli, char *args, void *ctx)
     }
 
     if (a != NULL && strcmp(a, "model") == 0) {
-        /* Selection index must match the fretboard's MODEL_SEL_* enum
-         * (easy/medium/hard/expert/auto). marvin doesn't share that header, so
-         * the mapping is duplicated here. */
-        static const char *const names[] = { "easy", "medium", "hard", "expert", "auto" };
-        const char *b = embeddedCliGetToken(args, 2);
-        if (b != NULL) {
-            for (uint8_t i = 0u; i < (sizeof(names) / sizeof(names[0])); i++) {
-                if (strcmp(b, names[i]) == 0) {
-                    if (!T1SLink_SendFretboardCtrl(T1S_DET_CTRL_MODEL, i)) {
-                        console_printf("fretboard: link down");
-                        return;
-                    }
-                    console_printf("fretboard: model %s", names[i]);
-                    return;
-                }
-            }
+        /* Selection index must match the fretboard's MODEL_SEL_* enum. marvin
+         * doesn't share that header, so s_diff_names carries the mapping. This
+         * writes the channel by hand and is overridden by the next `play`, which
+         * pushes the committed selection's difficulty. */
+        int sel = parse_difficulty(embeddedCliGetToken(args, 2), DIFF_NAME_COUNT);
+        if (sel < 0) {
+            console_printf("usage: fretboard model <easy|medium|hard|expert|auto>");
+            return;
         }
-        console_printf("usage: fretboard model <easy|medium|hard|expert|auto>");
+        if (!T1SLink_SendFretboardCtrl(T1S_DET_CTRL_MODEL, (uint8_t)sel)) {
+            console_printf("fretboard: link down");
+            return;
+        }
+        console_printf("fretboard: model %s (until the next run)", s_diff_names[sel]);
         return;
     }
 
@@ -1653,6 +1758,7 @@ static const CliCommandBinding bindings[] = {
         { "detect", "detect cv <on|off>: enable/disable the CV detector",        true, NULL, cmd_detect },
         { "active", "active <cv|fretboard>: hand game control to a detector",     true, NULL, cmd_active },
         { "cvcfg",  "cvcfg <1p|2pl>: select CV detector highway geometry",  true, NULL, cmd_cvcfg },
+        { "cvdiff", "cvdiff [<easy|medium|hard|expert> [lead_ms] [1p|2pl]]: CV play difficulty / observation lead", true, NULL, cmd_cvdiff },
         { "timing", "timing <on|off>: chord/strum scheduler output enable", true, NULL, cmd_timing },
         { "manual", "manual <on|off>: manual-control actuation mode",      true, NULL, cmd_manual },
         { "play",   "play [attach|stop|status]: auto-navigate + CV-play the selected song; 'attach' = play a manually-started game (e.g. 2p)", true, NULL, cmd_play },

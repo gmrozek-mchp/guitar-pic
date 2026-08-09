@@ -2,7 +2,7 @@
 
 Host-side decoder and analyzer for the marvin firmware **perf-log** wire format.
 
-The firmware emits framed binary records (schema version 6) over its USB-device
+The firmware emits framed binary records (schema version 7) over its USB-device
 CDC ACM port. This tool consumes that stream live, records it to disk, and
 replays captures offline. Summary analyses (latency attribution, drop
 accounting, stack high-water trends) are produced by the `serve` viewer, not a

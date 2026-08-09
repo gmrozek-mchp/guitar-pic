@@ -18,6 +18,22 @@
  * sensor, (ex,ey) = color-filtered edge sensor. */
 typedef struct { uint16_t hx, hy, ex, ey; } cv_sensor_xy_t;
 
+/* Play difficulty index. 0..3 are the same values as game_difficulty_t
+ * (GAME_DIFF_EASY..GAME_DIFF_EXPERT) — the detector takes a bare index rather
+ * than including game/game_selection.h, since game/ already consumes this
+ * header. */
+#define CV_DIFF_COUNT   4u
+
+/* Which lead row a geometry config reads. One row per highway: the sensor and
+ * strike rows happen to match across 1p and 2p-left today, but the leads are
+ * calibrated independently and nothing may assume they agree. */
+typedef enum
+{
+    CV_LEAD_SLOT_1P = 0,
+    CV_LEAD_SLOT_2P_LEFT,
+    CV_LEAD_SLOT_COUNT
+} cv_lead_slot_t;
+
 typedef struct
 {
     const char     *name;         /* "1p" / "2p-left" — logged, not on the wire */
@@ -30,11 +46,9 @@ typedef struct
      * records which geometry produced them and the host can place both
      * highways' bands in one session. */
     uint8_t  sensing_kind, strike_kind;
-    /* Observation lead (ms): travel time for a note from the sensor row down to
-     * the strike line. The detector adds this to each frame's timestamp to
-     * stamp detector_state_t.strike_at_ms; the timing pipeline schedules in
-     * that strike-line time base and holds no delay constant of its own. */
-    uint16_t observation_lead_ms;
+    /* cv_lead_slot_t: which row of the observation-lead table this highway
+     * reads. The lead itself is runtime state (per difficulty), not geometry. */
+    uint8_t  lead_slot;
 } cv_marvin_v1_config_t;
 
 extern const cv_marvin_v1_config_t CV_MARVIN_CFG_1P;
@@ -47,5 +61,25 @@ void CvMarvinV1_Initialize(void);
  * Safe to call from another task. */
 void CvMarvinV1_SetConfig(const cv_marvin_v1_config_t *cfg);
 const cv_marvin_v1_config_t *CvMarvinV1_GetConfig(void);
+
+/* Observation lead (ms): travel time for a note from the sensor row down to the
+ * strike line. The detector adds it to each frame's timestamp to stamp
+ * detector_state_t.strike_at_ms; the timing pipeline schedules in that
+ * strike-line time base and holds no delay constant of its own.
+ *
+ * The highway's scroll speed rises with play difficulty, so the lead falls with
+ * it — hence a lead per (highway, difficulty) rather than one constant. The
+ * active difficulty comes from the committed GameSelection (game_controller
+ * applies it at run start); the console `cvdiff` command overrides it and
+ * retunes individual cells for calibration.
+ *
+ * Out-of-range indices are ignored / read back as 0. Difficulty and lead
+ * changes take effect on the next processed frame and re-publish the detector
+ * config; unlike a geometry swap they leave per-fret latch state alone (the
+ * sensors have not moved). Safe to call from another task. */
+void    CvMarvinV1_SetDifficulty(uint8_t difficulty);
+uint8_t CvMarvinV1_GetDifficulty(void);
+uint16_t CvMarvinV1_GetLeadMs(uint8_t slot, uint8_t difficulty);
+void     CvMarvinV1_SetLeadMs(uint8_t slot, uint8_t difficulty, uint16_t ms);
 
 #endif
