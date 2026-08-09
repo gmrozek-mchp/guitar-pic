@@ -15,7 +15,7 @@ So a teardown now ends with `l2cap_layer_restart()` (deinit → UNINIT → init 
 
 The drain fix from earlier in the day is also confirmed: both CLOSE events now arrive within 10 ms of the close, the blocked write returns at once, and `status` reads `tx_stall=0`, `channels open=0 closes_pending=0`.
 
-**Confirmed on hardware:** with the auto-restart in, `reconnect` alone recovers the GH3 drop — no `disconnect`/`btreset`/`reboot` first. marvin's existing `Fauxmote_ReconnectIfNeeded()` / `ensure_wii_connected()` therefore need no escalation logic; `MF_ST_HOST_SILENT` is there if that ever stops holding. Still to do on the marvin side: console verbs for the new opcodes (`fauxmote disconnect|btreset|reboot`) — `Fauxmote_SendCmd()` already carries any opcode over T1S, nothing calls it with these three.
+**Confirmed on hardware:** with the auto-restart in, `reconnect` alone recovers the GH3 drop — no `disconnect`/`btreset`/`reboot` first. marvin's existing `Fauxmote_ReconnectIfNeeded()` / `ensure_wii_connected()` therefore need no escalation logic; `MF_ST_HOST_SILENT` is there if that ever stops holding. marvin's console gained the three verbs (`fauxmote disconnect|btreset|reboot`) and shows the host-silent flag in `fauxmote status`, so the whole ladder is drivable over T1S — noted here rather than in marvin's journal to stay clear of parallel marvin work; fold it in there when convenient.
 
 ---
 

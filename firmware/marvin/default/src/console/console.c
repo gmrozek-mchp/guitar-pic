@@ -1509,7 +1509,8 @@ static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
             return;
         }
         console_printf("age:       %lu ms", (unsigned long)age);
-        console_printf("connected: %s", (flags & MF_ST_CONNECTED) ? "yes" : "no");
+        console_printf("connected: %s%s", (flags & MF_ST_CONNECTED) ? "yes" : "no",
+                       (flags & MF_ST_HOST_SILENT) ? " (Wii silent — session ignored)" : "");
         console_printf("assigned:  %s (slot %u)", (flags & MF_ST_ASSIGNED) ? "yes" : "no", slot);
         console_printf("ext:       %s", (flags & MF_ST_EXT_ATTACHED) ? "yes" : "no");
         console_printf("pairing:   %s", (flags & MF_ST_PAIRING) ? "yes" : "no");
@@ -1521,6 +1522,11 @@ static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
     if (strcmp(sub, "stop") == 0)      { Fauxmote_SendCmd(MF_CMD_STOP);      console_printf("fauxmote: stop");      return; }
     if (strcmp(sub, "reconnect") == 0) { Fauxmote_SendCmd(MF_CMD_RECONNECT); console_printf("fauxmote: reconnect"); return; }
     if (strcmp(sub, "unlink") == 0)    { Fauxmote_SendCmd(MF_CMD_UNLINK);    console_printf("fauxmote: unlink");    return; }
+    /* Escalation past reconnect. fauxmote restarts its own L2CAP layer on every teardown,
+     * so `reconnect` is normally enough; these are for when it isn't. */
+    if (strcmp(sub, "disconnect") == 0) { Fauxmote_SendCmd(MF_CMD_DISCONNECT); console_printf("fauxmote: disconnect"); return; }
+    if (strcmp(sub, "btreset") == 0)    { Fauxmote_SendCmd(MF_CMD_BT_RESET);   console_printf("fauxmote: btreset");    return; }
+    if (strcmp(sub, "reboot") == 0)     { Fauxmote_SendCmd(MF_CMD_REBOOT);     console_printf("fauxmote: reboot (heartbeat gap ~1 s)"); return; }
     if (strcmp(sub, "ext") == 0)
     {
         int v = parse_onoff(embeddedCliGetToken(args, 2));
@@ -1563,7 +1569,7 @@ static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
         console_printf("fauxmote: pointer %u,%u", (unsigned)x, (unsigned)y);
         return;
     }
-    console_printf("usage: fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]");
+    console_printf("usage: fauxmote [status|pair|stop|reconnect|disconnect|btreset|reboot|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]");
 }
 
 static void cmd_play(EmbeddedCli *cli, char *args, void *ctx)
@@ -1811,7 +1817,7 @@ static const CliCommandBinding bindings[] = {
         { "timing", "timing <on|off>: chord/strum scheduler output enable", true, NULL, cmd_timing },
         { "manual", "manual <on|off>: manual-control actuation mode",      true, NULL, cmd_manual },
         { "play",   "play [attach|stop|status]: auto-navigate + CV-play the selected song; 'attach' = play a manually-started game (e.g. 2p)", true, NULL, cmd_play },
-        { "fauxmote","fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]", true, NULL, cmd_fauxmote },
+        { "fauxmote","fauxmote [status|pair|stop|reconnect|disconnect|btreset|reboot|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]", true, NULL, cmd_fauxmote },
         { "guitar", "guitar [on|off]: gate the guitar node's button outputs", true, NULL, cmd_guitar },
         { "lemmy",  "lemmy <neck> <jaw>|center: servo pos; output <on|off>: gate the servos; nod <on|off>|trim <n>|osc <0|1>: nod control", true, NULL, cmd_lemmy },
         { "lightshow","lightshow [on|off]: gate the lightshow node's LED output", true, NULL, cmd_lightshow },
