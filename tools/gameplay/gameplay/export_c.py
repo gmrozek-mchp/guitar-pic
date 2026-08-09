@@ -54,6 +54,7 @@ from .score import (
 )
 from .songselect import DEFAULT_SONG_CONFIG, FIRST, build_song_catalog
 from .present import TAU as PRESENT_TAU, build_probes as build_present_probes
+from .ready import TAU as READY_TAU, build_ready_probe
 
 # Score modes emitted, in device-index order (GP_SCORE_MODE_*). Career (green
 # font) appends here once it has a labelled corpus + digit band — no API change.
@@ -326,7 +327,8 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
     w("#define GP_PROBE_LUMA_B 29   /* BGR luma weights (== score reader); normalize follows */")
     w("#define GP_PROBE_LUMA_G 150")
     w("#define GP_PROBE_LUMA_R 77")
-    max_len = max(p.mask.size for p in probes.values())
+    ready = build_ready_probe()
+    max_len = max([p.mask.size for p in probes.values()] + [ready.mask.size])
     w("#define GP_PROBE_MAX_LEN %d   /* largest block bw*bh (scratch bound) */" % max_len)
     w("")
     for ident, key in order:
@@ -351,6 +353,27 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
         w("  {{%d,%d,%d,%d}, %d, %d, %d, gp_probe_%s_mask, gp_probe_%s_ref},"
           % (x0, y0, x1, y1, x1 - x0, y1 - y0, p.npix, ident.lower(), ident.lower()))
     w("};")
+    w("")
+
+    # ── guitar_select_2p: P1's READY! badge ─────────────────────────────────
+    w("/* ── P1 READY! badge on guitar_select_2p (see gameplay/ready.py) ──")
+    w("   Select Guitar advances only when BOTH sides confirm, so \"the screen did not change\"")
+    w("   cannot distinguish \"my GREEN failed\" from \"the human has not confirmed yet\". P1's red")
+    w("   READY! banner answers it directly. Same masked-SAD mechanism as the presence probes")
+    w("   above and the same normalized space, so it reuses gp_probe_t / gp_probe_l1; the mask is")
+    w("   all-ones because the whole ROI is the fiducial (badge-present it is the banner,")
+    w("   badge-absent it is the guitar body on the shield -- almost nothing shared, ~100x apart).")
+    w("   P2's banner is deliberately NOT modelled: the screen advancing IS P2 confirming. */")
+    w("#define GP_READY_TAU %d   /* L1-per-pixel accept threshold (same space as GP_PRESENT_TAU) */" % READY_TAU)
+    w("")
+    w("static const uint8_t gp_ready_p1_mask[%d] = {%s};"
+      % (ready.mask.size, ",".join(str(int(v)) for v in ready.mask.reshape(-1))))
+    w("static const uint8_t gp_ready_p1_ref[%d] = {%s};"
+      % (ready.ref_u8.size, ",".join(str(int(v)) for v in ready.ref_u8.reshape(-1))))
+    rx0, ry0, rx1, ry1 = ready.block
+    w("static const gp_probe_t gp_ready_p1 =")
+    w("  {{%d,%d,%d,%d}, %d, %d, %d, gp_ready_p1_mask, gp_ready_p1_ref};"
+      % (rx0, ry0, rx1, ry1, rx1 - rx0, ry1 - ry0, ready.npix))
     w("")
 
     w("#endif /* MARVIN_GAMEPLAY_METADATA_H */")

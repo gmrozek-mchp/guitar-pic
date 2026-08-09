@@ -4,6 +4,17 @@ Running log of planning, decisions, open questions, and work-in-progress for mar
 
 ---
 
+**2026-08-10 (later) — the 2-player guitar-select step verifies its own confirm. Working on hardware.**
+
+- **What it fixes.** Select Guitar advances only once *both* sides confirm, so an unchanged screen could not tell "marvin's GREEN never registered" from "the human hasn't confirmed yet" — a failed GREEN sat out the full 120 s `await_player` wait and then reported `NO PLAYER 2`, naming the wrong cause. New `ACT_CONFIRM_READY`: GREEN, then poll ≤ `GC_READY_TIMEOUT_MS` (2500 ms) for P1's READY! badge; badge → proceed into the P2 wait, no badge → return false so the step **retries**. "Screen already advanced" counts as success (both players confirmed before we sampled — there is no badge left to see).
+- **The probe reuses the presence machinery unchanged**, which is why this was cheap: `gp_ready_p1_present` calls the existing `gp_probe_l1`, and the exported `gp_ready_p1` is a plain `gp_probe_t` (`{145,265,262,305}`, npix 4680, `GP_READY_TAU 18`). Mask is all-ones — the whole ROI is the fiducial. `game_state_t.ready_p1` (1/0/−1) is read by the engine only on `guitar_select_2p`, mirroring the per-screen selection/score reads.
+- **Left side only, deliberately.** P2's banner is a different ROI and isn't needed: the screen advancing *is* P2 confirming, which `await_player` already waits on.
+- **Confirmed live** (Greg): `main_menu / career` → `GC: MULTIPLAYER` → `main_menu / multiplayer` → `guitar_select_2p` → `GC: guitar (await P2)` → `GC: P1 READY confirmed` → `GC: WAITING FOR P2` → `multiplayer_menu / face_off`. So the badge verify, the act-then-wait edge, the 2P plan's first two steps and the `multiplayer_menu` selection reader all work on hardware.
+- Separation ready 0.00–0.54 vs not-ready 51.69 against TAU 18 (~96×); C↔Python cross-check agrees on verdict and SAD for all four corpus frames; suite 88 passed. Files: `game/gameplay_present.{c,h}`, `game/game_engine.{c,h}`, `game/game_controller.c`, `game/gameplay_metadata.h` (generated), host `tools/gameplay/*`. No MCC, no MGS Generate.
+- **Not built:** the original *assert* that P1's guitar is already on the left. Data-blocked — all four corpus frames have a guitar in P1's shield, so there is no negative to threshold against. The badge verifies the confirm, not the precondition.
+
+---
+
 **2026-08-10 — the 2-player amp scoreboard regions are locked, captured, and driving 2p gameplay detection. Plus the run no longer ends on a shake.**
 
 - **Final regions, iterated with Greg against a pixel ruler:** **2pL (123,172,199,250)** and **2pR (513,172,589,250)**, both 76×78 (the code relies on the two sides sharing a block size). The original boxes sat up-and-left of the amps and were 8 px too narrow on each outer edge.

@@ -73,9 +73,13 @@
  * a single such sample used to end the run mid-song. At GC_PLAY_POLL_MS this still
  * exits well under a second after a real song end. */
 #define GC_END_CONFIRM      3
+/* How long to wait for P1's READY! badge after confirming on guitar_select_2p. This is
+ * marvin's own on-screen acknowledgement, so it is a short UI-animation wait, not a
+ * human one — if it does not appear the GREEN did not register and the step retries. */
+#define GC_READY_TIMEOUT_MS 2500u
 
 typedef enum { ACT_SELECT_INDEX, ACT_SELECT_SONG, ACT_SATURATE_TOP, ACT_WAIT,
-               ACT_CONFIRM } gc_act_t;
+               ACT_CONFIRM, ACT_CONFIRM_READY } gc_act_t;
 
 typedef struct
 {
@@ -258,6 +262,39 @@ static bool wait_for(uint8_t target, uint32_t timeout_ms)
 /* Block until the observed screen leaves `from` (the transition completed) or a
  * timeout. This is what keeps a step from re-firing on a not-yet-transitioned
  * screen — and prevents a stray confirm/strum from leaking onto the next screen. */
+/* Confirm on guitar_select_2p and verify marvin's own side actually took it: press
+ * GREEN, then poll until P1's READY! badge shows. Returns false if it never does, so
+ * the caller retries the step rather than sitting in the P2 wait on a GREEN that never
+ * registered — which is what made a stalled setup indistinguishable from a slow human. */
+static bool confirm_and_verify_ready(uint8_t expect_screen)
+{
+    send_input(GC_GREEN);
+
+    TickType_t t0 = xTaskGetTickCount();
+    for (;;)
+    {
+        if (s_stop_req) { return false; }
+
+        game_state_t gs;
+        if (GameEngine_Observe(&gs, GC_OBS_TIMEOUT_MS))
+        {
+            /* Already advanced (both sides confirmed fast) — nothing left to verify. */
+            if (gs.screen != expect_screen) { return true; }
+            if (gs.ready_p1 == 1)
+            {
+                LOG_INFO("GC: P1 READY confirmed\r\n");
+                return true;
+            }
+        }
+        if ((TickType_t)(xTaskGetTickCount() - t0) > pdMS_TO_TICKS(GC_READY_TIMEOUT_MS))
+        {
+            LOG_WARN("GC: P1 READY badge never appeared — GREEN did not register\r\n");
+            return false;
+        }
+        vTaskDelay(pdMS_TO_TICKS(GC_STEP_POLL_MS));
+    }
+}
+
 static bool wait_screen_change(uint8_t from, uint32_t timeout_ms)
 {
     TickType_t start = xTaskGetTickCount();
@@ -299,7 +336,7 @@ static void build_plan_2p(const game_selection_t *sel)
 {
     int n = 0;
     s_plan[n++] = (gc_step_t){ GP_SCREEN_main_menu,          ACT_SELECT_INDEX, 3, GP_SCREEN_guitar_select_2p,    false, "MULTIPLAYER" };
-    s_plan[n++] = (gc_step_t){ GP_SCREEN_guitar_select_2p,   ACT_CONFIRM,      0, GP_SCREEN_multiplayer_menu,    true,  "guitar (await P2)" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_guitar_select_2p,   ACT_CONFIRM_READY, 0, GP_SCREEN_multiplayer_menu,   true,  "guitar (await P2)" };
     s_plan[n++] = (gc_step_t){ GP_SCREEN_multiplayer_menu,   ACT_SELECT_INDEX, 1, GP_SCREEN_character_select_2p, false, "PRO FACE-OFF" };
     s_plan[n++] = (gc_step_t){ GP_SCREEN_character_select_2p,ACT_CONFIRM,      0, GP_SCREEN_player_ready_2p,     false, "character" };
     s_plan[n++] = (gc_step_t){ GP_SCREEN_player_ready_2p,    ACT_SELECT_INDEX, 0, GP_SCREEN_venue_select,        true,  "PLAY SHOW (await P2)" };
@@ -357,6 +394,9 @@ static bool execute(const gc_step_t *st)
          * dispatcher only calls this after observing st->from, so the screen is
          * already confirmed and GREEN is not blind. */
         case ACT_CONFIRM:       send_input(GC_GREEN); return true;
+        /* As ACT_CONFIRM, but verifies marvin's own side registered before the caller
+         * drops into the (unbounded) wait for the human. */
+        case ACT_CONFIRM_READY: return confirm_and_verify_ready(st->from);
         default:                return false;
     }
 }

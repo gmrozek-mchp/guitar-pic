@@ -302,6 +302,44 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Session log
 
+### 2026-08-10 (later) — P1 READY!-badge probe ported; the 2p guitar-select step verifies its own confirm
+
+The badge probe built 2026-08-09 (host-only) is now on marvin, and it closes the ambiguity that
+made the 2-player guitar step untrustworthy: Select Guitar advances only once **both** sides
+confirm, so an unchanged screen could not distinguish "marvin's GREEN never registered" from "the
+human hasn't confirmed yet" — and a failed GREEN would sit out the whole 120 s P2 wait before
+reporting `NO PLAYER 2`, which named the wrong cause.
+
+- **Left side only, by design and by Greg's call.** P2's banner is a different ROI and is *not*
+  needed: the screen advancing **is** P2 confirming, so the existing `await_player` wait already
+  covers that side. Recorded in `ready.py`'s docstring from the start; Greg reached the same
+  conclusion independently.
+- **The port reuses the presence mechanism unchanged.** `export_c` emits `gp_ready_p1` as a plain
+  `gp_probe_t` (`{145,265,262,305}`, 117×40, npix 4680) plus `GP_READY_TAU 18`, and the C reader
+  `gp_ready_p1_present` calls the existing `gp_probe_l1` — same masked SAD, same mean128/std48
+  space, no new math. The mask is **all-ones** because the whole ROI is the fiducial (badge-present
+  it is the banner; badge-absent it is the guitar body on the shield). `GP_PROBE_MAX_LEN` now spans
+  the badge too.
+- **Plumbed the idiomatic way:** `game_state_t.ready_p1` (1/0/−1), read by the engine only on
+  `GP_SCREEN_guitar_select_2p`, mirroring how selection/score/streak are read per screen.
+- **Controller: `ACT_CONFIRM_READY`.** GREEN, then poll ≤ `GC_READY_TIMEOUT_MS` (2500) for the
+  badge. Badge → proceed into the P2 wait; no badge → return false so the step **retries** instead
+  of blocking on a GREEN that never landed. "Screen already advanced" counts as success — if both
+  players confirm before we sample there is no badge left to see, and that is a pass.
+- **Numbers:** ready 0.00 / 0.53 / 0.54, not-ready **51.69**, against TAU 18 — ~96× on this corpus.
+  C↔Python cross-check (new `ready` driver mode) agrees on verdict *and* SAD for all four frames.
+  Suite **88 passed, 27 skipped**. Caveat unchanged: **one** badge-absent frame, so the absent side
+  of the threshold rests on a single exemplar plus its value-slop variants.
+- **Confirmed on hardware** (Greg, same day). The 2P run logged: `main_menu / career` →
+  `GC: MULTIPLAYER` → `main_menu / multiplayer` → `guitar_select_2p` → `GC: guitar (await P2)` →
+  **`GC: P1 READY confirmed`** → `GC: WAITING FOR P2` → `multiplayer_menu / face_off`. So the badge
+  verify, the act-then-wait edge, and the `multiplayer_menu` selection reader all work live.
+- **Still not built:** the *assert* Greg originally wanted — "is P1's guitar already on the left"
+  before confirming. Still data-blocked: all four corpus frames have a guitar in P1's shield, so
+  there is no negative to threshold, and P2's empty shield has different art. Needs a few Select
+  Guitar snapshots taken before P1's guitar is assigned. The badge verifies the *confirm*, not the
+  *precondition*.
+
 ### 2026-08-10 — both amp blocks re-registered by eye; capture rects follow, and it invalidated every origin-bound artefact
 
 Greg reviewed the amp block placement on a real frame and re-registered both — the old boxes

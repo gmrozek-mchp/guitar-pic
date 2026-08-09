@@ -65,6 +65,10 @@ int main(int argc, char **argv) {
         int32_t sad[GP_N_PROBES];
         int scr = gp_present(buf, w, h, sad);
         printf("%d %d %d %d\n", scr, (int)sad[0], (int)sad[1], (int)sad[2]);
+    } else if (strcmp(mode, "ready") == 0) {
+        int32_t sad = 0;
+        int r = gp_ready_p1_present(buf, w, h, &sad);
+        printf("%d %d\n", r, (int)sad);
     } else if (strcmp(mode, "mult") == 0) {
         printf("%d\n", gp_read_multiplier(buf, w, h));
     } else if (strcmp(mode, "streak") == 0) {
@@ -255,3 +259,24 @@ def test_c_streak_matches_python(streak_corpus, driver, tmp_path):
         # Integer coverage → C reproduces Python bit-for-bit: presence, every wheel's
         # digit (even unreadable ones), and every confidence flag must match exactly.
         assert c == py, f"{s.path.name}: C={c} Python={py}"
+
+
+def test_c_ready_badge_matches_python(driver, tmp_path):
+    """gp_ready_p1_present == ready.read_ready on every guitar_select_2p frame.
+
+    The badge decision gates the 2-player guitar step, so the port has to agree with
+    the host prototype on both the verdict and the SAD before it reaches hardware.
+    """
+    from gameplay.corpus import corpus_dir, load_bgr
+    from gameplay.ready import build_ready_probe, read_ready
+
+    probe = build_ready_probe()
+    frames = sorted(corpus_dir().glob("guitar_select_2p__*.png"))
+    assert frames, "no guitar_select_2p corpus frames"
+    for f in frames:
+        img = load_bgr(f)
+        py_ready, py_sad = read_ready(img, probe)
+        out = _c_run(driver, img, tmp_path, "ready").split()
+        c_ready, c_sad = int(out[0]), int(out[1]) / 1000.0
+        assert c_ready == int(py_ready), f"{f.name}: C={c_ready} Python={int(py_ready)}"
+        assert abs(c_sad - py_sad) < 0.5, f"{f.name}: C sad={c_sad:.2f} Python={py_sad:.2f}"

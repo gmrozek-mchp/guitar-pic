@@ -23,4 +23,18 @@
  * screens); the observer runs this first and falls back to gp_classify. */
 uint8_t gp_present(const uint8_t *frame, int width, int height, int32_t *out_sad_milli);
 
+/* Is P1's READY! badge showing on guitar_select_2p? Same masked-SAD mechanism and
+ * normalized space as the presence probes above (it reuses the same scratch, so the
+ * same single-caller rule applies).
+ *
+ * This exists because Select Guitar advances only once *both* sides confirm, so an
+ * unchanged screen cannot distinguish "marvin's GREEN did not register" from "the
+ * human has not confirmed yet" — and those want different handling. P2's banner is
+ * deliberately not modelled: the screen advancing is what P2 confirming produces.
+ *
+ * Returns 1 when the badge registers, 0 when it does not, and -1 if the frame is not
+ * the canonical size. When non-NULL, *out_sad_milli receives the L1-per-pixel ×1000
+ * (diagnostics / host cross-check). */
+int gp_ready_p1_present(const uint8_t *frame, int width, int height, int32_t *out_sad_milli);
+
 #endif

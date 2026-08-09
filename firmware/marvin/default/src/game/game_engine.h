@@ -31,6 +31,7 @@ typedef struct
     int32_t  score;         /* in-song score read (training font), or -1 (not in_song) */
     uint8_t  multiplier;    /* in-song score multiplier 1..4, or 0 (not in_song) */
     uint16_t streak;        /* in-song note streak (monotonic tracker), 0 = not shown / <~25 */
+    int8_t   ready_p1;      /* guitar_select_2p: P1's READY! badge — 1 shown, 0 not, -1 n/a */
 } game_state_t;
 
 /* Brings up the game-state bus queue and the observer task. The observer

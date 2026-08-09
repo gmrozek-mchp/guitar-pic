@@ -159,6 +159,15 @@ static void game_task(void *param)
             gp_streak_reset(&s_streak);
         }
 
+        /* guitar_select_2p: whether P1's READY! badge is showing. The controller needs
+         * this because that screen only advances once *both* sides confirm, so an
+         * unchanged screen alone can't tell a failed GREEN from a human still choosing. */
+        int8_t ready_p1 = -1;
+        if (screen == GP_SCREEN_guitar_select_2p)
+        {
+            ready_p1 = (int8_t)gp_ready_p1_present(buf, w, h, NULL);
+        }
+
         game_state_t ev;
         memset(&ev, 0, sizeof(ev));
         ev.frame_epoch  = frame.frame_count;
@@ -170,6 +179,7 @@ static void game_task(void *param)
         ev.score        = score;
         ev.multiplier   = multiplier;
         ev.streak       = streak;
+        ev.ready_p1     = ready_p1;
 
         /* Answer the requester first (clear pending before the send so a follow-up
          * Observe that wakes on the response can't have its new request cleared). */

@@ -87,3 +87,17 @@ uint8_t gp_present(const uint8_t *frame, int width, int height, int32_t *out_sad
     if (two <= (float)GP_PRESENT_TAU)             { return GP_PRESENT_SCREEN_2P; }
     return GP_SCREEN_UNKNOWN;
 }
+
+int gp_ready_p1_present(const uint8_t *frame, int width, int height, int32_t *out_sad_milli)
+{
+    if (width != GP_CANON_W || height != GP_CANON_H)
+    {
+        if (out_sad_milli) { *out_sad_milli = INT32_MAX; }
+        return -1;
+    }
+
+    int32_t l1 = gp_probe_l1(frame, width, &gp_ready_p1);
+    float sad = (float)l1 / (float)gp_ready_p1.npix;
+    if (out_sad_milli) { *out_sad_milli = (int32_t)lroundf(sad * 1000.0f); }
+    return (sad <= (float)GP_READY_TAU) ? 1 : 0;
+}
