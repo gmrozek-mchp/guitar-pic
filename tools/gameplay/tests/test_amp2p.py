@@ -45,10 +45,10 @@ def _pending_reason() -> str | None:
         return stale
     from gameplay.corpus import load_amp2p_corpus
     if not load_amp2p_corpus():
-        return ("no 2p amp digit corpus: the labelled crops were cut at the pre-2026-08-10 "
-                "block origin and moved to data/scores/superseded-old-origin/ when Greg "
-                "re-registered the blocks. Re-cut them from a capture taken with the new "
-                "marvin-perf region rects (131,172,68,78) / (513,172,68,78).")
+        return ("no 2p amp digit corpus: the labelled crops were cut at a superseded block "
+                "origin and were deleted when the blocks were re-registered (they remain in "
+                "git history at d180151). Re-cut them from a capture taken with the current "
+                "marvin-perf region rects (123,172,76,78) / (513,172,76,78).")
     return None
 
 

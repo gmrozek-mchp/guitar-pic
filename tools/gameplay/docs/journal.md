@@ -314,54 +314,52 @@ were up-and-left of the amps. **Final, signed off against a pixel ruler:**
 
 Both stay 68×78 (the code relies on the two sides sharing a block size).
 
-- **Capture works immediately, no reflash.** The `marvin-perf` region rects are *host*-supplied
+- **Final geometry, iterated with Greg against a pixel ruler and locked:**
+
+| | first pass | grown | final |
+|---|---|---|---|
+| 2pL | (131,172,199,250) 68×78 | +8 px left | **(123,172,199,250) 76×78** |
+| 2pR | (513,172,581,250) 68×78 | +8 px right | **(513,172,589,250) 76×78** |
+
+  Both sides stay the same size (76×78) — the code relies on that. Getting here took several
+  review rounds; the lesson recorded as a standing rule is that **these regions are settled with
+  Greg from an overlay before any processing work**, because a wrong region does not fail loudly
+  (`song_select` once scored 64/64 while sampling the wrong row).
+- **Capture needed no firmware work at all.** The `marvin-perf` region rects are *host*-supplied
   (`perf_log_records.h`: "the rect is host-selected so it can be repointed without a firmware
-  rebuild"), so this is only `records.py` `REGION_SLOTS` → `(131,172,68,78)` / `(513,172,68,78)`,
-  plus three pinned copies in the marvin-perf tests. 174 tests pass. This is what unblocks Greg
-  capturing scoreboards.
-- **The digit cells had to be *compensated*, not moved.** `AMP2P_BAND_Y0` and `AMP2P_RIGHT_EDGE`
-  are **block-local**, so moving the origin drags the digit grid with it — off the digits that were
-  already validated. They move by the negation of the block delta: `BAND_Y0` 14 → **6**,
-  `RIGHT_EDGE` left 55 → **52**, right 61 → **63**. The invariants to preserve are the *absolute*
-  anchors: right edge x=183 (left) / x=576 (right), band top y=178. Verified by overlay — the cells
-  land on exactly the same pixels as before the move. Recorded that derivation in the constants'
-  comment, because nothing previously said they were dependent on the block origin.
-- **Three committed artefact sets are origin-bound, and this is the real cost of the move:**
-  - `amp2p_{left,right}_ref.png` — re-cropped at the new origin from `in_song_2p__0200`. Done.
-  - `amp2p_{left,right}_mask.png` — Greg's hand-painted 6× masks. Shifting them programmatically
-    *is* geometrically correct (it tracks the same physical chrome; magenta count unchanged at
-    1338/5304) but leaves the fiducial **top-heavy**: the block moved down 8, so the amp's whole
-    lower third — panel below the medallion plus the bottom studded trim — ends up unpainted,
-    because those pixels were below the old block and never had paint. Greg's call: **revert the
-    shift and re-paint.** Templates emitted at the new origin as
-    `data/scores/amp2p_{left,right}_ref_6x.png`.
-  - `data/scores/score2p__*.png` — the 10 labelled digit crops are 68×78 blocks cut at the *old*
-    origin, so the compensated block-local offsets find no digits inside them. Moved to
-    `data/scores/superseded-old-origin/` with a README; they are superseded by the fresh capture,
-    not shifted.
-- **Staleness is now checkable instead of silent.** `amp2p.MASK_PAINTED_AT` records the origin each
-  committed mask was painted against, and `mask_origin_mismatch()` returns a reason string when it
-  no longer matches `AMP2P_BLOCK`. `test_amp2p`, `test_present` and the C presence cross-check skip
-  on it with that reason rather than failing — the code isn't broken, the artefacts are pending, and
-  the guard self-clears once `MASK_PAINTED_AT` is updated. Worth having: a stale mask otherwise
-  degrades registration *quietly*, which is plausibly how the block stayed mis-registered unnoticed.
-- **Greg re-painted both masks; presence re-validated and the header re-exported.** He painted the
-  left, then found a mirror would not work for the right (confirmed by overlay: the right amp sits
-  ~11 px further right inside its block — the same offset the digit `RIGHT_EDGE` 52-vs-63 shows — so
-  a mirrored right bar lands on the medallion ring and the top band rides onto the frame) and drew
-  the right fresh. Installed as `amp2p_{left,right}_mask.png`: **1382 / 1411** masked block px
-  (was 1338 / 1338).
-  - **Presence separation is unchanged by the move: worst present 0.23, best absent 0.62 → 2.7×
-    around TAU 0.37** (it was 0.22 / 0.62 → 2.9× before), with **0/187 corpus frames
-    misclassified**. So re-registering the blocks neither helped nor hurt the presence decision —
-    which is the expected result and the reason it was safe to move them: presence keys on masked
-    static chrome, and the mask followed the chrome.
-  - `translate`/`scale` still cross (worst-present 1.14/1.16 vs best-absent 0.85/0.88), consistent
-    with the standing zero-shift-headroom finding — those axes are excluded as unrealistic on a
-    pixel-locked capture, not passed.
-  - `gameplay_metadata.h` re-exported: `gp_probes[]` now carries `{131,172,199,250}` / npix 1382 and
-    `{513,172,581,250}` / npix 1411. C↔Python presence cross-check passes again. All six marvin
-    `game/` TUs syntax-check clean against it. Suite **87 passed, 27 skipped**.
+  rebuild"), so it is `records.py` `REGION_SLOTS` → `(123,172,76,78)` / `(513,172,76,78)` plus three
+  pinned copies in the marvin-perf tests. 174 tests pass, no reflash.
+- **The digit cells are *compensated*, not moved.** `AMP2P_BAND_Y0` and `AMP2P_RIGHT_EDGE` are
+  **block-local**, so every block move drags the digit grid with it — off digits that were already
+  validated. They move by the negation of each delta; across all the iterations that landed at
+  `BAND_Y0` 14 → **6** and `RIGHT_EDGE` left 55 → **60**, right 61 → **63**. The invariants to
+  preserve are the *absolute* anchors: **right edge x=183 (left) / x=576 (right), band top y=178** —
+  verified by overlay at every step. Recorded in the constants' comment, since nothing previously
+  said they depended on the block origin.
+- **The masks are Greg's, drawn per side at the final origin, then trimmed by one column.** A
+  mirror was tried for the right side and rejected from the overlay: the right amp sits ~11 px
+  further right inside its block (the same offset `RIGHT_EDGE` 60-vs-63 encodes), so a mirrored bar
+  lands on the medallion ring. Greg then marked one column to drop — the leftmost masked column,
+  which was picking up the neighbouring scenery at the amp's edge. Final: **1382 px (left) /
+  1370 px (right)** of 5928.
+- **Staleness is checkable rather than silent.** `amp2p.MASK_PAINTED_AT` records the origin each
+  mask was painted against and `mask_origin_mismatch()` returns a reason when it stops matching
+  `AMP2P_BLOCK`; `test_amp2p`, `test_present` and the C presence cross-check skip on it (and on an
+  empty digit corpus) with that reason rather than failing. This is the mechanism that made the
+  several re-registration rounds safe to do: a stale mask otherwise degrades registration *quietly*.
+- **Presence separation is unaffected by all of it: worst present 0.22, best absent 0.62 → 2.8×
+  around TAU 0.37**, with **0/187 corpus frames misclassified** (it was 0.22/0.62 → 2.9× before the
+  first move). That invariance is the point: presence keys on masked static chrome, and the mask
+  followed the chrome every time. `translate`/`scale` still cross (1.15/1.17 vs 0.85/0.88),
+  consistent with the standing zero-shift-headroom finding — excluded as unrealistic on a
+  pixel-locked capture, not passed.
+- `gameplay_metadata.h` re-exported: `gp_probes[]` carries `{123,172,199,250}` npix 1382 and
+  `{513,172,589,250}` npix 1370. C↔Python presence cross-check passes; all six marvin `game/` TUs
+  syntax-check clean. Suite **87 passed, 27 skipped**.
+- **Stale artefacts removed** now the geometry is locked: the paint-free `amp2p_*_ref_6x.png`
+  templates (regenerated on demand whenever a re-paint is needed) and the 10 old-origin
+  `score2p__*.png` digit crops, which were cut at a superseded origin and are unusable against the
+  current block. Both remain in git history at `d180151`.
 
 **Still pending (data, not code):** the 21 skipped `test_amp2p` digit tests. Their guard now also
 covers the empty corpus, naming the re-cut needed — a capture at the new `marvin-perf` rects, which

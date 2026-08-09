@@ -65,7 +65,7 @@ AMP2P_MAX_CELLS = max(AMP2P_GRID)
 # Update these together with a re-paint (paint on the emitted amp2p_<side>_ref_6x.png,
 # which is generated at the current AMP2P_BLOCK).
 MASK_PAINTED_AT: dict[str, tuple[int, int]] = {
-    "left":  (131, 172),
+    "left":  (123, 172),
     "right": (513, 172),
 }
 

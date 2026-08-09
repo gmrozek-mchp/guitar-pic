@@ -65,6 +65,14 @@
 #define GC_MAX_CONFIRM      4    /* re-observe/re-move tries to land a cursor before GREEN */
 #define GC_MAX_CONFIRM_FAIL 4    /* consecutive un-confirmable steps before FAILED */
 #define GC_SATURATE_STRUMS  24   /* max strum-ups to drive a readable list to its top */
+/* Consecutive decisive off-gameplay reads before believing a song ended. Missing a
+ * note shakes the GH3 screen, which shifts the whole frame — and the scoreboard
+ * presence probes have no positional headroom at all (measured: all three exceed
+ * GP_PRESENT_TAU at a 1 px shift). So a shaken gameplay frame misses the probe, falls
+ * through to the centroid classifier, and that can confidently return a menu class;
+ * a single such sample used to end the run mid-song. At GC_PLAY_POLL_MS this still
+ * exits well under a second after a real song end. */
+#define GC_END_CONFIRM      3
 
 typedef enum { ACT_SELECT_INDEX, ACT_SELECT_SONG, ACT_SATURATE_TOP, ACT_WAIT,
                ACT_CONFIRM } gc_act_t;
@@ -217,6 +225,21 @@ static bool saturate_top(uint8_t expect_screen)
     }
     send_input(GC_GREEN);
     return true;
+}
+
+/* Point the CV detector at the highway the observed gameplay screen implies, and say
+ * so. The log line matters because it is the *only* announcement that the scoreboard
+ * presence probe fired and which side marvin is about to read: the engine's own
+ * `GAME:` line is edge-triggered, so attaching to a song that is already in progress
+ * (`play attach`) produces no screen change and therefore no output at all. */
+static void enter_gameplay(uint8_t screen)
+{
+    bool two = (screen == GP_SCREEN_in_song_2p);
+    const cv_marvin_v1_config_t *cfg = two ? &CV_MARVIN_CFG_2P_LEFT : &CV_MARVIN_CFG_1P;
+
+    CvMarvinV1_SetConfig(cfg);
+    LOG_INFO("GC: %s gameplay detected - CV highway %s\r\n",
+             two ? "2-player" : "1-player", cfg->name);
 }
 
 static bool wait_for(uint8_t target, uint32_t timeout_ms)
@@ -395,6 +418,8 @@ static void play_until_done(void)
 
     uint32_t final_score = 0u;   /* last CV-read score this run (the song total) */
     uint16_t peak_streak = 0u;   /* longest note streak this run — persists across misses */
+    int      off_gameplay = 0;              /* consecutive reads of off_screen (GC_END_CONFIRM) */
+    uint8_t  off_screen   = GP_SCREEN_UNKNOWN;   /* which off-gameplay screen is accumulating */
 
     for (;;)
     {
@@ -409,6 +434,15 @@ static void play_until_done(void)
         game_state_t gs;
         if (GameEngine_Observe(&gs, GC_OBS_TIMEOUT_MS))
         {
+            /* Any positive gameplay read clears the end-of-song evidence. `loading`
+             * and UNKNOWN neither confirm nor deny (UNKNOWN is the shake case), so
+             * they hold the count rather than resetting or advancing it. */
+            if (gs.screen == GP_SCREEN_in_song || gs.screen == GP_SCREEN_in_song_2p)
+            {
+                off_gameplay = 0;
+                off_screen   = GP_SCREEN_UNKNOWN;
+            }
+
             if (gs.screen == GP_SCREEN_in_song)
             {
                 if (gs.score >= 0) { final_score = (uint32_t)gs.score; DashboardFeed_PostScore(final_score); }
@@ -424,7 +458,25 @@ static void play_until_done(void)
             }
             else if (gs.screen != GP_SCREEN_loading && gs.screen != GP_SCREEN_UNKNOWN)
             {
-                break;   /* song ended (practice_end_menu) or left gameplay */
+                /* Decisive off-gameplay read. Require the *same* screen to persist,
+                 * not merely N off-gameplay reads: a real ending lands on the end/pause
+                 * menu and stays there, whereas a shake makes the centroid classifier
+                 * match whatever it happens to match, typically differing frame to
+                 * frame. Keying on stability rides through a shake without slowing a
+                 * genuine song end. Logged while holding, so a run that does end early
+                 * says which screen the classifier thought it saw. */
+                if (gs.screen == off_screen)
+                {
+                    off_gameplay++;
+                }
+                else
+                {
+                    off_screen   = gs.screen;
+                    off_gameplay = 1;
+                }
+                if (off_gameplay >= GC_END_CONFIRM) { break; }
+                LOG_INFO("GC: off-gameplay read %u (%d/%d) — holding\r\n",
+                         (unsigned)gs.screen, off_gameplay, GC_END_CONFIRM);
             }
         }
     }
@@ -499,8 +551,7 @@ static void play_attached(void)
         if (observe(&sc, &sel) &&
             (sc == GP_SCREEN_in_song || sc == GP_SCREEN_in_song_2p))
         {
-            CvMarvinV1_SetConfig(sc == GP_SCREEN_in_song_2p
-                                 ? &CV_MARVIN_CFG_2P_LEFT : &CV_MARVIN_CFG_1P);
+            enter_gameplay(sc);
             play_until_done();   /* actuates until the song ends / Stop / leaves gameplay */
             return;
         }
@@ -597,11 +648,9 @@ static void run(void)
 
         if (sc == GP_SCREEN_in_song || sc == GP_SCREEN_in_song_2p)
         {
-            /* Point the CV detector at the highway that matches the observed
-             * gameplay screen: 2p reads the left (robot) highway, 1p the
-             * centered one. (The console `cvcfg` override can force either.) */
-            CvMarvinV1_SetConfig(sc == GP_SCREEN_in_song_2p
-                                 ? &CV_MARVIN_CFG_2P_LEFT : &CV_MARVIN_CFG_1P);
+            /* 2p reads the left (robot) highway, 1p the centered one. (The console
+             * `cvcfg` override can force either.) */
+            enter_gameplay(sc);
             play_until_done();
             return;
         }

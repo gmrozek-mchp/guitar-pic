@@ -219,8 +219,8 @@ SCORE_CHROME_BOX = (127, 311, 190, 397)
 # interior are excluded because they change). Both sides share the block size, so
 # only the origin differs. Canonical 720x480 space. See docs/journal.md.
 AMP2P_BLOCK: dict[str, tuple[int, int, int, int]] = {
-    "left":  (131, 172, 199, 250),
-    "right": (513, 172, 581, 250),
+    "left":  (123, 172, 199, 250),
+    "right": (513, 172, 589, 250),
 }
 
 # ─── guitar_select_2p: P1's READY! badge ────────────────────────────────────────
@@ -267,7 +267,7 @@ AMP2P_BAND_H = 10
 # AMP2P_BAND_Y0) must move by the negation of the same delta or the cells slide off
 # the digits. Absolute anchors, which are the invariants to preserve: right edge
 # x=183 (left) / x=576 (right), band top y=178.
-AMP2P_RIGHT_EDGE: dict[str, int] = {"left": 52, "right": 63}
+AMP2P_RIGHT_EDGE: dict[str, int] = {"left": 60, "right": 63}
 
 # Per digit count: (cell_w, pitch). Cells grow leftward from AMP2P_RIGHT_EDGE.
 # The cell is the glyph *core* (7 px) — the 2 px between cores are gap, and must

@@ -201,8 +201,8 @@ def test_strip_2p_kinds_round_trip() -> None:
     for kind, name, rect in (
         (StripKind.SENSING_2P, "sensing_2p", (150, 300, 155, 32)),
         (StripKind.STRIKE_2P, "strike_2p", (120, 395, 205, 34)),
-        (StripKind.SCORE_2P_LEFT, "score_2p_left", (131, 172, 68, 78)),
-        (StripKind.SCORE_2P_RIGHT, "score_2p_right", (513, 172, 68, 78)),
+        (StripKind.SCORE_2P_LEFT, "score_2p_left", (123, 172, 76, 78)),
+        (StripKind.SCORE_2P_RIGHT, "score_2p_right", (513, 172, 76, 78)),
     ):
         x, y, w, h = rect
         rec = _round_trip_via_iter_frames(
