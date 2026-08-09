@@ -386,6 +386,13 @@ void FretboardLink_UpdateModel(void)
 #endif
 }
 
+bool FretboardLink_CanPlay(bool selection_valid, uint8_t difficulty, bool two_player)
+{
+    return selection_valid
+           && (difficulty == FRETBOARD_TRAINED_DIFFICULTY)
+           && !two_player;
+}
+
 void FretboardLink_Send(uint8_t mask, uint8_t producer_id)
 {
     /* No released/held distinction for this producer — the teacher label is the

@@ -91,4 +91,32 @@ void FretboardLink_UpdateArm(void);
 void FretboardLink_SetDifficulty(uint8_t difficulty);
 void FretboardLink_UpdateModel(void);
 
+/* Can the fretboard node legitimately play this selection? Two independent
+ * limits, both properties of the node rather than of the UI that asks:
+ *
+ *   difficulty — only `hard` has trained weights. The node keeps all four slots
+ *     selectable by aliasing the untrained ones to the hard model (its
+ *     models.h MODEL_BY_DIFFICULTY / MODEL_DIFFICULTY_TRAINED), so playing easy
+ *     with the NN does not fail — it silently runs the hard model at easy's
+ *     scroll speed. The model *is* the photo->command timing function, and the
+ *     lead differs ~420 ms easy vs ~250 ms hard, so that is a wrong answer
+ *     delivered confidently. Refuse it instead of shipping it.
+ *   mode — the five phototransistors are physically aimed at the 1-player
+ *     highway's lanes. The 2-player left highway sits ~115 px left and ~0.71x
+ *     the size, so in 2P the sensors are not looking at marvin's lanes at all.
+ *
+ * FRETBOARD_TRAINED_DIFFICULTY tracks the node's own MODEL_HAVE_* set: widen
+ * this when a second model is trained and registered there. Like the
+ * SetDifficulty index mapping above this is a contract, not a compile-time
+ * check — the node's header isn't shared with marvin.
+ *
+ * Takes the committed selection's fields spread out rather than the struct, and
+ * takes the mode pre-reduced to a bool, so the actuator layer needs no include
+ * from game/ and carries no copy of game_mode_t. Callers pass
+ * `sel->mode == GAME_MODE_2P`. An invalid selection is not playable by the NN —
+ * there is nothing committed to check. */
+#define FRETBOARD_TRAINED_DIFFICULTY 2u   /* GAME_DIFF_HARD / MODEL_SEL_HARD */
+
+bool FretboardLink_CanPlay(bool selection_valid, uint8_t difficulty, bool two_player);
+
 #endif

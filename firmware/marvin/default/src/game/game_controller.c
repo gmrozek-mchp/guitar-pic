@@ -16,6 +16,7 @@
 #include "actuator/fretboard_link.h"
 #include "actuator/guitar_cmd.h"
 #include "detector/cv_marvin_v1.h"   /* highway geometry + play difficulty */
+#include "detector/detector.h"       /* active-detector fallback when NN can't play */
 #include "perf_log/perf_log_records.h"
 #include "ui/dashboard_feed.h"   /* playtime → dashboard progress bar */
 #include "net/fauxmote/fauxmote_link.h"   /* pre-flight: ensure the Wii link is up */
@@ -465,6 +466,21 @@ static void run(void)
     {
         CvMarvinV1_SetDifficulty(sel->difficulty);
         FretboardLink_SetDifficulty(sel->difficulty);
+    }
+
+    /* Fall back to CV when the NN can't play what was committed (untrained
+     * difficulty, or 2-player — see FretboardLink_CanPlay). The dashboard greys
+     * the NEURAL NETWORK row for exactly these selections, so this is the
+     * backstop for the paths that bypass it: the console `active fretboard`, and
+     * a selection committed while NN was already active. Silently playing the
+     * hard model at another tier's scroll speed is the failure this prevents. */
+    if (Detector_GetActive() == DETECTOR_FRETBOARD
+        && !FretboardLink_CanPlay(sel->valid, sel->difficulty,
+                                  sel->mode == (uint8_t)GAME_MODE_2P))
+    {
+        LOG_WARN("GC: NN unavailable for this selection — using CV\r\n");
+        Detector_SetActive(DETECTOR_CV_MARVIN_V1);
+        FretboardLink_UpdateArm();
     }
 
     /* Clear the ROBOT telemetry the instant a run is requested — score/multiplier/

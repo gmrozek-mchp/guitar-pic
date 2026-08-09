@@ -15,6 +15,7 @@
 
 #include "actuator/guitar_cmd.h"       /* GUITAR_BTN_* fret mask layout */
 #include "actuator/actuator_enable.h"  /* the ACTUATORS toggles' state + T1S push */
+#include "actuator/fretboard_link.h"   /* FretboardLink_CanPlay — the NN row's gate */
 #include "detector/detector.h"         /* DETECTOR_* — the detector selector rows */
 
 #include "game/game_catalog.h"
@@ -504,28 +505,83 @@ static void start_on_release(leButtonWidget *btn)
     GameController_Start();
 }
 
+/* Fade an unavailable row toward the card it sits on.
+ *
+ * SCHEME_BUTTON_DISABLED alone was not distinct enough to read as "not a control":
+ * against the zinc-900 card (#18181B) its base is #1F1F23 while an available-but-off
+ * toggle is #27272A, so the disabled chip lands halfway between the card and a live
+ * row and still invites a tap. The generated palette has nothing dimmer to reach for
+ * (#52525B is the faintest text in it), so the extra distinctness comes from alpha
+ * rather than another scheme — which is also what the mockup itself would do
+ * (Tailwind `opacity-*`) and needs no MGS Generate.
+ *
+ * The stock button skin multiplies fill, image and caption by the widget's cumulative
+ * alpha (legato_widget_button_skin_classic.c), so one call fades the whole row as a
+ * unit. The blend reads the backdrop the card repainted under the damaged rect, so
+ * repeated repaints don't accumulate (see widget_panel_aa.c). Tune ROW_DIM_ALPHA if it
+ * wants to be fainter still; 255 is fully opaque. */
+#define ROW_DIM_ALPHA  102u   /* ~40%, the mockup's opacity-40 */
+
+static void row_dim(leWidget *w, bool dim)
+{
+    if (w == NULL) { return; }
+    w->fn->setAlphaEnabled(w, dim ? LE_TRUE : LE_FALSE);
+    w->fn->setAlphaAmount(w, dim ? ROW_DIM_ALPHA : 255u);
+}
+
+/* True when the NEURAL NETWORK row is offerable for the committed selection: the
+ * fretboard node only has trained weights for hard, and its sensors only sit on the
+ * 1-player highway (FretboardLink_CanPlay carries the reasoning). */
+static bool detector_nn_available(void)
+{
+    const game_selection_t *sel = GameSelection_Get();
+    return FretboardLink_CanPlay(sel->valid, sel->difficulty,
+                                 sel->mode == (uint8_t)GAME_MODE_2P);
+}
+
 /* Paint one detector row selected/unselected. A scheme carries a single text colour,
- * so the pair is swapped rather than restyled (the nav drawer's idiom). */
-static void detector_paint(unsigned i, bool on)
+ * so the pair is swapped rather than restyled (the nav drawer's idiom).
+ *
+ * `avail` false is the third look, and it needs the same two-part treatment the
+ * SELECT SONG gate documents further down: clearing LE_WIDGET_ENABLED stops the row
+ * being picked but Legato's button paint has no disabled styling, so an unavailable
+ * row would read live and silently do nothing. SCHEME_BUTTON_DISABLED is the muted
+ * pair already used for that gate, plus the row_dim fade that carries most of the
+ * distinctness. No image to swap here — these rows are caption-only. */
+static void detector_paint(unsigned i, bool on, bool avail)
 {
     leButtonWidget *b = s_detector[i];
-    b->fn->setScheme(b, on ? &SCHEME_TOGGLE_ON : &SCHEME_TOGGLE_OFF);
+
+    if (avail) { b->widget.flags |=  LE_WIDGET_ENABLED; }
+    else       { b->widget.flags &= ~LE_WIDGET_ENABLED; }
+
+    b->fn->setScheme(b, !avail ? &SCHEME_BUTTON_DISABLED
+                               : (on ? &SCHEME_TOGGLE_ON : &SCHEME_TOGGLE_OFF));
+    row_dim((leWidget *)b, !avail);
     b->fn->invalidate(b);
 }
 
 static void detector_show_active(void)
 {
     detector_id_t active = Detector_GetActive();
-    detector_paint(0u, active == DETECTOR_CV_MARVIN_V1);
-    detector_paint(1u, active == DETECTOR_FRETBOARD);
+    detector_paint(0u, active == DETECTOR_CV_MARVIN_V1, true);
+    detector_paint(1u, active == DETECTOR_FRETBOARD, detector_nn_available());
 }
 
 /* The two DETECTOR rows pick which detector drives the timing pipeline. The mockup
  * labels them Computer Vision / Neural Network; the fretboard node IS the neural-net
- * implementation, so the caption is the mockup's and the bus module keeps its name. */
+ * implementation, so the caption is the mockup's and the bus module keeps its name.
+ *
+ * The NN guard repeats what the cleared LE_WIDGET_ENABLED already prevents, so that
+ * "NN requires a playable selection" holds at the one place that acts on the tap
+ * rather than depending on the paint having run first. */
 static void detector_on_release(leButtonWidget *btn)
 {
-    Detector_SetActive((btn == s_detector[1]) ? DETECTOR_FRETBOARD : DETECTOR_CV_MARVIN_V1);
+    bool want_nn = (btn == s_detector[1]);
+
+    if (want_nn && !detector_nn_available()) { return; }
+
+    Detector_SetActive(want_nn ? DETECTOR_FRETBOARD : DETECTOR_CV_MARVIN_V1);
     detector_show_active();
 }
 
@@ -561,6 +617,11 @@ static void actuator_paint(unsigned i)
 
     if (present) { s_actuator[i]->widget.flags |=  LE_WIDGET_ENABLED; }
     else         { s_actuator[i]->widget.flags &= ~LE_WIDGET_ENABLED; }
+
+    /* The dot is a sibling drawn over the button, not a child, so the fade has to be
+     * applied to it too — otherwise an absent row keeps a full-brightness dot. */
+    row_dim((leWidget *)s_actuator[i], !present);
+    row_dim(s_actuator_led[i], !present);
 
     s_actuator[i]->fn->setScheme(s_actuator[i], btn_scheme);
     s_actuator_led[i]->fn->setScheme(s_actuator_led[i], dot_scheme);
@@ -1061,6 +1122,18 @@ void ScreenDashboard_ApplySelection(void)
     set_dyn(DYN_S_DIFF, difficulty_text(sel->difficulty));
     s_diff_pill->fn->setScheme(s_diff_pill, difficulty_scheme(sel->difficulty));
     s_diff_pill->fn->invalidate(s_diff_pill);
+
+    /* The new selection can invalidate the active detector — commit easy while the NN
+     * is selected and the NN row is no longer offerable. Drop to CV here rather than
+     * waiting for START, so the rows never show the NN greyed *and* selected at once
+     * (which is what leaving it active would paint: one row disabled, neither lit).
+     * The equivalent fallback in game_controller's run() stays as the backstop for the
+     * console paths that never come through here. */
+    if (Detector_GetActive() == DETECTOR_FRETBOARD && !detector_nn_available())
+    {
+        Detector_SetActive(DETECTOR_CV_MARVIN_V1);
+    }
+    detector_show_active();
 }
 
 /* Selection observer — runs in the committing task's context (touch / song-select).
@@ -1223,6 +1296,11 @@ static void run_state_show(bool active)
     s_pick->fn->setReleasedImage(s_pick,
         (leImage *)(active ? &BUTTON_FACE_SELECT_SONG_DIM : &BUTTON_FACE_SELECT_SONG));
     s_pick->fn->invalidate(s_pick);
+
+    /* run() can force CV at the top of a run (NN unplayable for the committed
+     * selection), and this fires on the resulting phase change, so the rows follow a
+     * switch marvin made on its own rather than only ones the operator tapped. */
+    detector_show_active();
 }
 
 /* Game-controller status → the song card's status line, plus the run-dependent chrome. */
