@@ -1,6 +1,6 @@
 configVersion: 1.0.0
 componentName: tc0
-coreVersion: 5.9.0
+coreVersion: 5.9.1
 device: SAM9X75D2G
 library: []
 dependency:
