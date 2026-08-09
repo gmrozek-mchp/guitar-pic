@@ -4,6 +4,8 @@
 
 #include "FreeRTOS.h"        /* configASSERT */
 
+#include "log.h"
+
 #include "ui/ui_manager.h"   /* CANVAS_DASH, BASE_W, BASE_H, UiManager_OpenSongSelect */
 #include "ui/song_detail.h"
 #include "ui/titlebar.h"         /* shared hamburger + logos titlebar */
@@ -137,6 +139,22 @@ static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
 #define R_ACT_ROW_Y  (R_ACT_Y + LBL_H + LBL_GAP)
 #define ACT_W        ((COL_W - ACT_GAP) / 2)         /* grid-cols-2 */
 
+/* SHOWDOWN, at the foot of the human card (the mockup's mt-auto button): the trophy above
+ * a 24px caption, both drawn by the button, with the HUMAN vs ROBOT subtitle as a sibling
+ * label below them. Sits on the same 10px foot the robot card's last actuator row ends on.
+ *
+ * The block is arranged top-down (LE_VALIGN_TOP + a top margin) rather than centred,
+ * because the subtitle is not part of the button's own layout: centring would balance
+ * trophy+caption in the full height and leave the subtitle hanging off the bottom. With
+ * SHOW_TOP_MG the ink lands 17px below the top edge and the subtitle's 17px above the
+ * bottom one. leUtils_ArrangeRectangle adds 1 to a top-aligned y, hence the odd 15. */
+#define SHOW_H         100
+#define SHOW_R           8                           /* rounded-lg */
+#define SHOW_TOP_MG     15                           /* py-4, less the arrange's +1 */
+#define SHOW_ICON_GAP    6                           /* gap-1.5 */
+#define SHOW_SUB_Y      70                           /* subtitle box, card-relative */
+#define SHOW_Y         (CONTENT_H - 10 - SHOW_H)
+
 /* Video card + test pattern (mockup VideoStream). */
 #define VIDEO_W     CENTER_W
 #define VIDEO_H     480
@@ -256,6 +274,8 @@ static leButtonWidget      *s_actuator[ACTUATOR_COUNT];
 static leWidget            *s_actuator_led[ACTUATOR_COUNT];
 static leButtonWidget      *s_start;
 static leButtonWidget      *s_pick;    /* SELECT SONG — gated while a run is in flight */
+static leButtonWidget      *s_showdown;      /* human card's challenge control */
+static leLabelWidget       *s_showdown_sub;  /* its HUMAN vs ROBOT subtitle */
 static leTableString        s_start_cap, s_stop_cap;
 static leWidget            *s_state_robot, *s_state_robot_led;
 static leWidget            *s_video_pattern;   /* SMPTE bars group, hidden while video is up */
@@ -527,6 +547,43 @@ static void row_dim(leWidget *w, bool dim)
     if (w == NULL) { return; }
     w->fn->setAlphaEnabled(w, dim ? LE_TRUE : LE_FALSE);
     w->fn->setAlphaAmount(w, dim ? ROW_DIM_ALPHA : 255u);
+}
+
+/* Paint SHOWDOWN available/unavailable. Same two-part treatment the SELECT SONG gate and
+ * the detector rows document — clearing LE_WIDGET_ENABLED stops the pick but Legato's
+ * button paint has no disabled styling — plus the row_dim fade, which reaches the trophy
+ * too because the button skin multiplies its image by the widget's cumulative alpha. The
+ * subtitle is a sibling drawn over the button rather than a child, so it takes its own
+ * scheme swap and fade; BUTTON_DISABLED serves as both, its base being the fill the
+ * disabled button paints under the caption's antialiasing. */
+static void showdown_paint(bool avail)
+{
+    if (avail) { s_showdown->widget.flags |=  LE_WIDGET_ENABLED; }
+    else       { s_showdown->widget.flags &= ~LE_WIDGET_ENABLED; }
+
+    s_showdown->fn->setScheme(s_showdown, avail ? &SCHEME_BUTTON_SHOWDOWN
+                                                : &SCHEME_BUTTON_DISABLED);
+    s_showdown_sub->fn->setScheme(s_showdown_sub, avail ? &SCHEME_TEXT_SHOWDOWN_SUB
+                                                        : &SCHEME_BUTTON_DISABLED);
+    row_dim((leWidget *)s_showdown,     !avail);
+    row_dim((leWidget *)s_showdown_sub, !avail);
+    s_showdown->fn->invalidate(s_showdown);
+    s_showdown_sub->fn->invalidate(s_showdown_sub);
+}
+
+/* SHOWDOWN starts a 2-player match against the robot on a song and difficulty of its own
+ * choosing, rather than on the committed selection — so it is not START with a different
+ * caption, and it needs no valid selection. Choosing and committing that match is not
+ * wired yet; this is the seam it attaches to. The busy check repeats what the cleared
+ * ENABLED flag already prevents, for the reason detector_on_release documents: it puts
+ * "not during a run" at the place that acts on the tap. */
+static void showdown_on_release(leButtonWidget *btn)
+{
+    (void)btn;
+
+    if (GameController_IsBusy()) { return; }
+
+    LOG_INFO("dash: SHOWDOWN\r\n");
 }
 
 /* True when the NEURAL NETWORK row is offerable for the committed selection: the
@@ -835,6 +892,24 @@ static void build_human_card(leWidget *content)
     build_score_block(card, DYN_H_SCORE, &SCHEME_TEXT_HUMAN, &SCHEME_PILL_HUMAN,
                       s_mult_human);
     build_streak_block(card, DYN_H_STREAK, &s_bar_streak_human, 0xFDC700u);
+
+    /* SHOWDOWN. Amber against the card's yellow-400 human accents, deliberately — the
+     * mockup gives the control its own colour rather than the player's. */
+    s_showdown = add_button(card, COL_X, SHOW_Y, COL_W, SHOW_H,
+                            stringID_GAMEPLAY_SHOWDOWN, &SCHEME_BUTTON_SHOWDOWN);
+    s_showdown->fn->setCornerRadius(s_showdown, SHOW_R);
+    s_showdown->fn->setVAlignment(s_showdown, LE_VALIGN_TOP);
+    s_showdown->fn->setMargins(s_showdown, 0, SHOW_TOP_MG, 0, 0);
+    s_showdown->fn->setImagePosition(s_showdown, LE_RELATIVE_POSITION_ABOVE);
+    s_showdown->fn->setImageMargin(s_showdown, SHOW_ICON_GAP);
+    s_showdown->fn->setPressedImage(s_showdown, (leImage *)&BUTTON_ICON_TROPHY);
+    s_showdown->fn->setReleasedImage(s_showdown, (leImage *)&BUTTON_ICON_TROPHY);
+    s_showdown->fn->setReleasedEventCallback(s_showdown, showdown_on_release);
+
+    s_showdown_sub = add_cap(card, COL_X, SHOW_Y + SHOW_SUB_Y, COL_W, 16,
+                             stringID_GAMEPLAY_HUMAN_VS_ROBOT, &SCHEME_TEXT_SHOWDOWN_SUB,
+                             LE_HALIGN_CENTER);
+    s_showdown_sub->widget.flags |= LE_WIDGET_IGNOREPICK;
 
     add_card_frame(content, HUMAN_X, 0, SIDE_W, CONTENT_H, CARD_R);
 }
@@ -1296,6 +1371,10 @@ static void run_state_show(bool active)
     s_pick->fn->setReleasedImage(s_pick,
         (leImage *)(active ? &BUTTON_FACE_SELECT_SONG_DIM : &BUTTON_FACE_SELECT_SONG));
     s_pick->fn->invalidate(s_pick);
+
+    /* SHOWDOWN would commit a match of its own, so it is gated for the same reason
+     * SELECT SONG is: not while one is already playing. */
+    showdown_paint(!active);
 
     /* run() can force CV at the top of a run (NN unplayable for the committed
      * selection), and this fires on the resulting phase change, so the rows follow a

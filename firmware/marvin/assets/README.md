@@ -53,6 +53,7 @@ that is deliberate, not a leak.
 | `BUTTON_FACE_SELECT_SONG` | `list-music.svg` | 14×14 | `#D4D4D8` |
 | `BUTTON_FACE_START` | `play.svg` | 14×14 | `#FFFFFF` |
 | `NAV_ICON_BUS` + `_SELECTED` | `network.svg` | 24×24 | `#D4D4D8` / `#FFFFFF` |
+| `BUTTON_ICON_TROPHY` | `trophy.svg` | 20×20 | `#492F03` (see below) |
 
 To regenerate a nav pair:
 
@@ -64,6 +65,11 @@ sed 's/currentColor/#FFFFFF/' icon/lucide/<icon>.svg | rsvg-convert -w 24 -h 24 
 then `set_image_source.py` (replace in place) or `add_image.py` (new asset) from the
 `mgs-legato-design` skill. `BUTTON_ICON_HAMBURGER` is white because it lives in the titlebar and
 inherits that chrome's colour — not a nav state.
+
+`BUTTON_ICON_TROPHY`'s stroke is a **composite, not a colour the mockup names**: the mockup
+draws it `text-black/70` on the SHOWDOWN button's `bg-amber-500`, and a Legato image carries no
+alpha-over-scheme relationship, so the 70% black is pre-composited against `#F59E0B` →
+`#492F03`. Re-derive it if that button's fill changes.
 
 Two traps:
 
