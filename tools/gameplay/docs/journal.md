@@ -143,6 +143,9 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-08-08 | **2-player run policy is fixed, not a choice the navigator makes: always PRO FACE-OFF (`multiplayer_menu` idx 1); marvin drives P1/left only; `guitar_select_2p` is assert-don't-act; `player_ready_2p` always PLAY SHOW (idx 0); `venue_select` confirms through whatever is selected.** | Greg. Every degree of freedom on the 2-player setup path that *doesn't* affect gameplay is pinned to one value, so the navigator has nothing to decide and needs no readers for it — the same reasoning that lets `section_select` be GREENed through today. Concretely: PRO FACE-OFF is the only 2p mode in scope, so FACE-OFF/BATTLE are documented for recognition but never routed to; venue doesn't affect gameplay, so no venue catalog or fixed-slot matcher is built (8 posters captured become classifier exemplars only); character choice is out of scope, so `character_select_2p` is a pass-through GREEN. **Assert-don't-act on the guitar screen is a safety call:** marvin's guitar is expected already preselected on the left, and improvising guitar-moving inputs could drag the *human's* guitar to marvin's side and wedge the screen — so the controller verifies and confirms its own side, and aborts to the operator if the assertion fails, rather than trying to fix it. Marvin driving only P1 halves the reader work: P2 state is wait-for-only, never acted on. |
+| 2026-08-08 | **The 2-player setup screens introduce a new edge kind — `act-then-wait` — whose wait is *unbounded*; timing out into the generic RED recovery is a bug, not a fallback.** | Every edge modelled until now is "marvin acts → the screen changes", so the controller's post-actuation policy is poll-until-expected *with a timeout*, falling back to RED recovery. On `guitar_select_2p` and `player_ready_2p` marvin can only confirm its own side — the transition is gated on a **second human actor** confirming theirs. A timeout there would back marvin out of the setup flow while the player is still deciding, i.e. the recovery path actively breaks the run. So these edges get "observe until the expected screen appears" plus operator-visible "waiting for player 2" status instead of a deadline. |
+| 2026-08-08 | **`difficulty_select` is shared outright with the 2-player path (one cursor, existing reader); `player_ready_2p` is the screen that needs a per-side reader.** | Greg: PRO FACE-OFF puts both players on the *same* difficulty, so the natural worry (a per-player difficulty screen) doesn't exist — no new class or reader there. The genuinely per-side screens are `guitar_select_2p` and `player_ready_2p`, and only the latter has a cursor to read. That makes the deferred reader work small and specific: key menu layouts by a *layout* id rather than by screen id so one screen can carry two panels, and read only the left one. |
 | 2026-07-09 | **Score reader = register-once + search-free per-frame read; registration keys on the block *chrome*, not the digits.** The whole scoring block (`SCORE_BLOCK_ROI (114,309,210,414)`, 96×105) is located once by a masked normalized-SAD offset search matching its static chrome (box frame + inner panel texture + medallion ring); the 6 digit cells are then fixed offsets inside it. Each subsequent frame samples those cells and 1-NN-classifies — no per-frame search. Mask is a hand-drawn artifact (`data/scores/score_block_mask.png`, magenta = chrome). | Greg: field position is stable on a rig (won't vary moment-to-moment); slop is position (per-rig) + A2D colour/brightness, **not** scale. So the search belongs at gameplay start, not per frame; per-frame luma normalization handles A2D (100% on gain/offset/noise). Chrome is a better anchor than the digits: **digit-independent** (registers before any valid score, can't alias a cell onto a neighbour) and **mode-independent** — the box chrome is pixel-identical in training and career (verified: all 25 training + 44 career snapshot frames register to (0,0) against a training-built reference; shift recovery exact to ±7 px). Greg flagged that a variance-derived mask wrongly kept the left of the digit row as "chrome" (our samples top out at 5 digits, so it's always blank there) — the hand mask hard-excludes the full digit row so a 6-digit score can't corrupt registration. The block doubles as the marvin-perf capture region. First tried digit-template two-stage registration (wide whole-field + per-cell refine); superseded by chrome the same day. |
 | 2026-07-09 | **Score digits read by per-digit glyph OCR: fixed-pitch, right-anchored 6-cell grid + per-cell 1-NN over labelled cell exemplars (not a per-class centroid).** ROI `(139,315,199,333)`, `N_SCORE_DIGITS=6`, blank class for unused leading cells. | The score is open-ended (no whole-field template), so it must be decoded per digit — the case the earlier phases deferred. Measured on the corpus: the training white font is **tabular** (cluster-count == digit-count, units right edge locked at x=197, ~10 px pitch), so a fixed right-anchored grid segments cleanly. 1-NN beats a centroid because the crisp digits blur together when averaged (8/3/0 collide); keeping exemplars lifted clean reads 8/9→9/9 and A2D 16/18→18/18. Score is right-aligned/grows left (Greg), so cells anchor at the right and short scores leave leading cells blank. |
 | 2026-07-09 | **Score corpus = ~9 hand-labelled training-white in-song frames from `marvin-perf/snapshots/`, value in the filename (`score__training__NNNNNN__snapNNNN.png`); host-side under `tools/gameplay/data/scores/`.** | Greg: minimal manual labelling. The 9 distinct scores cover all 10 glyphs (multiple exemplars each), enough to build templates + a real eval, without bulk labelling. LOO is only 6/9 — the small-corpus ceiling (a held-out digit sometimes has a single look-alike exemplar left), not an algorithm limit (clean/A2D/registration are all 100%). Enriching via a marvin-perf score-crop capture is the follow-up to lift LOO and harden templates. |
@@ -225,6 +228,53 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-08-08 — the 2-player setup path is mapped (nav doc); 5 new screens, not yet recognized
+
+Walked Greg's 22-snapshot capture of `main_menu → MULTIPLAYER → … → 2-player gameplay`
+(`snapshot-73726` … `snapshot-89695`, 720×480, all copied into the gitignored
+`tools/marvin-perf/snapshots/` so the deferred corpus import has source data). This closes
+the `main_menu → MULTIPLAYER` edge, which had been `TBD` since the nav model was started.
+**Doc-only by decision** — `firmware/marvin/docs/gh3_navigation.md` plus this journal; no
+`screens.py` ids, no corpus import, no `gameplay_metadata.h` re-export, no readers.
+
+Five new screens, in path order: **`guitar_select_2p`** (assign a guitar to your side;
+per-side `READY!` badge), **`multiplayer_menu`** (FACE-OFF / PRO FACE-OFF / BATTLE — all 3
+items captured), **`character_select_2p`**, **`player_ready_2p`** (PLAY SHOW / CHANGE
+CHARACTER / OUTFIT / GUITAR), **`venue_select`** (8 posters observed). Also added the missing
+**`in_song_2p`** catalog entry — it has been a recognized *class* since 2026-07-14 but the nav
+doc never described it, and the 2-player worked path terminates there.
+
+Three findings that changed the model rather than just adding rows:
+
+- **A third highlight paradigm: `per-side`.** The 2p screens split into a left (P1) and right
+  (P2) half, each with its own cursor *and its own commit state*, advancing **independently** —
+  *snapshot-81552* catches the left half still on the character strip while the right half is
+  already on the ready panel. So `character_select_2p` and `player_ready_2p` are sub-states of
+  one screen, not two mutually-exclusive full-screen states. This is the **same failure mode as
+  the `in_song_2p` centroid dropout** (2026-07-15): a whole-frame fingerprint over a screen
+  whose halves stage independently keys on a configuration that varies. Per-side probes at
+  fixed coords are the mechanism to reuse, and the doc now says so.
+- **`act-then-wait` edges** (see decision log) — the first edges in the model that don't
+  advance when marvin acts, and the first place where the existing timeout→RED-recover policy
+  is *wrong* rather than merely suboptimal.
+- **Every screen on this path paints an input legend** — `SELECT` (green fret icon) / `BACK`
+  (red fret) / `UP/DOWN` (strum bar). That's independent confirmation of the doc's
+  GREEN/RED/strum conventions on screens we had no other evidence for, and a candidate cheap
+  "this is a menu" cue if the impostor-leak open item ever bites.
+
+Written into the nav doc: the `per-side` paradigm + `act-then-wait` notation under
+Conventions, the 6 new catalog entries, the closed `MULTIPLAYER` edge, 10 new menu-graph rows,
+a **"Worked path — 2-player pro face-off run"** mirroring the training-run path, and the
+open items below.
+
+**Deferred / unconfirmed** (all in the nav doc's Open items): the 5 screens are documented but
+**not recognized** — the corpus import + `GP_N_SCREENS` 14 → 19 re-export is the next phase;
+`player_ready_2p` needs a per-side layout (menu layouts are keyed by screen id today, and
+`read_selection` returns one index); the tail past `venue_select` (song → difficulty →
+loading ordering, whether a 2p `part_select` exists, the available song set) is
+operator-reported from memory and needs one capture pass; 2-player end-of-song screens are
+unmapped.
 
 ### 2026-08-08 — a 2-player corpus can now be captured off the device (marvin-perf capture types)
 

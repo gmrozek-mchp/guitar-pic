@@ -38,17 +38,45 @@ fauxmote emulates the complete guitar extension incl. `+`/`−` — the actuator
 command protocol just needs to carry those inputs.
 
 ### Highlight paradigms
-How "selected" is presented drives what the observer reads. Two kinds so far:
+How "selected" is presented drives what the observer reads. Three kinds so far:
 
 - **static-list** — the list is painted at fixed screen positions; a highlight
   moves between rows. Observer reads *which row is lit*. (e.g. `main_menu`)
 - **fixed-slot** — the selected item sits in a fixed, highlighted slot and the
   list scrolls underneath it. Observer reads *what occupies the highlight slot*.
-  (e.g. `song_select`)
+  (e.g. `song_select`, `venue_select`)
+- **per-side** — a 2-player screen split into a left (P1) and right (P2) half,
+  each with its **own cursor and own commit state**, advancing *independently*.
+  Observer reads each half separately. (e.g. `player_ready_2p`,
+  `guitar_select_2p`)
+
+  A whole-frame fingerprint is the wrong mechanism for these: the two halves can
+  sit in different sub-states at the same time (snapshot-81552 shows P1 still on
+  the character strip while P2 is already on the ready panel), so a single
+  centroid built from one capture drifts as soon as the halves are staged
+  differently. This is the same failure mode that made `in_song_2p` drop out
+  intermittently, fixed by keying on static chrome at fixed coordinates instead
+  (see the gameplay journal, 2026-07-15) — per-side probes are the mechanism to
+  reuse when these readers get built.
 
 ### Edge notation
 An edge is `from → to : [inputs]`. `STRUM_DN×n` means n strum-downs. Moving to
 list index `i` from the top (index 0) on a static list is `STRUM_DN×i, GREEN`.
+
+Note the controller does not actually issue blind counts — per the closed-loop
+rule below it strums the *signed delta from the observed cursor*. `STRUM_DN×i` in
+this doc names the **target index**, not a fixed input burst.
+
+**act-then-wait edges.** Most edges are "marvin acts → the screen changes". The
+2-player setup screens are not: marvin confirms **its own side only** (it drives
+P1/left — the human plays P2), and the screen advances only once the *human*
+confirms theirs. Marked `[wait: P2]` in the graph below.
+
+These need a wait state distinct from the normal post-actuation poll: the wait is
+**unbounded**, because it ends on a human deciding. Timing out into the generic
+RED recovery would be actively wrong — it would back marvin out of the setup flow
+while the player is still choosing. Observe until the expected next screen
+appears, and surface "waiting for player 2" to the operator instead.
 
 ---
 
@@ -69,7 +97,7 @@ list index `i` from the top (index 0) on a static list is `STRUM_DN×i, GREEN`.
   - CAREER → TBD
   - CO-OP CAREER → TBD
   - QUICKPLAY → TBD
-  - MULTIPLAYER → TBD
+  - MULTIPLAYER → `guitar_select_2p`
   - TRAINING → `training_menu`
   - OPTIONS → TBD
   - NINTENDO WFC → TBD
@@ -93,8 +121,9 @@ list index `i` from the top (index 0) on a static list is `STRUM_DN×i, GREEN`.
 
 ### song_select  *(shared node)*
 - **snapshot:** `gh3_screens/song_select__00_slow_ride.png` (first song "Slow Ride" selected)
-- **reached from:** `training_menu` → PRACTICE. Expected to be the **same screen**
-  reused by other modes (CAREER, QUICKPLAY) — confirm as those paths are walked.
+- **reached from:** `training_menu` → PRACTICE, and `venue_select` on the 2-player
+  path. Expected to be the **same screen** reused by other modes (CAREER,
+  QUICKPLAY) — confirm as those paths are walked.
 - **paradigm:** fixed-slot (selection fixed on screen; song list scrolls under it)
 - **items:** see [Song catalog](#song-catalog-main-setlist) below; index 0 = "Slow Ride".
 - **select song i:** `STRUM_DN×i, GREEN` (from the top of the list).
@@ -104,6 +133,8 @@ list index `i` from the top (index 0) on a static list is `STRUM_DN×i, GREEN`.
 - **leads to:** `part_select` (may be skipped for some songs — TBD).
 - **note:** assumed identical across modes; when walking CAREER, verify the
   *song set* matches (tiers / locked songs may differ even if the layout is shared).
+  Same caveat on the 2-player path — the layout is expected to be shared, but the
+  available song set there is unconfirmed (Open items).
 
 ### part_select  *(variable — song-dependent)*
 - **reached from:** `song_select` → GREEN on a song.
@@ -122,7 +153,10 @@ list index `i` from the top (index 0) on a static list is `STRUM_DN×i, GREEN`.
   screen read (vision, M9).
 
 ### difficulty_select
-- **reached from:** `part_select` → GREEN on a part.
+- **reached from:** `part_select` → GREEN on a part, and `song_select` on the
+  2-player path. **Shared outright with the 2-player path** — PRO FACE-OFF puts both
+  players on the *same* difficulty, so this is one screen with one cursor, not a
+  per-side screen; the existing class and reader apply unchanged.
 - **paradigm:** static-list (cursor moves).
 - **items (top → bottom, index; snapshot = that item selected):**
   0. EASY — `gh3_screens/difficulty__easy.png`
@@ -247,6 +281,117 @@ list index `i` from the top (index 0) on a static list is `STRUM_DN×i, GREEN`.
   - QUIT → `main_menu` (may route through `quit_confirm` like `pause_menu` —
     unverified)
 
+---
+
+## Screen catalog — 2-player path (MULTIPLAYER → PRO FACE-OFF)
+
+The setup path from `main_menu` → MULTIPLAYER through to 2-player gameplay, walked
+2026-08-08. **Marvin drives P1 (left); a human plays P2.** Three of these screens
+are act-then-wait (see Conventions) — marvin confirms its side, the human confirms
+theirs, then the screen advances.
+
+Snapshots are referenced by raw capture number (`snapshot-NNNNN`) in the
+gitignored `tools/marvin-perf/snapshots/`; this path is **not yet imported into the
+`gh3_screens/` corpus**, so the observer does not classify these screens yet (see
+Open items).
+
+### guitar_select_2p
+- **reached from:** `main_menu` → MULTIPLAYER
+- **screen:** "Select Guitar" — *"Move the desired guitar to your side of the screen."*
+- **paradigm:** per-side — **not a list.** A connected-but-unassigned guitar sits in
+  the centre column; each player moves theirs to their own side (orange arrow =
+  left/P1, purple = right/P2). A **`READY!` badge** over that side's shield is the
+  per-side commit indicator.
+- **observed states:** left assigned, right empty, neither ready (*snapshot-73726*)
+  → left `READY!` (*74942*) → a second guitar appears centre (*77649*) → it lands on
+  the right (*78054*).
+- **marvin's action — assert, don't act.** Marvin's guitar is expected to be
+  **already preselected on the left** when this screen appears. The controller
+  asserts that, then GREENs to confirm its own side. It **never moves a guitar**:
+  a wrong move could drag the human's guitar to marvin's side and wedge the screen.
+  If the assertion fails, abort and surface it to the operator (Open items).
+- **back (RED):** `main_menu`
+- **leads to:** `multiplayer_menu` — **`[wait: P2]`**, advances once both sides ready.
+
+### multiplayer_menu
+- **reached from:** `guitar_select_2p` (both sides ready)
+- **screen:** "multiplayer / CHOOSE MODE"
+- **paradigm:** static-list (cursor moves; the selected item turns red)
+- **items (top → bottom, index; snapshot = that item selected):**
+  0. FACE-OFF — *snapshot-78778*
+  1. PRO FACE-OFF — *snapshot-79179*  ← **the mode we always play**
+  2. BATTLE — *snapshot-79568*
+- **select:** `STRUM_DN×index, GREEN`. All three items are captured, so this is a
+  complete fixed-count static list.
+- **back (RED):** `guitar_select_2p`
+- **leads to:** `character_select_2p` (via PRO FACE-OFF). FACE-OFF and BATTLE are
+  documented for recognition but never routed to.
+
+### character_select_2p
+- **reached from:** `multiplayer_menu` → PRO FACE-OFF
+- **screen:** both players' characters on stage, each with a name banner
+  ("AXEL STEEL / PLAYER 1") and a vertical portrait strip on their side
+  (*snapshot-80984*).
+- **paradigm:** per-side portrait strip.
+- **marvin's action:** pass straight through with `GREEN` — this brings up that
+  side's `player_ready_2p` panel. Character choice is **out of scope for now**
+  (marvin keeps whatever character it has); it may become a real selection later.
+- **back (RED):** `multiplayer_menu`
+- **leads to:** `player_ready_2p` (per side).
+- **note:** this and `player_ready_2p` are **two sub-states of one screen, advanced
+  per side** — *snapshot-81552* shows the left half still on the portrait strip
+  while the right half already shows P2's ready panel. Don't model them as two
+  mutually-exclusive full-screen states.
+
+### player_ready_2p
+- **reached from:** `character_select_2p` → GREEN (per side)
+- **screen:** a 4-item panel in front of each player's character, **two independent
+  cursors** (*snapshot-82769* both on PLAY SHOW).
+- **paradigm:** per-side static-list. The selected row gets a light highlight bar.
+- **items per panel (top → bottom, index; snapshot = P1's selection):**
+  0. PLAY SHOW — *snapshot-82769*  ← **always this**
+  1. CHANGE CHARACTER — *snapshot-83501*
+  2. CHANGE OUTFIT — *snapshot-83959*
+  3. CHANGE GUITAR — *snapshot-84400*
+- **commit:** the same `READY!` badge appears over PLAY SHOW once that side confirms
+  (*snapshot-85396* — P1 ready, P2 still choosing).
+- **marvin's action:** select PLAY SHOW (index 0) on the **left** panel and GREEN.
+  Items 1–3 are documented for recognition but out of scope.
+- **back (RED):** `character_select_2p`
+- **leads to:** `venue_select` — **`[wait: P2]`**, advances once both sides PLAY SHOW.
+- **note:** the observer's static-list reader returns a *single* selection index, so
+  this screen needs a per-side layout to be readable — only the left panel is
+  needed for actuation (Open items).
+
+### venue_select
+- **reached from:** `player_ready_2p` (both sides PLAY SHOW)
+- **paradigm:** fixed-slot — one gig poster in a fixed centre slot over a constant
+  sepia flyer-wall background; the list scrolls under it. Structurally identical to
+  `song_select`.
+- **observed posters** (*observed, likely a partial list*): Lou's Inferno
+  (*snapshot-86147*), Kaiju Megadome (*86866*), Desert Rock Tour (*87297*),
+  Shanker's Island (*87679*), Ye Olde Royal Odeon (*88120*), Video Shoot / Studio
+  999 (*88461*), Mitch's Moose Lounge (*89308*), Backyard Bash / 22 Arcadia Avenue
+  (*89695*).
+- **marvin's action:** **confirm through with `GREEN`** on whatever poster is
+  selected — the venue does not affect gameplay. So **no venue reader is needed**
+  and no venue catalog is modelled (the same treatment `section_select` gets). Venue
+  choice may be handed to the human later.
+- **back (RED):** `player_ready_2p`
+- **leads to:** `song_select`.
+
+### in_song_2p  *(2-player gameplay)*
+- **reached from:** `loading`, on the 2-player path.
+- **screens:** `gh3_screens/in_song_2p__{0200..0203,web0714}.png`
+- Two note highways side by side, one per player, and **two amp scoreboards at the
+  top of frame** instead of the single-player bottom-left score block. Marvin plays
+  the **left** highway.
+- This is the class that tells the CV note-detector which highway geometry to read
+  (§4.2). It is **classified by scoreboard-chrome presence**, not a whole-frame
+  centroid — see the gameplay journal 2026-07-15, and 2026-07-14 for the per-highway
+  sense-line calibration.
+- **leads to:** the 2-player results/end screens — **TBD, not yet captured.**
+
 _(more screens added as captured)_
 
 ---
@@ -352,6 +497,15 @@ artists are lower-confidence than the main list — `?` = unverified / unknown.
 |------|----|--------|-------|
 | main_menu | _(per item)_ | `STRUM_DN×index, GREEN` | static list, index per catalog above |
 | main_menu | training_menu | `STRUM_DN×4, GREEN` | TRAINING (index 4) |
+| main_menu | guitar_select_2p | `STRUM_DN×3, GREEN` | MULTIPLAYER (index 3) |
+| guitar_select_2p | multiplayer_menu | `GREEN` **`[wait: P2]`** | assert marvin's guitar preselected left, confirm own side; never moves a guitar |
+| multiplayer_menu | character_select_2p | `STRUM_DN×1, GREEN` | PRO FACE-OFF (index 1) — always |
+| character_select_2p | player_ready_2p | `GREEN` | per side; pass through (no character change) |
+| player_ready_2p | venue_select | `GREEN` **`[wait: P2]`** | PLAY SHOW (index 0) on the left panel |
+| venue_select | song_select | `GREEN` | confirm through; venue is irrelevant to gameplay |
+| song_select | difficulty_select | `STRUM_DN×i, GREEN` | 2-player path — song set unconfirmed; `part_select` presence unconfirmed |
+| difficulty_select | loading | `STRUM_DN×index, GREEN` | 2-player path — shared screen, both players same difficulty |
+| loading | in_song_2p | _(none — wait)_ | transient; auto-advances into 2-player gameplay |
 | training_menu | song_select | `STRUM_DN×1, GREEN` | PRACTICE (index 1) |
 | song_select | part_select | `STRUM_DN×i, GREEN` | song at list index i; shared node. May skip part_select for some songs |
 | song_select | bonus list | `BLUE` (back: `YELLOW`) | toggles the song list, not a screen change |
@@ -433,6 +587,29 @@ purely open-loop macro can't do this safely (extra inputs would mis-fire), so
 until the observer exists, restrict to songs known to show LEAD-at-top. Per-song
 `parts` metadata lets the planner pre-know the layout either way.
 
+### Worked path — 2-player pro face-off run (main-setlist song `i`, difficulty `d`)
+Marvin drives **P1 (left)**; a human plays P2. Same closed-loop gating as above.
+Steps marked **`[wait: P2]`** end on the *human* acting, so the wait there is
+unbounded — observe until the next screen appears; do **not** time out into RED
+recovery (Conventions). From `main_menu`:
+
+1. `STRUM_DN×3, GREEN` → MULTIPLAYER → `guitar_select_2p`
+2. **assert** marvin's guitar is preselected on the left; `GREEN` to confirm its
+   own side. If the assertion fails, **abort to the operator** — do not try to move
+   a guitar. Then **`[wait: P2]`** → `multiplayer_menu`
+3. `STRUM_DN×1, GREEN` → PRO FACE-OFF → `character_select_2p`
+4. `GREEN` → pass through (keep the current character) → `player_ready_2p`
+5. PLAY SHOW (index 0) on the **left** panel, `GREEN`, then **`[wait: P2]`** →
+   `venue_select`
+6. `GREEN` → confirm whatever venue is selected → `song_select`
+7. `STRUM_DN×i, GREEN` → song `i` → `difficulty_select` *(a 2-player `part_select`
+   may or may not appear — same closed-loop skip as the training path's step 4)*
+8. `STRUM_DN×d, GREEN` → difficulty `d`, shared by both players → `loading` (wait)
+   → `in_song_2p` (gameplay, marvin reads the **left** highway)
+
+**Unverified in this plan:** the tail from step 6 on is operator-reported, not
+captured — see Open items before relying on steps 6–8.
+
 ---
 
 ## Open items
@@ -450,6 +627,32 @@ until the observer exists, restrict to songs known to show LEAD-at-top. Per-song
   skip case.
 - Other modes: walk QUICKPLAY and CAREER; confirm they reuse `song_select` /
   `difficulty_select` (shared-node assumption).
+- ✅ 2-player setup path mapped (`main_menu → MULTIPLAYER → … → in_song_2p`), 2026-08-08.
+  Its remaining gaps:
+  - **Not yet recognized.** The 5 new screens are documented but **not imported into
+    the `gh3_screens/` corpus**, so the observer classifies none of them (they'll read
+    UNKNOWN). Deferred phase: import the 22 captures, add the ids to `screens.py`
+    (`GP_N_SCREENS` 14 → 19), re-export `gameplay_metadata.h`, bump the dimension
+    assert in `tools/gameplay/tests/test_export_c.py`.
+  - **Per-side readers.** `player_ready_2p` has two independent cursors, but the
+    static-list reader returns a single index and menu layouts are keyed by screen id
+    — a per-side layout needs keying by a *layout* id instead. Only the left panel is
+    needed (marvin drives P1). For the per-side `READY!` commit state on
+    `guitar_select_2p` / `player_ready_2p`, reuse the masked-SAD probe pattern from the
+    scoreboard-presence work (gameplay journal 2026-07-15) rather than inventing a new
+    mechanism.
+  - **Confirm the tail** (steps 6–8 of the worked path): the exact
+    `venue_select → song_select → difficulty_select → loading` ordering is
+    operator-reported from memory, not captured. Also unconfirmed: whether a
+    `part_select` appears on this path, and the available *song set*. One capture pass
+    settles all three. (Difficulty is **not** per-player — resolved.)
+  - **Guitar-preselect assertion.** Documented default if it fails is abort-to-operator.
+    If the left side turns out not to be reliably preselected in practice, this needs a
+    real plan plus captures of the unassigned state.
+  - **Unbounded act-then-wait.** The controller needs a wait state distinct from its
+    timeout→RED-recover path, plus operator-visible "waiting for player 2" status
+    (`game_controller.c`).
+  - **2-player end-of-song screens** are unmapped — `in_song_2p` leads to TBD.
 - **Wrap-around behavior** (now load-bearing): does the cursor wrap past the
   ends? The FULL SONG / FULL SPEED selection relies on strum-up **saturating** at
   the top item. If lists wrap, that breaks and the navigator must read the
