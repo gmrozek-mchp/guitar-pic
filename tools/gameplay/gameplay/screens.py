@@ -33,6 +33,19 @@ SCREEN_IDS: tuple[str, ...] = (
     "pause_menu",
     "quit_confirm",
     "practice_end_menu",
+    # 2-player setup path (gh3_navigation.md), in the order the path runs.
+    #
+    # This tuple's order is documentation only — it does NOT set the exported
+    # GP_SCREEN_* values. `classifier.build_templates` sorts the class ids, so
+    # export_c numbers them alphabetically and adding any class renumbers the rest
+    # (adding these five moved GP_SCREEN_in_song_2p from 2 to 4). That is safe
+    # because every firmware use is symbolic and no numeric screen id is persisted
+    # or put on a wire — keep it that way, or this becomes a schema change.
+    "guitar_select_2p",
+    "multiplayer_menu",
+    "character_select_2p",
+    "player_ready_2p",
+    "venue_select",
 )
 
 # Corpus filename prefixes whose canonical id differs from the prefix itself.

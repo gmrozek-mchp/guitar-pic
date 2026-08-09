@@ -119,3 +119,36 @@ snapshot number.
 | practice_end_menu__change_speed.png | 111 | practice end menu — change speed |
 | practice_end_menu__change_section.png | 112 | practice end menu — change section |
 | practice_end_menu__quit.png | 113 | practice end menu — quit |
+
+## 2-player setup path
+
+Captured 2026-08-08; the path is documented in [`../gh3_navigation.md`](../gh3_navigation.md).
+Marvin plays **P1 (left)** and a human plays P2, so where a screen has two independently
+advancing halves the suffix names **P1's** state — that is the side the controller reads and
+acts on. `guitar_select_2p` and `character_select_2p` suffixes are descriptive state labels,
+not menu-row selections (neither screen is a static list).
+
+| file | from | screen / selection |
+|------|-----:|--------------------|
+| guitar_select_2p__p1_unready.png | 73726 | select guitar — P1 guitar on its side, not yet confirmed |
+| guitar_select_2p__p1_ready.png | 74942 | select guitar — P1 confirmed (READY! badge) |
+| guitar_select_2p__p2_unassigned.png | 77649 | select guitar — P1 ready, P2 guitar still in the centre pool |
+| guitar_select_2p__p2_assigned.png | 78054 | select guitar — P1 ready, P2 guitar moved to its side |
+| multiplayer_menu__face_off.png | 78778 | multiplayer choose mode — face-off |
+| multiplayer_menu__pro_face_off.png | 79179 | multiplayer choose mode — pro face-off (the mode we play) |
+| multiplayer_menu__battle.png | 79568 | multiplayer choose mode — battle |
+| character_select_2p__both.png | 80984 | character select — both sides on the portrait strip |
+| character_select_2p__p2_committed.png | 81552 | character select — P1 still on the strip, P2 already on its ready panel |
+| player_ready_2p__play_show.png | 82769 | player ready — P1 on PLAY SHOW |
+| player_ready_2p__change_character.png | 83501 | player ready — P1 on CHANGE CHARACTER |
+| player_ready_2p__change_outfit.png | 83959 | player ready — P1 on CHANGE OUTFIT |
+| player_ready_2p__change_guitar.png | 84400 | player ready — P1 on CHANGE GUITAR |
+| player_ready_2p__p1_ready.png | 85396 | player ready — P1 confirmed PLAY SHOW (READY! badge) |
+| venue_select__lous_inferno.png | 86147 | venue select — Lou's Inferno |
+| venue_select__kaiju_megadome.png | 86866 | venue select — Kaiju Megadome |
+| venue_select__desert_rock_tour.png | 87297 | venue select — Desert Rock Tour |
+| venue_select__shankers_island.png | 87679 | venue select — Shanker's Island |
+| venue_select__ye_olde_royal_odeon.png | 88120 | venue select — Ye Olde Royal Odeon |
+| venue_select__video_shoot.png | 88461 | venue select — Video Shoot (Studio 999) |
+| venue_select__mitchs_moose_lounge.png | 89308 | venue select — Mitch's Moose Lounge |
+| venue_select__backyard_bash.png | 89695 | venue select — Backyard Bash (22 Arcadia Avenue) |

@@ -9,7 +9,7 @@ proven, simple GH3-specific logic to a firmware `gameplay_engine` module.
 Orienting docs (read alongside this journal):
 - `firmware/marvin/docs/spec.md` §4.8 — what the game-state subsystem is.
 - `firmware/marvin/docs/gh3_navigation.md` — screen catalog + menu graph (canonical screen names).
-- `firmware/marvin/docs/gh3_screens/` — the labelled 720×480 PNG corpus (101 screens, 13 classes).
+- `firmware/marvin/docs/gh3_screens/` — the labelled 720×480 PNG corpus (134 screens, 19 classes).
 
 ---
 
@@ -263,16 +263,77 @@ subsampled path costs <1% CPU at 5–10 Hz.
   Remaining data gap: still only training-mode `in_song` + one-session 2p frames, so the
   in-class present margin (~0.04) is optimistic — capture career/quickplay 1p and cross-session
   2p to tighten the true out-of-sample margin (the slop proof shows the *mechanism* generalizes).
-- **Impostor leak (9/101).** Unmodeled screens (e.g. options submenus) can be accepted as a
-  known peer. Acceptable for v0 (navigator recovers), but phase 2's per-screen regions or an
-  explicit "options" template could tighten it if it bites.
+- **Impostor leak (112/134 = 84%, and the 9/101 figure quoted below is long stale).** Unmodeled
+  screens (e.g. options submenus) can be accepted as a known peer. Measured 2026-08-09: the leak
+  is **93/112 without** the 2-player setup classes and **112/134 with** them, so it is a
+  pre-existing property of the current corpus + threshold rule, *not* something the 2P import
+  caused. It drifted from the original 9/101 as the corpus grew (the 70-song `song_select`
+  expansion above all): `t_abs = 1.2 × worst in-class LOO distance` is set by the single loosest
+  class, and `dist_max` is **7906** either way — one wide class sets the gate for all of them.
+  Still acceptable for v0 by the 2026-06-15 decision (the navigator's closed-loop + RED recovery
+  is the real defence, and in-class accuracy is what we refuse to trade), but the honest statement
+  is now "the absolute-distance gate barely rejects anything; the margin gate is doing the work."
+  Worth revisiting as a **per-class** `t_abs` rather than one global threshold, which would stop
+  the loosest class from setting everyone's gate.
 - **Single-sample classes.** `loading`, `in_song`, `section_select`, `tutorials_menu` have
   one snapshot each — can't be cross-validated. Capture a few more variants per class to
   measure their in-class spread rather than leaning on visual-distinctiveness + the slop pass.
+- **`character_select_2p` has 2 exemplars that are really 2 different states** (both-strips vs
+  P1-strip-with-P2-panel), so each is a poor stand-in for the other: **LOO 0/2** (both reject as
+  UNKNOWN) while **in-sample is 2/2** with margins ~1900–2200. Not an algorithm problem — a
+  whole-frame centroid is the wrong model for a screen whose halves advance independently, which
+  is exactly what the per-side probe work supersedes. Capture more of both states, or let the
+  probe take over this class.
 
 ---
 
 ## Session log
+
+### 2026-08-09 — the 5 2-player setup screens are now recognized (corpus + classifier + header)
+
+Closes the "Phase B" deferral from the 2026-08-08 nav-doc work: the setup path was *documented*
+but every screen on it classified as UNKNOWN, so the firmware controller's `step_for()` had
+nothing to dispatch on and would RED-recover straight back out of the flow. This is the unblock
+for implementing the 2P run.
+
+- **Corpus +22 frames, 5 new classes** (`firmware/marvin/docs/gh3_screens/`, README section added):
+  `guitar_select_2p` (4), `multiplayer_menu` (3), `character_select_2p` (2), `player_ready_2p` (5),
+  `venue_select` (8). Corpus 112 → **134 samples, 14 → 19 classes**. Every label was verified
+  against the image before naming rather than taken from the earlier walk-through notes.
+- **Suffix convention for the per-side screens: the suffix names P1's state**, because marvin
+  plays P1 (left) and that is the side the controller reads and acts on. `guitar_select_2p` and
+  `character_select_2p` suffixes are descriptive state labels, not menu rows — neither screen is a
+  static list, so `MENU_LAYOUTS` has no entry and the selection reader skips them.
+- **Results: 4 of the 5 new classes are clean.** LOO `guitar_select_2p` 4/4, `multiplayer_menu`
+  3/3, `player_ready_2p` 5/5, `venue_select` 8/8; **all 22 frames classify correctly in-sample**
+  (margins 1922–10889 against `t_margin` 645). No 1p↔2p leakage. Whole-corpus LOO 128/134 (95.5%),
+  robustness 99.7%, and the selection / song / score readers are untouched (33/33, 70/70, 54/54).
+  `venue_select` has the tightest margins of the new classes (2547–5129) — the poster art varies
+  wildly while the page background is constant, which is also why it separates at all.
+- **`character_select_2p` is the one soft spot: LOO 0/2, in-sample 2/2.** Its two frames are two
+  genuinely different states (both-strips vs P1-strip-with-P2-panel), so holding either out leaves
+  a centroid that rejects the other. Kept both anyway — at runtime the centroid is built from both
+  and recognizes both with healthy margins; LOO on a 2-sample class of dissimilar states is the
+  wrong measure. Logged as an open question; the per-side probe is the real answer.
+- **Found on the way: `GP_SCREEN_*` values are assigned alphabetically, not in `SCREEN_IDS` order.**
+  `classifier.build_templates` sorts the ids, so adding these five **renumbered every existing
+  screen** (`GP_SCREEN_in_song_2p` 2 → 4). Safe — every firmware use is symbolic (`GP_SCREEN_*`
+  constants, `gp_menus[]` lookups by symbolic value, `gp_screen_ids[]` for logging) and **no
+  numeric screen id is persisted or put on a wire** (checked perf-log records and the host decoder:
+  neither carries one). `screens.py` now says so explicitly, because an initial comment there
+  claimed the opposite and that assumption would make the next class addition a schema change.
+- **Also corrected a stale documented metric:** the "impostor leak 9/101" in Open questions was
+  measured before the 70-song corpus expansion. Actual today: **93/112 without** these classes,
+  **112/134 with** — so ~83% either way, pre-existing and not caused by this import. See the
+  rewritten open question for why one wide class sets the global `t_abs` for all of them.
+- `gameplay_metadata.h` re-exported (`GP_N_SCREENS` 14 → **19**, centroids + screen-id table
+  regenerated, 306 KB); `tests/test_export_c.py` dimension assert bumped. Full suite **107 passed**.
+  All six marvin `game/` TUs syntax-check clean against the new header (`xc32-gcc -fsyntax-only
+  -Wall -Wextra`; the one `game_engine.c` unused-variable warning is pre-existing). **Pending
+  Greg's MPLAB build.**
+- **Not done here** (the rest of the 2P flow): the controller's act-then-wait edges, a left-panel
+  `MENU_LAYOUTS` entry for `player_ready_2p`, the READY-badge probe for the guitar assert, and a
+  capture pass to confirm the tail order past venue.
 
 ### 2026-08-09 — 2-player amp score digit reader (host-only, both sides, 0 violations)
 
