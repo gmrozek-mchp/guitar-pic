@@ -8,6 +8,7 @@
 #include "ui/screens/video/screen_video.h"
 #include "ui/screens/wiimotes/screen_wiimotes.h"
 #include "ui/screens/keyboard/screen_keyboard.h"
+#include "ui/screens/role/screen_role.h"
 #include "ui/screens/bus/screen_bus.h"
 #include "ui/screens/system/screen_system.h"
 #include "ui/screens/log/screen_log.h"
@@ -834,6 +835,50 @@ void UiManager_CloseKeyboard(void)
     s_keyboard_open = false;
 }
 
+/* Player-affiliation modal — the keyboard's open/close verbatim on CANVAS_ROLE. It is only
+ * ever raised from the keyboard's own commit, and the keyboard has already closed by then
+ * (see keyboard_close), so this re-takes OVR1 and hides the video again rather than
+ * inheriting a modal that is already up: the two dialogs are sequential, not nested.
+ *
+ * That means the scrim is lowered and raised across the handover. Both are volatile intent
+ * applied by the video task on its next tick, and the two calls happen in one Legato input
+ * callback, so the task should never observe the gap — but it is a gap, and if an undimmed
+ * frame does show up between the two dialogs on hardware, this is where it comes from. */
+static bool s_role_open = false;
+
+void UiManager_OpenRole(const char *name, void (*commit)(results_affil_t affil))
+{
+    if (s_role_open) { return; }
+
+    ScreenRole_Prepare(name, commit);
+    ScreenRole_SetInput(true);
+    UiManager_SetBaseViewPickable(false);   /* modal: nothing behind reacts */
+
+    UiManager_VideoOverlayHide();
+    bind_canvas(CANVAS_ROLE, HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565, true);
+    UiManager_VideoHide();
+    UiManager_ScrimShow(MODAL_SCRIM_PCT);
+    UiManager_CutModalCorners(CANVAS_ROLE);
+    modal_discard_set(CANVAS_ROLE);
+
+    s_role_open = true;
+}
+
+void UiManager_CloseRole(void)
+{
+    if (!s_role_open) { return; }
+
+    gfxcHideCanvas(CANVAS_ROLE); gfxcCanvasUpdate(CANVAS_ROLE);
+    ScreenRole_SetInput(false);
+    UiManager_SetBaseViewPickable(true);
+    UiManager_ScrimHide();
+    modal_discard_clear();
+
+    ScreenVideo_ShowWindowed();
+
+    s_role_open = false;
+}
+
 /* ── Base view (BASE hardware layer) ──────────────────────────────────────────
  * The BASE layer shows one full-screen view at a time. Boot reveals the dashboard;
  * the nav drawer swaps it. The dashboard (CANVAS_DASH, layer 0) and wiimotes
@@ -1161,6 +1206,7 @@ static void init_screens(void)
     ScreenAlbumArt_Setup();
     ScreenWiimotes_Setup();
     ScreenKeyboard_Setup();
+    ScreenRole_Setup();
     ScreenBus_Setup();
     ScreenSystem_Setup();
     ScreenLog_Setup();
@@ -1187,6 +1233,7 @@ static void paint_all_screens_once(void)
     Marvin_PANEL_SONG_SELECT_ALBUM_ART->fn->invalidate(Marvin_PANEL_SONG_SELECT_ALBUM_ART);
     Marvin_PANEL_WIIMOTES->fn->invalidate(Marvin_PANEL_WIIMOTES);
     Marvin_PANEL_KEYBOARD->fn->invalidate(Marvin_PANEL_KEYBOARD);
+    Marvin_PANEL_ROLE->fn->invalidate(Marvin_PANEL_ROLE);
     Marvin_PANEL_BUS->fn->invalidate(Marvin_PANEL_BUS);
     Marvin_PANEL_SYSTEM->fn->invalidate(Marvin_PANEL_SYSTEM);
     Marvin_PANEL_SYSTEM_DETAIL->fn->invalidate(Marvin_PANEL_SYSTEM_DETAIL);
@@ -1404,6 +1451,7 @@ void UiManager_Initialize(void)
     ScreenAlbumArt_InitSurface();
     ScreenWiimotes_InitSurface();
     ScreenKeyboard_InitSurface();
+    ScreenRole_InitSurface();
     ScreenBus_InitSurface();
     ScreenSystem_InitSurface();
     ScreenLog_InitSurface();

@@ -28,6 +28,29 @@ void Results_Initialize(void);
 void        Results_SetPlayer(const char *name);
 const char *Results_GetPlayer(void);
 
+/* Which leaderboard the run belongs to, chosen on the role dialog straight after the
+ * name. Session state like the player name, not a field of the record, because both are
+ * answered once per player and then hold for every run they play.
+ *
+ * Defaults to EMPLOYEE deliberately: the dashboard's board shows clients only, so a row
+ * written without anyone having answered the dialog (a console `results add`, a flow that
+ * grows a new entry point later) stays off the customer-facing board rather than landing
+ * on it unattributed. Erring the other way would put unknown rows in front of visitors. */
+typedef enum
+{
+    RESULTS_AFFIL_CLIENT = 0,   /* client / partner   */
+    RESULTS_AFFIL_EMPLOYEE,     /* microchip employee */
+    RESULTS_AFFIL_COUNT
+} results_affil_t;
+
+void            Results_SetAffiliation(results_affil_t affil);
+results_affil_t Results_GetAffiliation(void);
+
+/* The CSV spelling: "client" | "employee". Stable lowercase keys — they are written to the
+ * file and matched against it on read, so they are not display strings and must not be
+ * localized. Out-of-range returns the EMPLOYEE spelling, matching the default. */
+const char     *Results_AffiliationName(results_affil_t affil);
+
 /* One completed run. Song + score is the whole point; anything marvin cannot read
  * off the screen is deliberately absent rather than written as a zero column.
  * `setlist`/`index` are the recognizer's stable song key and what Results_TopN
@@ -54,14 +77,15 @@ typedef struct
     uint32_t score;
 } results_score_t;
 
-/* Fill out[0..max) with the highest scores for a song (filtered by difficulty
- * when non-NULL/non-empty), highest first. Returns the count filled.
+/* Fill out[0..max) with the highest scores for a song (filtered by difficulty and by
+ * affiliation when each is non-NULL/non-empty), highest first. Returns the count filled.
+ * `affiliation` takes a Results_AffiliationName() spelling; NULL ranks everyone together.
  *
  * Validates the file's header row against the schema this build writes and
  * returns 0 on a mismatch: the parser reads fixed field indices, so a file from
  * an older schema would otherwise be silently misparsed into a plausible-looking
  * but wrong high-score table. A warning names the header it found. */
 int Results_TopN(const char *setlist, uint8_t index, const char *difficulty,
-                 results_score_t *out, int max);
+                 const char *affiliation, results_score_t *out, int max);
 
 #endif

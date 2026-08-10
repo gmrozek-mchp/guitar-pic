@@ -205,9 +205,10 @@ int Showdown_ReloadTop(void)
     if (!s_cfg.valid) { return 0; }
 
     /* Filtered by difficulty as well as song: an easy run and an expert run of the same
-     * track do not belong on one leaderboard. */
+     * track do not belong on one leaderboard. Clients/partners only — see the header. */
     s_ntop = Results_TopN(setlist_name(s_cfg.setlist), s_cfg.index,
                           GameSelection_DifficultyName(s_cfg.difficulty),
+                          Results_AffiliationName(RESULTS_AFFIL_CLIENT),
                           s_top, SHOWDOWN_TOP_MAX);
     return s_ntop;
 }

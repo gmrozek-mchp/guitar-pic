@@ -394,15 +394,16 @@ static void cmd_scores(EmbeddedCli *cli, char *args, void *ctx)
     const char *setlist = embeddedCliGetToken(args, 1);
     const char *idx     = embeddedCliGetToken(args, 2);
     const char *diff    = embeddedCliGetToken(args, 3);   /* optional */
+    const char *affil   = embeddedCliGetToken(args, 4);   /* optional */
     if (setlist == NULL || idx == NULL)
     {
-        console_printf("usage: scores <main|bonus> <index> [difficulty]");
+        console_printf("usage: scores <main|bonus> <index> [difficulty] [client|employee]");
         return;
     }
 
     uint8_t index = (uint8_t)parse_u32(idx, 0u);
     results_score_t top[5];
-    int n = Results_TopN(setlist, index, diff, top, 5);
+    int n = Results_TopN(setlist, index, diff, affil, top, 5);
     if (n == 0)
     {
         console_printf("no scores for %s #%u%s%s", setlist, (unsigned)index,
@@ -424,16 +425,19 @@ static void cmd_results(EmbeddedCli *cli, char *args, void *ctx)
     const char *sub = embeddedCliGetToken(args, 1);
     if (sub == NULL || strcmp(sub, "add") != 0)
     {
-        console_printf("usage: results add <main|bonus> <index> <difficulty> <score>");
+        console_printf("usage: results add <main|bonus> <index> <difficulty> <score> "
+                       "[client|employee]");
         return;
     }
     const char *setlist = embeddedCliGetToken(args, 2);
     const char *idx     = embeddedCliGetToken(args, 3);
     const char *diff    = embeddedCliGetToken(args, 4);
     const char *score   = embeddedCliGetToken(args, 5);
+    const char *affil   = embeddedCliGetToken(args, 6);   /* optional */
     if (setlist == NULL || idx == NULL || diff == NULL || score == NULL)
     {
-        console_printf("usage: results add <main|bonus> <index> <difficulty> <score>");
+        console_printf("usage: results add <main|bonus> <index> <difficulty> <score> "
+                       "[client|employee]");
         return;
     }
 
@@ -445,7 +449,20 @@ static void cmd_results(EmbeddedCli *cli, char *args, void *ctx)
     rec.difficulty = diff;
     rec.score      = parse_u32(score, 0u);
 
-    if (Results_Append(&rec))
+    /* The affiliation applies to this row only. Restored afterwards so injecting a test
+     * row never quietly re-labels the operator's current player — which matters more now
+     * that the dashboard board shows clients alone, and `results add` is the way to put a
+     * row on it without playing a song. */
+    results_affil_t prev = Results_GetAffiliation();
+    if (affil != NULL)
+    {
+        Results_SetAffiliation((strcmp(affil, "client") == 0) ? RESULTS_AFFIL_CLIENT
+                                                             : RESULTS_AFFIL_EMPLOYEE);
+    }
+    bool ok = Results_Append(&rec);
+    Results_SetAffiliation(prev);
+
+    if (ok)
     {
         /* Same post a real run makes, so the dashboard's TOP SCORES board is reachable from
          * here too — the whole point of the synthetic row. */

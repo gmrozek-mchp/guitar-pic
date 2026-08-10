@@ -15,8 +15,10 @@ extern "C" {
  * ui_manager owns show/hide (binds the canvas to a hardware layer); this module owns
  * the content, the edit buffer, and the key dispatch. */
 
-/* Invoked when the user confirms (OK). `text` is the edited string (never NULL);
- * copy it if you need it past the call. The dialog is closed immediately after. */
+/* Invoked when the user confirms (OK). `text` is the edited string (never NULL); copy it if
+ * you need it past the call. The dialog is already closed by the time this runs, which is
+ * what lets the callback open another modal in its place (the name prompt chains into the
+ * affiliation dialog). */
 typedef void (*keyboard_commit_fn)(const char *text);
 
 /* Assign the layer-5 canvas surface. Pre-scheduler (from UiManager_Initialize). */

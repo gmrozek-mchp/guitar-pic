@@ -536,13 +536,25 @@ static void apply_player_name(const char *name)
     }
 }
 
-/* Confirmation of the 2P name prompt, and the start of the run. Only reached via the
- * keyboard's OK — dismissing it with X never calls this, which is what makes X a true
- * cancel of the game start rather than just of the name edit. */
+/* The 2P prompt is two dialogs, and the run starts from the *second* one. The keyboard's OK
+ * records the name and chains into the affiliation dialog; that dialog's answer records the
+ * affiliation and starts the run. Either dialog's X aborts the whole thing — the keyboard's
+ * never calls its commit, and the role dialog's never calls this, so backing out of the
+ * second question is as much a cancel as backing out of the first.
+ *
+ * Both paths (START and SHOWDOWN) need the pair, and they differ only in what happens once
+ * the affiliation is in, so each keeps its own two-line pair rather than sharing one behind
+ * a "what was this prompt for" flag. */
+static void start_role_chosen(results_affil_t affil)
+{
+    Results_SetAffiliation(affil);
+    GameController_Start();
+}
+
 static void player_name_committed(const char *name)
 {
     apply_player_name(name);
-    GameController_Start();
+    UiManager_OpenRole(Results_GetPlayer(), start_role_chosen);
 }
 
 /* START begins a run from the committed selection; while one is in flight the same
@@ -664,15 +676,22 @@ static void top_scores_paint(void)
     }
 }
 
-/* OK on SHOWDOWN's name prompt. Committing the selection here rather than at the tap is
- * what makes the keyboard's X a true cancel: back out and the operator's own committed
- * song is still the one on the card. */
-static void showdown_name_committed(const char *name)
+/* SHOWDOWN's own name → affiliation pair (see player_name_committed for the shape). The
+ * selection is committed at the *end* of the chain rather than at the tap, which is what
+ * makes backing out of either dialog a true cancel: the operator's own committed song is
+ * still the one on the card. */
+static void showdown_role_chosen(results_affil_t affil)
 {
-    apply_player_name(name);
+    Results_SetAffiliation(affil);
 
     if (!Showdown_Commit()) { showdown_show(false); return; }
     GameController_Start();
+}
+
+static void showdown_name_committed(const char *name)
+{
+    apply_player_name(name);
+    UiManager_OpenRole(Results_GetPlayer(), showdown_role_chosen);
 }
 
 /* SHOWDOWN starts a 2-player match against the robot on a song and difficulty of its own

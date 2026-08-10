@@ -148,6 +148,27 @@ void ScreenSongSelect_InitSurface(void)
 #define INFO_COL_W  ((ART_W - PAD_3) / 2)
 #define INFO_PITCH  (TXT_XS + TXT_SM + PAD_3)            /* label + value + gap-3 */
 
+/* The two leaderboards, side by side under the metric grid: clients/partners and Microchip
+ * employees ranked separately for the highlighted song at the selected difficulty. They
+ * share the metric grid's column split so the four blocks line up, and stop well short of
+ * the dialog's rounded bottom for the reason LIST_H documents.
+ *
+ * Rank is the digit alone here, not the dashboard's digit-on-a-disc: these cards already
+ * carry a fill of their own, and each board is identified by its score colour (the
+ * mockup's amber and red), so a third colour per row would be noise. */
+#define BOARD_N          3
+#define BOARD_Y          (INFO_Y + 2 * INFO_PITCH + PAD_2)
+#define BOARD_W          INFO_COL_W
+#define BOARD_H          200
+#define BOARD_PAD        PAD_3                           /* the cards' own p-3 */
+#define BOARD_HDR_Y      BOARD_PAD
+#define BOARD_ROW_Y      (BOARD_HDR_Y + TXT_XS + PAD_3)
+#define BOARD_ROW_H      (2 * TXT_SM)                    /* name over score */
+#define BOARD_ROW_PITCH  (BOARD_ROW_H + PAD_3)           /* gap-3 */
+#define BOARD_RANK_W     20
+#define BOARD_TEXT_X     (BOARD_PAD + BOARD_RANK_W + PAD_3)
+#define BOARD_TEXT_W     (BOARD_W - BOARD_TEXT_X - BOARD_PAD)
+
 /* Right column. */
 #define R_X          (RIGHT_X + PAD_4)
 #define R_W          (RIGHT_W - 2 * PAD_4)
@@ -193,8 +214,8 @@ static int          s_sel_index  = 0;   /* catalog position of the highlighted s
  * Static storage, constructed in place — no allocator (see the project's static
  * allocation rule). configASSERT catches undersizing at bring-up. The song list is
  * the one exception: SongList_New() allocates from the Legato widget pool. */
-#define WGT_MAX   6u    /* 4 hairlines + the album-art corner overlay */
-#define CAP_MAX   8u    /* design-string captions */
+#define WGT_MAX   8u    /* 4 hairlines + the album-art corner overlay + 2 board cards */
+#define CAP_MAX  10u    /* design-string captions */
 #define BTN_MAX   8u    /* close + 4 difficulty + 2 mode + SELECT */
 
 static leWidget       s_wgt[WGT_MAX];
@@ -208,11 +229,18 @@ static unsigned       s_nbtn;
 
 /* Runtime-written text: the setlist count, the metric values, and the three lines over
  * the cover. All song data, none of it translatable. */
+#define BOARD_SLOTS  (2 * BOARD_N)   /* two boards of BOARD_N rows, client board first */
+
 enum {
     DYN_SETLIST,
     DYN_ALBUM, DYN_YEAR, DYN_GENRE, DYN_DURATION,
     DYN_TIER, DYN_TITLE, DYN_ARTIST,
-    DYN_COUNT
+    /* Leaderboard cells, addressed as <base> + board * BOARD_N + row. Contiguous —
+     * keep them adjacent. */
+    DYN_BOARD_RANK,
+    DYN_BOARD_NAME  = DYN_BOARD_RANK  + BOARD_SLOTS,
+    DYN_BOARD_SCORE = DYN_BOARD_NAME  + BOARD_SLOTS,
+    DYN_COUNT       = DYN_BOARD_SCORE + BOARD_SLOTS
 };
 
 #define DYN_CAP  80
@@ -376,6 +404,8 @@ static uint8_t mode_value(unsigned int i)
 /* Paint the active button in each group with its selected scheme, the rest with the
  * group's shared unselected scheme. The explicit invalidate is required: setScheme's
  * damage does not cover every pixel the AA corner pass touches. */
+static void boards_show(const game_catalog_entry_t *e);
+
 static void difficulty_repaint(void)
 {
     unsigned int i;
@@ -411,7 +441,15 @@ static void difficulty_on_release(leButtonWidget *btn)
     unsigned int i;
     for (i = 0u; i < DIFFICULTY_COUNT; i++)
     {
-        if (btn == s_difficulty_btn[i]) { s_difficulty = i; difficulty_repaint(); return; }
+        if (btn == s_difficulty_btn[i])
+        {
+            /* The boards are ranked per difficulty, so they follow this too — an easy run
+             * and an expert run of the same song are not one leaderboard. */
+            s_difficulty = i;
+            difficulty_repaint();
+            boards_show(GameCatalog_At(s_sel_index));
+            return;
+        }
     }
 }
 
@@ -458,6 +496,63 @@ static void tier_show(const game_catalog_entry_t *e)
 }
 
 /* Mirror catalog entry `index` into the preview (all "-" if no such song). */
+/* The affiliation this board ranks, its heading, and the colour its scores are printed in
+ * (the mockup's amber for clients, red for employees). Index is the board number, and the
+ * client board is first — Greg's order, the reverse of the mockup's. */
+static const struct {
+    results_affil_t  affil;
+    uint32_t         cap;
+    const leScheme  *score;
+} BOARD[2] = {
+    { RESULTS_AFFIL_CLIENT,   stringID_SONG_SELECT_CLIENTS_PARTNERS,    &SCHEME_TEXT_YELLOW_400 },
+    { RESULTS_AFFIL_EMPLOYEE, stringID_SONG_SELECT_MICROCHIP_EMPLOYEES, &SCHEME_TEXT_RED_400    },
+};
+
+/* Fill both leaderboards for a song at the currently selected difficulty. A row with no
+ * result behind it is hidden rather than shown blank — the dashboard board's rule, and the
+ * common case here, since most of a 70-song catalog has never been played.
+ *
+ * Two SD reads per call, each a full pass over results.csv. That is affordable because this
+ * only runs on a deliberate tap — a song in the list or a difficulty button, not a scroll —
+ * and the file is tens of rows. If it ever reads as sticky on the panel, the fix is one
+ * pass filling both boards rather than caching anything here. */
+static void boards_show(const game_catalog_entry_t *e)
+{
+    for (unsigned b = 0u; b < 2u; b++)
+    {
+        results_score_t top[BOARD_N];
+        int             n = 0;
+
+        if (e != NULL)
+        {
+            n = Results_TopN((e->setlist == GP_SETLIST_BONUS) ? "bonus" : "main", e->index,
+                             GameSelection_DifficultyName((uint8_t)s_difficulty),
+                             Results_AffiliationName(BOARD[b].affil), top, BOARD_N);
+        }
+
+        for (unsigned r = 0u; r < BOARD_N; r++)
+        {
+            unsigned slot = b * BOARD_N + r;
+            leBool   vis  = ((int)r < n) ? LE_TRUE : LE_FALSE;
+            char     tmp[12];
+
+            leLabelWidget *rank  = &s_dyn_lbl[DYN_BOARD_RANK  + slot];
+            leLabelWidget *name  = &s_dyn_lbl[DYN_BOARD_NAME  + slot];
+            leLabelWidget *score = &s_dyn_lbl[DYN_BOARD_SCORE + slot];
+
+            rank->fn->setVisible(rank,   vis);
+            name->fn->setVisible(name,   vis);
+            score->fn->setVisible(score, vis);
+
+            if ((int)r >= n) { continue; }
+
+            (void)snprintf(tmp, sizeof tmp, "%lu", (unsigned long)top[r].score);
+            set_dyn(DYN_BOARD_NAME  + slot, top[r].player);
+            set_dyn(DYN_BOARD_SCORE + slot, tmp);
+        }
+    }
+}
+
 static void song_detail_show(int index)
 {
     const game_catalog_entry_t *e = GameCatalog_At(index);
@@ -465,6 +560,7 @@ static void song_detail_show(int index)
 
     song_art_show(e);
     tier_show(e);
+    boards_show(e);
 
     if (e == NULL)
     {
@@ -629,6 +725,44 @@ static void add_metric(int col, int row, uint32_t cap_id, unsigned dyn_id)
                   (const leFont *)&DejaVuSansMono_14, &SCHEME_TEXT_ZINC_200);
 }
 
+static void build_boards(void)
+{
+    for (unsigned b = 0u; b < 2u; b++)
+    {
+        int bx = ART_X + (int)b * (BOARD_W + PAD_3);
+
+        leWidget *card = add_panel(Marvin_PANEL_SONG_SELECT, bx, BOARD_Y, BOARD_W, BOARD_H,
+                                   &SCHEME_FILL_ZINC_800);
+        card->fn->setBorderType(card, LE_WIDGET_BORDER_LINE);
+        card->fn->setCornerRadius(card, DLG_R);
+        PanelAA_Enable(card);
+
+        (void)add_cap(card, BOARD_PAD, BOARD_HDR_Y, BOARD_W - 2 * BOARD_PAD, TXT_XS,
+                      BOARD[b].cap, &SCHEME_TEXT_ZINC_500);
+
+        for (unsigned r = 0u; r < BOARD_N; r++)
+        {
+            unsigned slot = b * BOARD_N + r;
+            int      y    = BOARD_ROW_Y + (int)r * BOARD_ROW_PITCH;
+
+            (void)add_dyn(card, DYN_BOARD_RANK + slot, BOARD_PAD, y, BOARD_RANK_W,
+                          BOARD_ROW_H, (const leFont *)&DejaVuSansMonoBold_16,
+                          &SCHEME_TEXT_ZINC_400);
+
+            /* The rank is the row's position and never changes — written once. */
+            char digit[2] = { (char)('1' + (int)r), '\0' };
+            set_dyn(DYN_BOARD_RANK + slot, digit);
+
+            (void)add_dyn(card, DYN_BOARD_NAME + slot, BOARD_TEXT_X, y, BOARD_TEXT_W,
+                          TXT_SM, (const leFont *)&DejaVuSansMonoBold_16,
+                          &SCHEME_TEXT_ZINC_200);
+            (void)add_dyn(card, DYN_BOARD_SCORE + slot, BOARD_TEXT_X, y + TXT_SM,
+                          BOARD_TEXT_W, TXT_SM, (const leFont *)&DejaVuSansMono_16,
+                          BOARD[b].score);
+        }
+    }
+}
+
 static void build_center(void)
 {
     /* The album-art rect itself is layer 3's business — nothing is drawn here, the
@@ -637,6 +771,7 @@ static void build_center(void)
     add_metric(1, 0, stringID_SONG_SELECT_YEAR,     DYN_YEAR);
     add_metric(0, 1, stringID_SONG_SELECT_GENRE,    DYN_GENRE);
     add_metric(1, 1, stringID_SONG_SELECT_DURATION, DYN_DURATION);
+    build_boards();
 }
 
 static void build_right(void)

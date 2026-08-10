@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "results/results.h"   /* results_affil_t — UiManager_OpenRole's callback arg */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -27,6 +29,7 @@ extern "C" {
 #define CANVAS_SYSTEM      7u   /* Marvin layer 7 — system info, node grid      */
 #define CANVAS_SYSTEM_DETAIL 8u /* Marvin layer 8 — system info, node detail    */
 #define CANVAS_LOG         9u   /* Marvin layer 9 — activity log                */
+#define CANVAS_ROLE       10u   /* Marvin layer 10 — player-affiliation modal    */
 
 /* LCDC hardware-layer indices (drvLayer / layerOrder): BASE 0, HEO 1, OVR1 2,
  * OVR2 3. HEO is the live camera (off-limits). A canvas is bound to a hardware
@@ -177,6 +180,14 @@ void UiManager_CloseSongSelect(void);
 void UiManager_OpenKeyboard(const char *title, const char *initial, uint32_t maxlen,
                             void (*commit)(const char *text));
 void UiManager_CloseKeyboard(void);
+
+/* Show / hide the player-affiliation modal — second half of the 2-player prompt, opened
+ * from the keyboard's commit. Same modal treatment as the keyboard (OVR1, video hidden,
+ * scrim, cut corners); a role button invokes `commit` and Close runs automatically, while
+ * its X closes without committing and so cancels the run start outright. No-ops if already
+ * in the requested state. `commit` runs in the Legato input/render context. */
+void UiManager_OpenRole(const char *name, void (*commit)(results_affil_t affil));
+void UiManager_CloseRole(void);
 
 /* Gate the dashboard's touch pickability without repainting it. Called by the
  * modal screens (nav drawer, song-select) to make the dashboard a true modal

@@ -31,8 +31,8 @@ These are distinct and must not be collapsed (this has been a recurring source o
 **"canvas ≠ layer" is true only for the *hardware* layer (3), not for the *Legato* layer (2).**
 A panel never *owns* a HW layer — two canvases never shown together can share one; the same
 canvas can be on `OVR1` in one situation and `OVR2` in another. The canvas pool
-(`CONFIG_CANVAS_NUM_OBJ = 40`) sets how many layer-screens may be **defined** — ten today
-(`LE_LAYER_COUNT = 10`, canvases 0–9); the LCDC then composites **any 3** of them onto its 3
+(`CONFIG_CANVAS_NUM_OBJ = 40`) sets how many layer-screens may be **defined** — eleven today
+(`LE_LAYER_COUNT = 11`, canvases 0–10); the LCDC then composites **any 3** of them onto its 3
 usable HW layers at once — *define many, show a few.*
 
 **The pool size is not the ceiling it looks like.** `CONFIG_CANVAS_NUM_OBJ` only sizes the
@@ -42,8 +42,9 @@ raising the number is an MCC regen and nothing more. `LE_LAYER_COUNT` is MGS-der
 `leState.layerList` is a dynamic `leList` rather than a fixed array — no ceiling there either.
 What actually bounds the screen count is **`ram_nocache`** (`ddram.ld`, now 40 MB): a
 full-screen RGB565 surface is 1.95 MB, and with the ten layers below defined the region is
-**34.74 MB used of 40** (36,432,480 B, measured 2026-08-08) — 5.26 MB spare, so an 11th
-layer-screen needs no reclaim at all. The
+**34.74 MB used of 40** (36,432,480 B, measured 2026-08-08) — 5.26 MB spare. The eleventh
+layer-screen (the affiliation modal, 2026-08-10) took 0.25 MB of that, being dialog-sized
+rather than full-screen, and needed no reclaim and no MCC change. The
 region has been resized twice for exactly this reason, both times an MCC setting rather
 than a bigger pool: 32 → 34 MB for the ninth layer-screen (System Info's detail view,
 2026-08-06), then 34 → 40 MB ahead of the tenth (the activity log, 2026-08-08).
@@ -195,6 +196,7 @@ lifecycle events are direct calls).
   | 7 | `PANEL_SYSTEM` | system info — node grid (base view) | BASE |
   | 8 | `PANEL_SYSTEM_DETAIL` | system info — node detail (base view) | BASE |
   | 9 | `PANEL_LOG` | activity log (base view) | BASE |
+  | 10 | `PANEL_ROLE` | player-affiliation modal (480x268) | OVR1 |
 
   MGS derives the count as the **max layer count across all screens** in the design; there is no
   explicit knob. (Adding a layer-screen therefore means adding a layer to the `Marvin` screen in

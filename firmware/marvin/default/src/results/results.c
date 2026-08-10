@@ -15,21 +15,23 @@
 #define RES_REL_FILE  "players/results.csv"
 
 #define RES_HEADER \
-    "player,setlist,index,song,difficulty,score,timestamp"
+    "player,affiliation,setlist,index,song,difficulty,score,timestamp"
 
 #define RES_LINE_MAX  256
-#define RES_FIELDS    7
+#define RES_FIELDS    8
 
 /* Field indices in a row, matching RES_HEADER. */
 #define RES_F_PLAYER      0
-#define RES_F_SETLIST     1
-#define RES_F_INDEX       2
-#define RES_F_SONG        3
-#define RES_F_DIFFICULTY  4
-#define RES_F_SCORE       5
-#define RES_F_TIMESTAMP   6
+#define RES_F_AFFILIATION 1
+#define RES_F_SETLIST     2
+#define RES_F_INDEX       3
+#define RES_F_SONG        4
+#define RES_F_DIFFICULTY  5
+#define RES_F_SCORE       6
+#define RES_F_TIMESTAMP   7
 
-static char s_player[33] = "HOOMAN";
+static char            s_player[33] = "HOOMAN";
+static results_affil_t s_affil      = RESULTS_AFFIL_EMPLOYEE;
 
 /* ---- helpers ------------------------------------------------------------ */
 
@@ -70,6 +72,18 @@ void Results_SetPlayer(const char *name)
 }
 
 const char *Results_GetPlayer(void) { return s_player; }
+
+void Results_SetAffiliation(results_affil_t affil)
+{
+    if (affil < RESULTS_AFFIL_COUNT) { s_affil = affil; }
+}
+
+results_affil_t Results_GetAffiliation(void) { return s_affil; }
+
+const char *Results_AffiliationName(results_affil_t affil)
+{
+    return (affil == RESULTS_AFFIL_CLIENT) ? "client" : "employee";
+}
 
 /* ---- append ------------------------------------------------------------- */
 
@@ -120,8 +134,9 @@ bool Results_Append(const results_record_t *rec)
     csv_quote(rec->song, song_q, sizeof(song_q));
 
     len = snprintf(line, sizeof(line),
-                   "%s,%s,%u,%s,%s,%lu,%s\n",
+                   "%s,%s,%s,%u,%s,%s,%lu,%s\n",
                    s_player,
+                   Results_AffiliationName(s_affil),
                    (rec->setlist != NULL) ? rec->setlist : "",
                    (unsigned)rec->index,
                    song_q,
@@ -141,7 +156,7 @@ bool Results_Append(const results_record_t *rec)
 /* ---- top-N read --------------------------------------------------------- */
 
 int Results_TopN(const char *setlist, uint8_t index, const char *difficulty,
-                 results_score_t *out, int max)
+                 const char *affiliation, results_score_t *out, int max)
 {
     if (out == NULL || max <= 0 || setlist == NULL) { return 0; }
     if (!Storage_Mount()) { return 0; }
@@ -186,6 +201,8 @@ int Results_TopN(const char *setlist, uint8_t index, const char *difficulty,
         if ((unsigned)atoi(f[RES_F_INDEX]) != (unsigned)index) { continue; }
         if (difficulty != NULL && difficulty[0] != '\0' &&
             strcmp(f[RES_F_DIFFICULTY], difficulty) != 0) { continue; }
+        if (affiliation != NULL && affiliation[0] != '\0' &&
+            strcmp(f[RES_F_AFFILIATION], affiliation) != 0) { continue; }
 
         uint32_t score = (uint32_t)strtoul(f[RES_F_SCORE], NULL, 10);
 

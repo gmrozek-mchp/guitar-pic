@@ -248,13 +248,19 @@ static void clear_all(void)
  * in one place instead of leaving it implicit in which key forgot to call it.
  *
  * s_commit is cleared either way, so a finished session cannot fire a second time. */
+/* Close BEFORE the callback, not after. The callback is allowed to open another modal —
+ * the player-name prompt chains into the affiliation dialog — and that dialog takes OVR1,
+ * the scrim and the base-view pick gate for itself. Running the close afterwards would
+ * hand all three back and leave the new dialog on an undimmed, pickable base view with the
+ * video restored over it. s_text outlives the close (it is only reset by the next
+ * Prepare), so the callback still sees the entered text. */
 static void keyboard_close(bool commit)
 {
     keyboard_commit_fn cb = s_commit;
 
     s_commit = NULL;
-    if (commit && cb != NULL) { cb(s_text); }
     UiManager_CloseKeyboard();
+    if (commit && cb != NULL) { cb(s_text); }
 }
 
 static void key_on_release(leButtonWidget *btn)

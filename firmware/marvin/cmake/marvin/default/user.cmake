@@ -33,6 +33,7 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/screens/splash/splash_progress.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/screens/wiimotes/screen_wiimotes.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/screens/keyboard/screen_keyboard.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/screens/role/screen_role.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/screens/bus/screen_bus.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/screens/system/screen_system.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/screens/log/screen_log.c"

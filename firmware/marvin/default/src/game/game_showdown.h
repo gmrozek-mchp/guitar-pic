@@ -44,7 +44,12 @@ bool Showdown_Commit(void);
  * Kept here rather than in results/ because the *scope* is the config: these are only
  * comparable numbers because every one of them is the same song at the same difficulty,
  * and the config is what decides which. Reload therefore refreshes both together, and an
- * invalid config leaves an empty board rather than a stale one. */
+ * invalid config leaves an empty board rather than a stale one.
+ *
+ * **Clients/partners only** (RESULTS_AFFIL_CLIENT). This board faces the visitor standing
+ * at the machine, and staff rehearsing the demo would otherwise fill all three rows and
+ * leave nothing for them to beat. Employee scores are not lost — song-select ranks both
+ * groups side by side. */
 #define SHOWDOWN_TOP_MAX  3
 
 /* Re-read the card's results for the cached match. Blocks on SD I/O, so call from a task,

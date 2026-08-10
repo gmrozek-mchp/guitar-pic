@@ -11,6 +11,7 @@ static leWidget* root6;
 static leWidget* root7;
 static leWidget* root8;
 static leWidget* root9;
+static leWidget* root10;
 
 leWidget* Marvin_PANEL_DASHBOARD;
 leWidget* Marvin_PANEL_NAVIGATION;
@@ -22,6 +23,7 @@ leWidget* Marvin_PANEL_BUS;
 leWidget* Marvin_PANEL_SYSTEM;
 leWidget* Marvin_PANEL_SYSTEM_DETAIL;
 leWidget* Marvin_PANEL_LOG;
+leWidget* Marvin_PANEL_ROLE;
 
 static leBool initialized = LE_FALSE;
 static leBool showing = LE_FALSE;
@@ -213,6 +215,23 @@ leResult screenShow_Marvin(void)
     leAddRootWidget(root9, 9);
     leSetLayerColorMode(9, LE_COLOR_MODE_RGB_565);
 
+    // layer 10
+    root10 = leWidget_New();
+    root10->fn->setSize(root10, 1060, 560);
+    root10->fn->setBackgroundType(root10, LE_WIDGET_BACKGROUND_NONE);
+    root10->fn->setMargins(root10, 0, 0, 0, 0);
+    root10->flags |= LE_WIDGET_IGNOREEVENTS;
+    root10->flags |= LE_WIDGET_IGNOREPICK;
+
+    Marvin_PANEL_ROLE = leWidget_New();
+    Marvin_PANEL_ROLE->fn->setPosition(Marvin_PANEL_ROLE, 0, 0);
+    Marvin_PANEL_ROLE->fn->setSize(Marvin_PANEL_ROLE, 1060, 560);
+    Marvin_PANEL_ROLE->fn->setScheme(Marvin_PANEL_ROLE, &SCHEME_FILL_ZINC_900);
+    root10->fn->addChild(root10, (leWidget*)Marvin_PANEL_ROLE);
+
+    leAddRootWidget(root10, 10);
+    leSetLayerColorMode(10, LE_COLOR_MODE_RGB_565);
+
     showing = LE_TRUE;
 
     return LE_SUCCESS;
@@ -230,6 +249,7 @@ void screenUpdate_Marvin(void)
     root7->fn->setSize(root7, root7->rect.width, root7->rect.height);
     root8->fn->setSize(root8, root8->rect.width, root8->rect.height);
     root9->fn->setSize(root9, root9->rect.width, root9->rect.height);
+    root10->fn->setSize(root10, root10->rect.width, root10->rect.height);
 }
 
 void screenHide_Marvin(void)
@@ -295,6 +315,12 @@ void screenHide_Marvin(void)
 
     Marvin_PANEL_LOG = NULL;
 
+    leRemoveRootWidget(root10, 10);
+    leWidget_Delete(root10);
+    root10 = NULL;
+
+    Marvin_PANEL_ROLE = NULL;
+
 
     showing = LE_FALSE;
 }
@@ -353,6 +379,10 @@ leWidget* screenGetRoot_Marvin(uint32_t lyrIdx)
         case 9:
         {
             return root9;
+        }
+        case 10:
+        {
+            return root10;
         }
         default:
         {
