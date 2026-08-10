@@ -95,7 +95,7 @@ static uint16_t s_lead_ms[CV_LEAD_SLOT_COUNT][CV_DIFF_COUNT] =
 {
     /*                       easy  medium  hard  expert */
     [CV_LEAD_SLOT_1P]      = { 420u, 315u, 250u, 210u },
-    [CV_LEAD_SLOT_2P_LEFT] = { 420u, 315u, 250u, 210u },
+    [CV_LEAD_SLOT_2P_LEFT] = { 650u, 500u, 400u, 320u },
 };
 
 /* Active difficulty (a CV_DIFF_COUNT-range index matching game_difficulty_t).
