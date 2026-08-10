@@ -10,6 +10,8 @@
 #include "ui/ui_manager.h"                      /* UiManager_RenderLock/Unlock */
 #include "ui/screens/dashboard/screen_dashboard.h"
 
+#include "game/game_showdown.h"   /* Showdown_ReloadTop — the TOP SCORES board's SD read */
+
 #define DF_QUEUE_DEPTH        16u
 #define DF_TASK_STACK_WORDS   1024u
 #define DF_TASK_PRIORITY      2u   /* UI band — below every actuation/detector task */
@@ -70,6 +72,18 @@ void DashboardFeed_PostFret(uint8_t mask)
 void DashboardFeed_PostVideo(bool displayed)
 {
     dashboard_evt_t e = { .type = DASH_EVT_VIDEO, .u.on = displayed };
+    post(&e);
+}
+
+void DashboardFeed_PostShowdown(bool present)
+{
+    dashboard_evt_t e = { .type = DASH_EVT_SHOWDOWN, .u.on = present };
+    post(&e);
+}
+
+void DashboardFeed_PostResults(void)
+{
+    dashboard_evt_t e = { .type = DASH_EVT_RESULTS };
     post(&e);
 }
 
@@ -172,6 +186,11 @@ static void dashboard_task(void *param)
          * show, so no update is lost — only deferred. */
         if (!s_shown) { continue; }
 
+        /* Re-read the card BEFORE taking the render lock: the TOP SCORES board comes off
+         * results.csv, and an SD read is far too long to hold Legato off for. The apply
+         * below only walks the loaded cache. */
+        if (s_have[DASH_EVT_RESULTS]) { (void)Showdown_ReloadTop(); }
+
         /* Selection first (rebuilds the SONG card), then live activity on top. Each
          * apply clears its pending flag, so the next pass only touches what changed. */
         UiManager_RenderLock();
@@ -184,6 +203,8 @@ static void dashboard_task(void *param)
         if (s_have[DASH_EVT_STREAK])    { ScreenDashboard_ApplyStreak(s_latest[DASH_EVT_STREAK].u.streak); }
         if (s_have[DASH_EVT_FRET])      { ScreenDashboard_ApplyFret(s_latest[DASH_EVT_FRET].u.fret_mask); }
         if (s_have[DASH_EVT_VIDEO])     { ScreenDashboard_ApplyVideoState(s_latest[DASH_EVT_VIDEO].u.on); }
+        if (s_have[DASH_EVT_SHOWDOWN])  { ScreenDashboard_ApplyShowdown(s_latest[DASH_EVT_SHOWDOWN].u.on); }
+        if (s_have[DASH_EVT_RESULTS])   { ScreenDashboard_ApplyTopScores(); }
         ScreenDashboard_RefreshActuators();
         UiManager_RenderUnlock();
 

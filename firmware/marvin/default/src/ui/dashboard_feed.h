@@ -48,6 +48,8 @@ typedef enum
     DASH_EVT_MULTIPLIER, /* u.mult       (future)                             */
     DASH_EVT_STREAK,     /* u.streak     (future)                             */
     DASH_EVT_VIDEO,      /* u.on — HEO is (not) covering the video card       */
+    DASH_EVT_SHOWDOWN,   /* u.on — the card offers a SHOWDOWN match (or not)  */
+    DASH_EVT_RESULTS,    /* no payload — results.csv gained a row             */
     DASH_EVT_COUNT
 } dashboard_evt_type_t;
 
@@ -99,6 +101,19 @@ void DashboardFeed_PostStreak(uint16_t streak);
  * pattern that sits *under* HEO — otherwise the bars show through for the gap between
  * the dashboard becoming visible and HEO being rebound. Video-task ctx. */
 void DashboardFeed_PostVideo(bool displayed);
+
+/* Whether showdown.cfg currently names a usable 2-player match, so the dashboard can show
+ * or hide the SHOWDOWN button. Posted by the console after a reload — the button's own tap
+ * re-reads the card directly, so this exists for the case where it booted hidden. An edge
+ * rather than a sample, but an idempotent operator-driven one: a dropped post means
+ * re-running `showdown reload`. */
+void DashboardFeed_PostShowdown(bool present);
+
+/* A run's score reached results.csv, so the TOP SCORES board on the human card is stale.
+ * An edge, but an idempotent one whose next occurrence is another whole song away: a
+ * dropped post costs a board that catches up at the end of the next run. Re-reading the
+ * card is the consumer's job, and it happens outside the render lock. */
+void DashboardFeed_PostResults(void);
 
 #ifdef __cplusplus
 }

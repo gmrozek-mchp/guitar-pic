@@ -356,6 +356,7 @@ The card is also the runtime store for everything that changes independently of 
 ├── games/
 │   └── gh3-wii/
 │       ├── songs.csv           // song catalog labels (§4.8.3)
+│       ├── showdown.cfg        // song + difficulty the dashboard's SHOWDOWN button commits
 │       └── art/
 │           ├── small/<setlist>-<NN>.{jpg,png}   // album artwork, named by recognizer key (§4.8.7)
 │           └── large/<setlist>-<NN>.{jpg,png}   // one size tier per fixed-size DDR cache

@@ -42,7 +42,9 @@
 #include "game/game_art.h"
 #include "game/game_selection.h"
 #include "game/game_controller.h"
+#include "game/game_showdown.h"
 #include "ui/ui_manager.h"
+#include "ui/dashboard_feed.h"
 #include "ui/titlebar.h"
 #include "ui/screens/wiimotes/screen_wiimotes.h"
 #include "ui/screens/bus/screen_bus.h"
@@ -443,7 +445,17 @@ static void cmd_results(EmbeddedCli *cli, char *args, void *ctx)
     rec.difficulty = diff;
     rec.score      = parse_u32(score, 0u);
 
-    console_printf("%s", Results_Append(&rec) ? "added" : "append failed");
+    if (Results_Append(&rec))
+    {
+        /* Same post a real run makes, so the dashboard's TOP SCORES board is reachable from
+         * here too — the whole point of the synthetic row. */
+        DashboardFeed_PostResults();
+        console_printf("added");
+    }
+    else
+    {
+        console_printf("append failed");
+    }
 }
 
 static void cmd_catalog(EmbeddedCli *cli, char *args, void *ctx)
@@ -505,6 +517,37 @@ static void cmd_catalog(EmbeddedCli *cli, char *args, void *ctx)
                        (unsigned)(e.length_s % 60u));
     }
     console_printf("  nod: %s (trim %d)", (e.nod_trim != 0) ? "on" : "off", (int)e.nod_trim);
+}
+
+/* The dashboard SHOWDOWN button's match, from showdown.cfg on the card. The button is
+ * hidden whenever there is no valid config, so this is where the operator finds out why
+ * it is missing (the load itself logs the specific reason). `reload` re-reads the card;
+ * the dashboard picks the change up on its next tap or at boot. */
+static void cmd_showdown(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *sub = embeddedCliGetToken(args, 1);
+
+    if (sub != NULL && strcmp(sub, "reload") != 0)
+    {
+        console_printf("usage: showdown [reload]");
+        return;
+    }
+    if (sub != NULL) { DashboardFeed_PostShowdown(Showdown_Reload()); }
+
+    const showdown_cfg_t *cfg = Showdown_Get();
+    if (!cfg->valid)
+    {
+        console_printf("no showdown config (games/gh3-wii/showdown.cfg) — button hidden");
+        return;
+    }
+
+    const char *title = GameCatalog_Title(cfg->setlist, cfg->index);
+    console_printf("%-5s %2u  %-32s %s",
+                   (cfg->setlist == GP_SETLIST_BONUS) ? "bonus" : "main",
+                   (unsigned)cfg->index,
+                   (title != NULL) ? title : "Unknown song",
+                   GameSelection_DifficultyName(cfg->difficulty));
 }
 
 static void cmd_art(EmbeddedCli *cli, char *args, void *ctx)
@@ -1856,6 +1899,7 @@ static const CliCommandBinding bindings[] = {
         { "scores", "scores <main|bonus> <index> [difficulty]: top scores",    true, NULL, cmd_scores },
         { "results","results add <set> <idx> <diff> <score>: test row", true, NULL, cmd_results },
         { "catalog","catalog <reload|ls|<main|bonus> <index>>: song labels",    true, NULL, cmd_catalog },
+        { "showdown","showdown [reload]: the SHOWDOWN button's 2-player match (showdown.cfg)", true, NULL, cmd_showdown },
         { "art",    "art [ls | <main|bonus> <index>]: album-art cache status",  true, NULL, cmd_art },
         { "detect", "detect cv <on|off>: enable/disable the CV detector",        true, NULL, cmd_detect },
         { "active", "active <cv|fretboard>: hand game control to a detector",     true, NULL, cmd_active },

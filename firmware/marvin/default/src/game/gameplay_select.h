@@ -32,4 +32,9 @@ typedef struct
  * a bad frame size. */
 int gp_read_song(const uint8_t *frame, int width, int height, gp_song_t *out);
 
+/* The gp_song_templates index for a (setlist, index) key, or -1 if there is none —
+ * i.e. whether the navigator can reach that song at all. Lives here because this
+ * module already links the template table. */
+int gp_song_template_of(uint8_t setlist, uint8_t index);
+
 #endif

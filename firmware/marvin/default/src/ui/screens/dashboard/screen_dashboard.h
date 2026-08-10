@@ -46,6 +46,17 @@ void ScreenDashboard_RefreshActuators(void);
  * when HEO is not covering it, and the rebind gap after a full-screen view was long
  * enough to flash the bars. Feed-task ctx, render lock held. */
 void ScreenDashboard_ApplyVideoState(bool displayed);
+
+/* Show or hide the SHOWDOWN control, from whether the card offers a match. The button
+ * reads showdown.cfg itself at boot and on every tap; this is how a reload from the
+ * console reaches a button that booted hidden. Feed-task ctx, render lock held. */
+void ScreenDashboard_ApplyShowdown(bool present);
+
+/* Repaint the human card's TOP SCORES board from the showdown high-score cache
+ * (game/game_showdown.h). Reads the cache only — the feed refreshes it with
+ * Showdown_ReloadTop() *before* taking the render lock, because that part is an SD read. */
+void ScreenDashboard_ApplyTopScores(void);
+
 void ScreenDashboard_ApplyStatus(const char *text);
 void ScreenDashboard_ApplyPlaytime(uint32_t elapsed_ms);
 void ScreenDashboard_ApplyScore(uint32_t score);

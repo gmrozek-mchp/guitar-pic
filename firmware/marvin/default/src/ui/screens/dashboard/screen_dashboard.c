@@ -24,6 +24,7 @@
 #include "game/game_art.h"
 #include "game/game_selection.h"
 #include "game/game_controller.h"
+#include "game/game_showdown.h"
 #include "results/results.h"   /* Results_Set/GetPlayer — the human card's name */
 #include "util/legato_utf8.h"
 
@@ -139,6 +140,33 @@ static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
 #define R_ACT_ROW_Y  (R_ACT_Y + LBL_H + LBL_GAP)
 #define ACT_W        ((COL_W - ACT_GAP) / 2)         /* grid-cols-2 */
 
+/* TOP SCORES (mockup PlayerPerformance's scoreboard) — the card's best runs on the match
+ * SHOWDOWN starts, in the human card's own first section. The rule and the two headings' y
+ * are the robot card's, so the two cards' section breaks line up across the screen.
+ *
+ * Rows are top-aligned under the heading and the leftover height falls between the last row
+ * and SHOWDOWN, which is the mockup's arrangement rather than an oversight — its button
+ * carries mt-auto, so the slack lands above it.
+ *
+ * Rank is a coloured digit on a neutral disc: gold then two steps of grey, standing in for
+ * the mockup's 🥇🥈🥉, which no raster font here carries. The disc is the card's own chip
+ * fill so all three digit colours stay legible on it. */
+#define TOP_N             3
+#define H_RULE_Y          R_RULE1_Y                  /* mirrors the robot card */
+#define H_TOP_Y           R_FRET_Y
+#define H_ROW_Y           R_FRETS_Y
+#define TOP_LINE_H       20                          /* text-base name over text-base score */
+#define TOP_ROW_H        (2 * TOP_LINE_H)
+#define TOP_ROW_PITCH    (TOP_ROW_H + 12)            /* gap-3 */
+#define TOP_BADGE_D      26
+#define TOP_BADGE_Y      ((TOP_ROW_H - TOP_BADGE_D) / 2)
+/* A digit's ink sits 2.8px below the centre of a 26px label box at DejaVuSansMonoBold_16
+ * (see ui_text_metrics.h for why the box centre is not the optical one), which is enough
+ * to read as off-centre inside a disc. The label is lifted; the disc does not move. */
+#define TOP_BADGE_LIFT    3
+#define TOP_TEXT_X       (COL_X + TOP_BADGE_D + 12)  /* medal column + gap-3 */
+#define TOP_TEXT_W       (COL_W - TOP_BADGE_D - 12)
+
 /* SHOWDOWN, at the foot of the human card (the mockup's mt-auto button): the trophy above
  * a 24px caption, both drawn by the button, with the HUMAN vs ROBOT subtitle as a sibling
  * label below them. Sits on the same 10px foot the robot card's last actuator row ends on.
@@ -249,7 +277,12 @@ enum {
     DYN_S_STATUS, DYN_S_TITLE, DYN_S_ARTIST, DYN_S_ALBUM,
     DYN_S_GENRE, DYN_S_DURATION, DYN_S_TIER,
     DYN_S_MODE, DYN_S_DIFF, DYN_S_ELAPSED, DYN_S_TOTAL,
-    DYN_COUNT
+    /* TOP SCORES: three rows of rank digit + player + score. Each base is followed by its
+     * TOP_N labels, so a row's label is <base> + row — keep them contiguous. */
+    DYN_H_TOP_RANK,
+    DYN_H_TOP_NAME  = DYN_H_TOP_RANK  + TOP_N,
+    DYN_H_TOP_SCORE = DYN_H_TOP_NAME  + TOP_N,
+    DYN_COUNT       = DYN_H_TOP_SCORE + TOP_N
 };
 
 static leChar        s_dyn_buf[DYN_COUNT][FB_MAX_DYN_CAP];
@@ -276,6 +309,9 @@ static leButtonWidget      *s_start;
 static leButtonWidget      *s_pick;    /* SELECT SONG — gated while a run is in flight */
 static leButtonWidget      *s_showdown;      /* human card's challenge control */
 static leLabelWidget       *s_showdown_sub;  /* its HUMAN vs ROBOT subtitle */
+static leWidget            *s_top_rule;      /* TOP SCORES section break + heading, hidden */
+static leLabelWidget       *s_top_head;      /*   along with the rows on an empty board    */
+static leWidget            *s_top_badge[TOP_N];
 static leTableString        s_start_cap, s_stop_cap;
 static leWidget            *s_state_robot, *s_state_robot_led;
 static leWidget            *s_video_pattern;   /* SMPTE bars group, hidden while video is up */
@@ -347,9 +383,9 @@ static void add_card_frame(leWidget *parent, int x, int y, int w, int h, uint32_
 }
 
 /* A 1px horizontal rule — the mockup's `h-px bg-zinc-800` section divider. */
-static void add_rule(leWidget *parent, int x, int y, int w)
+static leWidget *add_rule(leWidget *parent, int x, int y, int w)
 {
-    (void)add_panel(parent, x, y, w, 1, &SCHEME_FILL_ZINC_800, LE_TRUE);
+    return add_panel(parent, x, y, w, 1, &SCHEME_FILL_ZINC_800, LE_TRUE);
 }
 
 /* An anti-aliased dot (status LEDs). */
@@ -488,13 +524,9 @@ static void select_song_on_release(leButtonWidget *btn)
     UiManager_OpenSongSelect();
 }
 
-/* Commit callback from the on-screen keyboard, which START raises for a 2-player match:
- * record the entered name as the current player, show it on the human card, then start
- * the run. Empty input leaves the player unchanged. */
-/* Confirmation of the 2P name prompt, and the start of the run. Only reached via the
- * keyboard's OK — dismissing it with X never calls this, which is what makes X a true
- * cancel of the game start rather than just of the name edit. */
-static void player_name_committed(const char *name)
+/* Record the name entered in the 2P prompt as the current player and show it on the
+ * human card. Empty input leaves the player unchanged. */
+static void apply_player_name(const char *name)
 {
     if (name != NULL && name[0] != '\0')
     {
@@ -502,6 +534,14 @@ static void player_name_committed(const char *name)
         set_dyn(DYN_H_NAME, Results_GetPlayer());
         s_dyn_lbl[DYN_H_NAME].fn->invalidate(&s_dyn_lbl[DYN_H_NAME]);
     }
+}
+
+/* Confirmation of the 2P name prompt, and the start of the run. Only reached via the
+ * keyboard's OK — dismissing it with X never calls this, which is what makes X a true
+ * cancel of the game start rather than just of the name edit. */
+static void player_name_committed(const char *name)
+{
+    apply_player_name(name);
     GameController_Start();
 }
 
@@ -571,19 +611,94 @@ static void showdown_paint(bool avail)
     s_showdown_sub->fn->invalidate(s_showdown_sub);
 }
 
+/* Show or hide the SHOWDOWN control. Deliberately separate from showdown_paint, which
+ * owns the *busy* look: a run must grey the button, but must not reveal one that has no
+ * match behind it. The subtitle is a sibling drawn over the button rather than a child,
+ * so it takes its own call; hiding both leaves the card's own fill, which Legato repaints
+ * under the damage (the mechanism ScreenDashboard_ApplyVideoState relies on). Pick tests
+ * LE_WIDGET_VISIBLE, so a hidden button is also an untappable one. */
+static void showdown_show(bool present)
+{
+    leBool want = present ? LE_TRUE : LE_FALSE;
+    s_showdown->fn->setVisible(s_showdown, want);
+    s_showdown_sub->fn->setVisible(s_showdown_sub, want);
+}
+
+/* Fill the TOP SCORES board from the showdown high-score cache, which is whatever the last
+ * Showdown_Reload / Showdown_ReloadTop read off the card — this does no I/O of its own, so
+ * it is safe to call under the render lock.
+ *
+ * A row with no result behind it is hidden rather than shown blank or as a zero, and a
+ * board with nothing at all takes its heading and rule with it: an empty TOP SCORES reads
+ * as a broken one, where no section at all reads as "nobody has played this yet". Same
+ * hide-and-let-the-card-repaint mechanism showdown_show documents. */
+static void top_scores_paint(void)
+{
+    int    n   = Showdown_TopCount();
+    leBool any = (n > 0) ? LE_TRUE : LE_FALSE;
+
+    s_top_rule->fn->setVisible(s_top_rule, any);
+    s_top_head->fn->setVisible(s_top_head, any);
+
+    for (int i = 0; i < TOP_N; i++)
+    {
+        const results_score_t *e   = Showdown_Top(i);
+        leBool                 vis = (e != NULL) ? LE_TRUE : LE_FALSE;
+        leLabelWidget         *rank  = &s_dyn_lbl[DYN_H_TOP_RANK  + i];
+        leLabelWidget         *name  = &s_dyn_lbl[DYN_H_TOP_NAME  + i];
+        leLabelWidget         *score = &s_dyn_lbl[DYN_H_TOP_SCORE + i];
+
+        s_top_badge[i]->fn->setVisible(s_top_badge[i], vis);
+        rank->fn->setVisible(rank,   vis);
+        name->fn->setVisible(name,   vis);
+        score->fn->setVisible(score, vis);
+
+        if (e == NULL) { continue; }
+
+        /* Plain digits, no thousands separator — the live SCORE above reads the same way,
+         * and one grouped number beside an ungrouped one looks like a bug. */
+        char tmp[12];
+        (void)snprintf(tmp, sizeof tmp, "%lu", (unsigned long)e->score);
+        set_dyn(DYN_H_TOP_NAME  + i, e->player);
+        set_dyn(DYN_H_TOP_SCORE + i, tmp);
+    }
+}
+
+/* OK on SHOWDOWN's name prompt. Committing the selection here rather than at the tap is
+ * what makes the keyboard's X a true cancel: back out and the operator's own committed
+ * song is still the one on the card. */
+static void showdown_name_committed(const char *name)
+{
+    apply_player_name(name);
+
+    if (!Showdown_Commit()) { showdown_show(false); return; }
+    GameController_Start();
+}
+
 /* SHOWDOWN starts a 2-player match against the robot on a song and difficulty of its own
  * choosing, rather than on the committed selection — so it is not START with a different
- * caption, and it needs no valid selection. Choosing and committing that match is not
- * wired yet; this is the seam it attaches to. The busy check repeats what the cleared
- * ENABLED flag already prevents, for the reason detector_on_release documents: it puts
- * "not during a run" at the place that acts on the tap. */
+ * caption, and it needs no valid selection. Both come from showdown.cfg on the card
+ * (game/game_showdown.h), re-read on every tap so an edit needs no reboot; a card that no
+ * longer offers a usable match takes the button away rather than failing a run.
+ *
+ * The busy check repeats what the cleared ENABLED flag already prevents, for the reason
+ * detector_on_release documents: it puts "not during a run" at the place that acts on the
+ * tap. */
 static void showdown_on_release(leButtonWidget *btn)
 {
     (void)btn;
 
     if (GameController_IsBusy()) { return; }
 
-    LOG_INFO("dash: SHOWDOWN\r\n");
+    /* The reload may have moved the match to another song, so the board it names is
+     * repainted either way — including on the failure path, where the cache is now empty
+     * and the block disappears with the button. */
+    bool present = Showdown_Reload();
+    top_scores_paint();
+    if (!present) { showdown_show(false); return; }
+
+    UiManager_OpenKeyboard("ENTER PLAYER NAME", Results_GetPlayer(), 32,
+                           showdown_name_committed);
 }
 
 /* True when the NEURAL NETWORK row is offerable for the committed selection: the
@@ -889,6 +1004,48 @@ static void build_robot_card(leWidget *content)
 
 /* ── build: human card ──────────────────────────────────────────────────────*/
 
+/* The TOP SCORES block. Built complete and then emptied by top_scores_paint, which the
+ * caller runs once the card has been read — nothing here is visible until it does.
+ *
+ * The rank digit is a label over its disc rather than in it, for the reason the actuator
+ * LEDs document: an AA-rounded panel paints its own fill and hosts no text, so the pair is
+ * a panel plus a sibling added after it. Both are non-interactive, so neither needs the
+ * IGNOREPICK the overlay widgets elsewhere on this card carry. */
+static void build_top_scores(leWidget *card)
+{
+    static const leScheme *RANK[TOP_N] = {
+        &SCHEME_TEXT_YELLOW_400, &SCHEME_TEXT_ZINC_300, &SCHEME_TEXT_ZINC_500,
+    };
+
+    s_top_rule = add_rule(card, COL_X, H_RULE_Y, COL_W);
+    s_top_head = add_cap(card, COL_X, H_TOP_Y, COL_W, 16, stringID_GAMEPLAY_TOP_SCORES,
+                         &SCHEME_TEXT_ZINC_500, LE_HALIGN_LEFT);
+
+    for (unsigned i = 0u; i < TOP_N; i++)
+    {
+        int y       = H_ROW_Y + (int)i * TOP_ROW_PITCH;
+        int badge_y = y + TOP_BADGE_Y;
+
+        s_top_badge[i] = add_dot(card, COL_X, badge_y, TOP_BADGE_D, &SCHEME_FILL_ZINC_800);
+
+        (void)add_dyn(card, DYN_H_TOP_RANK + i, COL_X, badge_y - TOP_BADGE_LIFT,
+                      TOP_BADGE_D, TOP_BADGE_D, (const leFont *)&DejaVuSansMonoBold_16,
+                      RANK[i], LE_HALIGN_CENTER);
+
+        /* The rank is the row's position, which never changes — written once here rather
+         * than repainted with the entry beside it. */
+        char digit[2] = { (char)('1' + (int)i), '\0' };
+        set_dyn(DYN_H_TOP_RANK + i, digit);
+
+        (void)add_dyn(card, DYN_H_TOP_NAME + i, TOP_TEXT_X, y, TOP_TEXT_W, TOP_LINE_H,
+                      (const leFont *)&DejaVuSansMonoBold_16, &SCHEME_TEXT_ZINC_200,
+                      LE_HALIGN_LEFT);
+        (void)add_dyn(card, DYN_H_TOP_SCORE + i, TOP_TEXT_X, y + TOP_LINE_H, TOP_TEXT_W,
+                      TOP_LINE_H, (const leFont *)&DejaVuSansMono_16, &SCHEME_TEXT_HUMAN,
+                      LE_HALIGN_LEFT);
+    }
+}
+
 static void build_human_card(leWidget *content)
 {
     leWidget *card = add_card(content, HUMAN_X, 0, SIDE_W, CONTENT_H);
@@ -897,11 +1054,13 @@ static void build_human_card(leWidget *content)
                       stringID_PLAYER_HUMAN_HumanPlayer,
                       &s_state_human, &s_state_human_led, &s_cap_state_human);
 
-    /* The name is display-only; it is entered on the keyboard START raises for a
-     * 2-player match (player_name_committed). */
+    /* The name is display-only; it is entered on the keyboard START and SHOWDOWN raise
+     * for a 2-player match (apply_player_name). */
     build_score_block(card, DYN_H_SCORE, &SCHEME_TEXT_HUMAN, &SCHEME_PILL_HUMAN,
                       s_mult_human);
     build_streak_block(card, DYN_H_STREAK, &s_bar_streak_human, 0xFDC700u);
+
+    build_top_scores(card);
 
     /* SHOWDOWN. Amber against the card's yellow-400 human accents, deliberately — the
      * mockup gives the control its own colour rather than the player's. */
@@ -1479,6 +1638,23 @@ void ScreenDashboard_ApplyVideoState(bool displayed)
     s_video_pattern->fn->setVisible(s_video_pattern, want);
 }
 
+/* A `showdown reload` from the console, reaching the widgets on the one task allowed to
+ * write them. The tap path needs no event — it reads the card and shows/hides inline.
+ * Called from the feed task with the render lock held. */
+void ScreenDashboard_ApplyShowdown(bool present)
+{
+    showdown_show(present);
+
+    /* Presence changes because the config changed, and the board is scoped to that config —
+     * so the two always move together, whichever path got here. */
+    top_scores_paint();
+}
+
+void ScreenDashboard_ApplyTopScores(void)
+{
+    top_scores_paint();
+}
+
 /* ── lifecycle ──────────────────────────────────────────────────────────────*/
 
 /* The dashboard has no periodic work of its own — every repaint comes from a feed
@@ -1525,6 +1701,12 @@ void ScreenDashboard_Setup(void)
     set_dyn(DYN_S_STATUS, "READY");
     run_state_show(false);
     detector_show_active();
+
+    /* SHOWDOWN only exists if the card offers a match. Reading it here — inside
+     * init_screens, after the boot task's Storage_Mount and before the first paint —
+     * means the button is never briefly visible with nothing behind it. */
+    showdown_show(Showdown_Reload());
+    top_scores_paint();   /* the same read loaded the board; empty until a run is recorded */
 
     /* Mirror the committed gameplay selection onto the song card. Register the observer
      * before song-select's Setup seeds the boot default (ui_manager calls this screen's

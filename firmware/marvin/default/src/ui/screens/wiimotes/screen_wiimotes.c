@@ -518,18 +518,43 @@ static leButtonWidget *add_link_button(unsigned row, uint32_t string_id,
     return b;
 }
 
-/* Reconnect / swap / 1+2 / unlink / pair. Inert for now — no callbacks bound. UNLINK and
- * PAIR carry their own schemes so a press reads red / blue, the mockup's colour for the
- * destructive and the pairing action; 1+2 is a chord on the wiimote's own keys, so it has
- * a caption where the others have an icon. */
+static void link_kick(const char *when);
+
+/* RECONNECT: the same non-blocking kick the show and unlock edges make. On release
+ * rather than press, so sliding off the key cancels it. */
+static void link_reconnect_on_release(leButtonWidget *btn)
+{
+    (void)btn;
+
+    link_kick("button");
+}
+
+/* Reconnect / swap / 1+2 / unlink / pair. UNLINK and PAIR carry their own schemes so a
+ * press reads red / blue, the mockup's colour for the destructive and the pairing action;
+ * 1+2 is a chord on the wiimote's own keys, so it has a caption where the others have an
+ * icon. SWAP, UNLINK and PAIR are not wired yet.
+ *
+ * 1+2 goes through ctrl_register like the card's own 1 and 2 keys — `bit` is a mask, so
+ * one entry holds both — which also puts it behind the lock gate, since send_nav is
+ * silent while locked. Deliberate: it is controller input, and sending nav from a locked
+ * screen would stomp whatever the gameplay mirror has latched. The mockup places it
+ * outside the scrim, so while locked it is a key that presses and does nothing; see
+ * docs/journal.md. */
 static void build_link_column(void)
 {
     s_link[0] = add_link_button(0u, stringID_WIIMOTE_LINK_RECONNECT,
                                 &SCHEME_BUTTON_LINK, &BUTTON_ICON_RECONNECT);
+    s_link[0]->fn->setReleasedEventCallback(s_link[0], link_reconnect_on_release);
+
     s_link[1] = add_link_button(1u, stringID_WIIMOTE_LINK_SWAP,
                                 &SCHEME_BUTTON_LINK, &BUTTON_ICON_SWAP);
+
     s_link[2] = add_link_button(2u, stringID_WIIMOTE_LINK_ONE_TWO,
                                 &SCHEME_BUTTON_LINK, NULL);
+    s_link[2]->fn->setPressedEventCallback(s_link[2], control_on_press);
+    s_link[2]->fn->setReleasedEventCallback(s_link[2], control_on_release);
+    ctrl_register(s_link[2], FLD_NCORE, (uint8_t)(MF_W_ONE | MF_W_TWO));
+
     s_link[3] = add_link_button(3u, stringID_WIIMOTE_LINK_UNLINK,
                                 &SCHEME_BUTTON_LINK_UNLINK, &BUTTON_ICON_UNLINK);
     s_link[4] = add_link_button(4u, stringID_WIIMOTE_LINK_PAIR,
@@ -620,14 +645,17 @@ static void gate_show(bool on)
     }
 }
 
-/* Ask fauxmote to bring the Wii link up if it is down. Called on both of this screen's
- * edges, and cheap on both: the call sends nothing when the link is already up, and
- * debounces so the second edge cannot restart what the first one began.
+/* Ask fauxmote to bring the Wii link up if it is down. Called on this screen's two edges
+ * and by the RECONNECT key, and cheap on all three: the call sends nothing when the link
+ * is already up, and debounces so a second caller cannot restart what the first began.
  *
  * Doing it on SHOW is what makes the latency free — the slide is a deliberate one-second
  * gesture, so the reconnect runs underneath it and is usually done by the time the
  * controls go live. The unlock edge then covers a link that dropped while the screen sat
  * open, or one whose STATUS had not arrived yet on entry.
+ *
+ * Every outcome logs, including the one where nothing was needed: an operator who pressed
+ * RECONNECT has to be able to tell "already up" from "no fauxmote".
  *
  * Never blocks: this is the UI task, and the blocking wait belongs to game_controller. */
 static void link_kick(const char *when)
@@ -647,6 +675,7 @@ static void link_kick(const char *when)
             break;
         case FAUXMOTE_LINK_CONNECTED:
         default:
+            LOG_INFO("UI: wiimotes (%s): Wii link already up; nothing sent\r\n", when);
             break;
     }
 }

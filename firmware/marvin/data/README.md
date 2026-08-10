@@ -6,6 +6,7 @@ to the card root. Paths are relative to the mount point (spec §4.6.2, §4.8).
 ```
 games/gh3-wii/
   songs.csv          song catalog — labels keyed by (setlist, index); spec §4.8.3
+  showdown.cfg       the 2-player match the dashboard's SHOWDOWN button starts
   art/               album art, keyed by the same (setlist, index); spec §4.8.7
     small/  <setlist>-<NN>.{jpg,png}     e.g. main-04.jpg   (one DDR cache tier)
     large/  <setlist>-<NN>.{jpg,png}     e.g. bonus-12.png  (one DDR cache tier)
@@ -28,6 +29,15 @@ The catalog is **labels only**: recognition is compile-time in flash, so a
 missing or partial `songs.csv` just shows "Unknown song" and never affects play.
 Album art is derived directly from `(setlist, index)` and is **not** referenced
 from `songs.csv` — the two are independent.
+
+`showdown.cfg` is a `key=value` file with two required keys, `song = <main|bonus>,<index>`
+and `difficulty = easy|medium|hard|expert` (a `0`–`3` tier also works). `#` and `;` start
+a comment; keys and values are case-insensitive. Unlike the catalog it is **not** labels:
+it names the match the dashboard's SHOWDOWN button commits, so a missing or unusable file
+means the button is not shown at all rather than degrading. The song must be one the
+recognizer has a template for — `(setlist, index)` as in `songs.csv`. The file is re-read
+on every tap, so an edit takes effect without a reboot; `showdown` on the console prints
+what is currently loaded.
 
 > **The checked-in `songs.csv` is a placeholder seed** generated from the
 > recognizer's song slugs (titles auto-humanized; `artist`/`bpm`/`length_s`

@@ -575,6 +575,11 @@ static void record_human_result(bool ended_naturally, bool seen, uint32_t score)
         LOG_INFO("GC: result saved — %s %s #%u '%s' %s %lu\r\n",
                  Results_GetPlayer(), rec.setlist, (unsigned)rec.index,
                  rec.song, rec.difficulty, (unsigned long)rec.score);
+
+        /* The run just changed the high-score table this row belongs to, so the dashboard's
+         * board is stale. Posted rather than read here: re-reading the file is the feed's
+         * job, which does it off the render lock. */
+        DashboardFeed_PostResults();
     }
     else
     {

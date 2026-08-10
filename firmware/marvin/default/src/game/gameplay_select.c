@@ -198,3 +198,15 @@ int gp_read_song(const uint8_t *frame, int width, int height, gp_song_t *out)
     out->index = (best_t >= 0) ? gp_song_templates[best_t].index : 0;
     return 0;
 }
+
+int gp_song_template_of(uint8_t setlist, uint8_t index)
+{
+    for (int t = 0; t < GP_N_SONGS; t++)
+    {
+        if (gp_song_templates[t].setlist == setlist && gp_song_templates[t].index == index)
+        {
+            return t;
+        }
+    }
+    return -1;
+}

@@ -69,6 +69,7 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/util/csv.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/util/legato_utf8.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/game_catalog.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/game_showdown.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/game_art.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/node_art.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/qr_art.c"
