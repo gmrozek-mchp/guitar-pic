@@ -1,4 +1,4 @@
-setlist,index,title,artist,album,bpm,length_s,year,genre,difficulty
+setlist,index,title,artist,album,nod_trim,length_s,year,genre,difficulty
 main,0,"Slow Ride","Foghat","Fool for the City",0,251,1975,"Classic Rock","1"
 main,1,"Talk Dirty to Me","Poison","Look What the Cat Dragged In",0,224,1987,"Glam Metal","1"
 main,2,"Hit Me with Your Best Shot","Pat Benatar","Crimes of Passion",0,172,1980,"Rock","1"

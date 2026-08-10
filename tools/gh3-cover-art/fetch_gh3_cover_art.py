@@ -9,8 +9,10 @@ matching the recognizer's stable (setlist, index) key.
 With --catalog it also (re)generates the marvin song catalog CSV (spec §4.8.3),
 sourcing the original-release year and a genre tag from MusicBrainz in the same
 pass; title/artist/album come from the SONGS table below and `difficulty` is
-left blank (GH3 exposes no per-song rating). Without network access the catalog
-can still be written (year=0, genre/difficulty blank) by passing --catalog with
+left blank (GH3 exposes no per-song rating). The `nod_trim` column (lemmy's
+per-song nod, hand-tuned by ear) is carried over from the catalog already at
+that path — nothing can regenerate it. Without network access the catalog can
+still be written (year=0, genre/difficulty blank) by passing --catalog with
 --no-enrich.
 
 Usage:
@@ -27,6 +29,7 @@ logged to <out>/_misses.txt for manual handling (esp. the obscure bonus tracks).
 """
 
 import argparse
+import csv
 import json
 import os
 import sys
@@ -217,17 +220,36 @@ def mb_genre(artist, user_agent):
     return ""
 
 
+def read_nod_trims(path):
+    """Existing {(setlist, index): nod_trim} from the catalog at `path`, or {} if it
+    isn't there / can't be read. nod_trim is hand-tuned per song by ear and is the
+    only column no source can regenerate, so a rewrite has to carry it over."""
+    trims = {}
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                try:
+                    trims[(row["setlist"].strip(), int(row["index"]))] = \
+                        int(row.get("nod_trim") or 0)
+                except (KeyError, TypeError, ValueError):
+                    continue
+    except OSError:
+        pass
+    return trims
+
+
 def write_catalog(path, rows):
     """Write the song catalog CSV. rows: (setlist, index, title, artist, album,
-    bpm, length_s, year, genre, difficulty). Quotes the free-text columns and
+    nod_trim, length_s, year, genre, difficulty). Quotes the free-text columns and
     doubles embedded quotes; numerics stay bare. Matches the on-device parser
     (firmware/marvin/default/src/util/csv.c)."""
     def q(s):
         return '"' + (s or "").replace('"', '""') + '"'
-    lines = ["setlist,index,title,artist,album,bpm,length_s,year,genre,difficulty"]
-    for setlist, index, title, artist, album, bpm, length_s, year, genre, diff in rows:
+    lines = ["setlist,index,title,artist,album,nod_trim,length_s,year,genre,difficulty"]
+    for setlist, index, title, artist, album, nod_trim, length_s, year, genre, diff in rows:
         lines.append("%s,%d,%s,%s,%s,%d,%d,%d,%s,%s" % (
-            setlist, index, q(title), q(artist), q(album), bpm, length_s, year, q(genre), q(diff)))
+            setlist, index, q(title), q(artist), q(album), nod_trim, length_s, year,
+            q(genre), q(diff)))
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 
@@ -251,6 +273,7 @@ def main():
     os.makedirs(args.out, exist_ok=True)
 
     catalog_rows = [] if args.catalog else None
+    nod_trims = read_nod_trims(args.catalog) if args.catalog else {}
 
     hits, misses = 0, []
     for setlist, idx, slug, title, artist, album in SONGS:
@@ -265,7 +288,8 @@ def main():
                     genre = mb_genre(artist, user_agent)
                 except Exception as e:  # network hiccup -- leave blank, keep going
                     print("   ! meta error: %s" % e, file=sys.stderr)
-            catalog_rows.append((setlist, idx, title, artist, album, 0, 0, year, genre, ""))
+            catalog_rows.append((setlist, idx, title, artist, album,
+                                 nod_trims.get((setlist, idx), 0), 0, year, genre, ""))
         existing = [f for f in os.listdir(args.out) if f.startswith(base + ".")]
         if existing and not args.force:
             print("  skip  %-30s (have %s)" % (base, existing[0]))

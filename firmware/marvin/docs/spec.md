@@ -295,6 +295,10 @@ Each of the three actuator nodes — guitar (buttons), lemmy (servos), lightshow
 
 The gate is at the node, not on marvin's send path, because marvin is not always the one driving: inside a song with the fretboard selected marvin goes silent and the fretboard drives the guitar peer-to-peer (`Detector_FretboardDriving()`), and lemmy's servos are also driven by beatbox. Muting marvin would leave both uncovered.
 
+The dashboard/console state is the **master** enable. What marvin commands is that ANDed with the **performance window** (`ActuatorEnable_SetPlaying`): lemmy and lightshow run only while a song is actually playing, so the puppet and the lamps are still through the menus, loading and results. The game controller opens the window on arrival at a gameplay screen and closes it when the run ends (§4.8), so it covers both a navigated run and `play attach`; a game a human starts with marvin idle leaves it shut. The guitar is exempt — it has to actuate the menus that reach a song. On the dashboard the row's **button** shows the master intent and its **dot** the node's report, so "enabled, dot dark" reads as *armed and idle*.
+
+lemmy's **nod** is a per-song setting taken from the song catalog's `nod_trim` column (§4.8.3): `0` — the shipped default, and what an unknown song reads as — means no nod for that song; anything else is pushed as lemmy's `trim` (his `NOD_TRIM`, an offset on the nod oscillator's half-period, clamped by marvin to ±14 because past that it only saturates) and the nod is enabled. Trim goes first so the song's first nod frame already uses it, and both are pushed on the window edges, so the console's `lemmy nod` / `lemmy trim` are bench overrides the next run replaces.
+
 Because a follower boots on its own defaults and `0x88B9` carries no ACK, the state is kept converged rather than merely sent: a send is retried until accepted, every known opcode is re-pushed when a node (re)appears or restarts, and each actuator **reports its gate back in its heartbeat** (flags bit1) so marvin re-pushes on mismatch — which also catches a node's local CLI changing it. Steady-state agreement costs no bus traffic. The dashboard dot therefore reflects what a node *reports*, with a pending state while a command is unconfirmed. Wire details: [`docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md) §7.1–§7.2.
 
 ### 4.4 Timing pipeline 🚧
@@ -486,11 +490,13 @@ The recognizer and the navigator both depend on per-game data:
 - **On the SD card (`/marvin/games/<game>/songs.csv`):** the song catalog *labels* — the human-meaningful, user-editable metadata that changes independently of the firmware. A flat CSV (header + one row per song), keyed by the stable `(setlist, index)` identifier the recognizer already emits (`gp_song_t`):
 
 ```
-setlist,index,title,artist,album,bpm,length_s,year,genre,difficulty
-main,4,"Rock and Roll All Nite","Kiss","Alive!",120,210,1975,"Hard Rock",
+setlist,index,title,artist,album,nod_trim,length_s,year,genre,difficulty
+main,4,"Rock and Roll All Nite","Kiss","Alive!",-3,210,1975,"Hard Rock",
 ```
 
-`setlist` is the string `main`/`bonus` (the same key the art filenames use); `title`/`artist`/`album`/`genre`/`difficulty` are CSV-quoted (may contain commas; any may be empty); `bpm`/`length_s`/`year` are integers, `0` when unknown. Rows may be sparse or out of order — only `(setlist, index)` is the key. `title`/`artist`/`album` come from the `SONGS` table in `tools/fetch_gh3_cover_art.py`, whose `--catalog` mode also fills `year`/`genre` from MusicBrainz; `bpm`/`length_s`/`difficulty` are reserved-but-blank (GH3 surfaces no per-song difficulty — the only authentic signal is the career tier, deferred).
+`setlist` is the string `main`/`bonus` (the same key the art filenames use); `title`/`artist`/`album`/`genre`/`difficulty` are CSV-quoted (may contain commas; any may be empty); `length_s`/`year` are integers, `0` when unknown. Rows may be sparse or out of order — only `(setlist, index)` is the key. `title`/`artist`/`album` come from the `SONGS` table in `tools/fetch_gh3_cover_art.py`, whose `--catalog` mode also fills `year`/`genre` from MusicBrainz; `length_s`/`difficulty` are reserved-but-blank (GH3 surfaces no per-song difficulty — the only authentic signal is the career tier, deferred).
+
+`nod_trim` is the one column that is not a label: it is **signed** (may be negative) and it is lemmy's per-song nod setting, `0` = don't nod to this song (§4.3.1). It occupies the slot a `bpm` column used to reserve — parsing is positional, so the header cell is documentation only.
 
 **Why CSV (not JSON).** Same rationale that put `results.csv` (§4.8.6) on flat CSV: on-device it parses with comma-splitting + `atol` into static buffers (no malloc, no JSON tokenizer, one line at a time — fits `FF_FS_MAX_FILES=1` and the static-allocation rule), and it opens directly in pandas/Excel for editing. The on-device reader (`game/catalog.c`) lazy-loads it once into a fixed `[GP_N_SONGS]` cache (shares the `util/csv.h` splitter with `results.c`) and serves `(setlist, index) → labels` lookups from RAM with the file closed.
 

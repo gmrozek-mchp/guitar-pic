@@ -12,9 +12,12 @@
 #include "game_engine.h"
 #include "gameplay_metadata.h"
 #include "game/game_timing.h"
+#include "game/game_catalog.h"        /* per-song nod trim for lemmy */
 #include "actuator/manual_control.h"
 #include "actuator/fretboard_link.h"
 #include "actuator/guitar_cmd.h"
+#include "actuator/actuator_enable.h" /* performance window: lemmy + lightshow */
+#include "net/t1s/t1s_link.h"         /* lemmy nod control channel */
 #include "detector/cv_marvin_v1.h"   /* highway geometry + play difficulty */
 #include "detector/detector.h"       /* active-detector fallback when NN can't play */
 #include "perf_log/perf_log_records.h"
@@ -94,6 +97,12 @@
  * human one — if it does not appear the GREEN did not register and the step retries. */
 #define GC_READY_TIMEOUT_MS 2500u
 
+/* Bound on the per-song nod trim taken from the catalog. lemmy adds the trim to its
+ * detected nod half-period and clamps the sum to 4..18 frames, so anything past ±14
+ * only saturates — and clamping here is what keeps a tempo mistakenly typed into that
+ * column (140) from wrapping through int8 to -116 and pegging the nod at its fastest. */
+#define GC_NOD_TRIM_MAX     14
+
 typedef enum { ACT_SELECT_INDEX, ACT_SELECT_SONG, ACT_SATURATE_TOP, ACT_WAIT,
                ACT_CONFIRM, ACT_CONFIRM_READY } gc_act_t;
 
@@ -121,6 +130,7 @@ typedef enum { GC_MODE_NAV = 0, GC_MODE_ATTACH } gc_mode_t;
 
 static volatile bool s_busy;
 static volatile bool s_stop_req;
+static bool s_performing;   /* the gameplay window is open (see set_performing) */
 static volatile uint8_t s_mode = GC_MODE_NAV;   /* set by Start / StartAttach */
 static void (*s_status_cb)(const char *);
 
@@ -419,6 +429,50 @@ static bool execute(const gc_step_t *st)
 
 /* ── run ──────────────────────────────────────────────────────────────────── */
 
+/* Open/close the performance window — the band plays along with the song, not with
+ * the menus. Two things ride on it:
+ *
+ *   - lemmy's servos and lightshow's LEDs, gated at each node via actuator_enable
+ *     (ANDed with the operator's master toggle, which is unchanged by this).
+ *   - lemmy's nod, per song, from the catalog's nod_trim column: 0 means "he doesn't
+ *     nod well to this one" (and is what an unknown song reads as), so the nod stays
+ *     off for the whole window; anything else is pushed as his trim and the nod is
+ *     enabled. Trim first, so the first nod frame already runs at the song's setting.
+ *
+ * Sending on the window edges makes the console's `lemmy nod`/`trim` a bench override
+ * that the next run replaces. Idempotent, because every terminal path routes through
+ * finish() including those that never reached gameplay. */
+static void set_performing(bool on)
+{
+    if (s_performing == on) { return; }
+    s_performing = on;
+
+    ActuatorEnable_SetPlaying(on);
+
+    int16_t trim = 0;
+    if (on)
+    {
+        const game_selection_t *sel = GameSelection_Get();
+        int16_t raw = sel->valid ? GameCatalog_NodTrim(sel->setlist, sel->index) : 0;
+
+        trim = raw;
+        if (trim >  GC_NOD_TRIM_MAX) { trim =  GC_NOD_TRIM_MAX; }
+        if (trim < -GC_NOD_TRIM_MAX) { trim = -GC_NOD_TRIM_MAX; }
+        if (trim != raw)
+        {
+            LOG_WARN("GC: nod trim %d out of range, using %d - that column is lemmy's "
+                     "trim, not a tempo\r\n", (int)raw, (int)trim);
+        }
+
+        LOG_INFO("GC: song nod trim %d - lemmy nod %s\r\n", (int)trim, trim ? "on" : "off");
+        if (trim != 0)
+        {
+            (void)T1SLink_SendLemmyCtrl(T1S_ANIM_CTRL_NOD_TRIM, (uint8_t)(int8_t)trim);
+        }
+    }
+    (void)T1SLink_SendLemmyCtrl(T1S_ANIM_CTRL_NOD_EN, (trim != 0) ? 1u : 0u);
+}
+
 /* Release the wire, disable CV, report a terminal status.
  *
  * Clearing s_busy *before* publishing is load-bearing, not tidiness. Observers run
@@ -431,6 +485,7 @@ static bool execute(const gc_step_t *st)
 static void finish(const char *st)
 {
     GameTiming_SetEnabled(false);   /* also sends one release */
+    set_performing(false);          /* lemmy and lightshow go still with the song */
     s_busy = false;
     status(st);
 }
@@ -474,6 +529,7 @@ static void play_until_done(void)
 {
     status("PLAYING");
     GameTiming_SetEnabled(true);   /* controller owns the actuation window */
+    set_performing(true);          /* lemmy + lightshow live for the song, nod per song */
     TickType_t play_start = xTaskGetTickCount();
     DashboardFeed_PostPlaytime(0u);    /* reset the dashboard playtime bar (run reset the rest) */
 

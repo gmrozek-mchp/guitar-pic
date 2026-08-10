@@ -12,7 +12,7 @@
 
 #define CAT_REL_FILE  "games/gh3-wii/songs.csv"
 #define CAT_LINE_MAX  256
-#define CAT_FIELDS    10  /* setlist,index,title,artist,album,bpm,length_s,year,genre,difficulty */
+#define CAT_FIELDS    10  /* setlist,index,title,artist,album,nod_trim,length_s,year,genre,difficulty */
 
 static game_catalog_entry_t s_entries[GP_N_SONGS];
 static int             s_count  = 0;
@@ -81,7 +81,7 @@ bool GameCatalog_Reload(void)
         copy_field(e->title,  sizeof(e->title),  f[2]);
         copy_field(e->artist, sizeof(e->artist), f[3]);
         copy_field(e->album,  sizeof(e->album),  f[4]);
-        e->bpm      = (uint16_t)strtoul(f[5], NULL, 10);
+        e->nod_trim = (int16_t)strtol(f[5], NULL, 10);   /* signed: a trim, not a tempo */
         e->length_s = (uint16_t)strtoul(f[6], NULL, 10);
         e->year     = (uint16_t)strtoul(f[7], NULL, 10);
         copy_field(e->genre,      sizeof(e->genre),      f[8]);
@@ -116,6 +116,20 @@ bool GameCatalog_LookupSong(const gp_song_t *song, game_catalog_entry_t *out)
 {
     if (song == NULL) { return false; }
     return GameCatalog_Lookup(song->setlist, song->index, out);
+}
+
+int16_t GameCatalog_NodTrim(uint8_t setlist, uint8_t index)
+{
+    if (!s_loaded) { (void)GameCatalog_Reload(); }
+
+    for (int i = 0; i < s_count; i++)
+    {
+        if (s_entries[i].setlist == setlist && s_entries[i].index == index)
+        {
+            return s_entries[i].nod_trim;
+        }
+    }
+    return 0;
 }
 
 int  GameCatalog_Count(void)    { return s_count; }

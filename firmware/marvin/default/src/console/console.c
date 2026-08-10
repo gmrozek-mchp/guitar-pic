@@ -229,6 +229,7 @@ static void cmd_status(EmbeddedCli *cli, char *args, void *ctx)
     }
     console_printf("manual:     %s", ManualControl_IsEnabled() ? "on" : "off");
     console_printf("timing:     %s", GameTiming_IsEnabled() ? "on" : "off");
+    console_printf("perform:    %s", ActuatorEnable_IsPlaying() ? "open (in song)" : "closed");
     console_printf("video:      %ux%u frame=%lu",
                    (unsigned)vi.width, (unsigned)vi.height,
                    (unsigned long)vi.frame_count);
@@ -500,11 +501,12 @@ static void cmd_catalog(EmbeddedCli *cli, char *args, void *ctx)
     else if (e.year != 0)                  { console_printf("  year: %u", (unsigned)e.year); }
     if (e.genre[0] != '\0')      { console_printf("  genre: %s", e.genre); }
     if (e.difficulty[0] != '\0') { console_printf("  difficulty: %s", e.difficulty); }
-    if (e.bpm != 0 || e.length_s != 0)
+    if (e.length_s != 0)
     {
-        console_printf("  bpm %u, %u:%02u", (unsigned)e.bpm,
-                       (unsigned)(e.length_s / 60u), (unsigned)(e.length_s % 60u));
+        console_printf("  length %u:%02u", (unsigned)(e.length_s / 60u),
+                       (unsigned)(e.length_s % 60u));
     }
+    console_printf("  nod: %s (trim %d)", (e.nod_trim != 0) ? "on" : "off", (int)e.nod_trim);
 }
 
 static void cmd_art(EmbeddedCli *cli, char *args, void *ctx)
@@ -1610,11 +1612,15 @@ static void cmd_play(EmbeddedCli *cli, char *args, void *ctx)
 
 /* Report one actuator's output enable: what marvin wants, and whether the node has
  * confirmed it. A node that isn't on the bus is not an error — the state is held and
- * pushed when it shows up. */
+ * pushed when it shows up. Nor is an enabled-but-gated node: lemmy and lightshow are
+ * commanded off outside a song, so that is called out as idle rather than left looking
+ * like a node refusing the command. */
 static void print_actuator_state(t1s_actuator_t act)
 {
     const char *name = ActuatorEnable_Name(act);
     bool        want = ActuatorEnable_Get(act);
+    const char *gate = (want && !ActuatorEnable_Effective(act))
+                       ? " — idle, no song playing" : "";
 
     if (!ActuatorEnable_Present(act))
     {
@@ -1622,8 +1628,8 @@ static void print_actuator_state(t1s_actuator_t act)
                        name, want ? "on" : "off");
         return;
     }
-    console_printf("%s: output %s (%s)", name, want ? "on" : "off",
-                   ActuatorEnable_Pending(act) ? "pending" : "confirmed");
+    console_printf("%s: output %s (%s)%s", name, want ? "on" : "off",
+                   ActuatorEnable_Pending(act) ? "pending" : "confirmed", gate);
 }
 
 /* Shared body for the actuator enable commands: no argument reports, on|off sets. */
@@ -1683,7 +1689,9 @@ static void cmd_lemmy(EmbeddedCli *cli, char *args, void *ctx)
         return;
     }
 
-    /* Nod control channel (0x88B9): enable/disable + tuning. */
+    /* Nod control channel (0x88B9): enable/disable + tuning. A bench override — the
+     * game controller sets the nod from the song's catalog bpm on every gameplay
+     * window edge (bpm 0 = no nod for that song). */
     if (a != NULL && strcmp(a, "nod") == 0)
     {
         if (b == NULL || (strcmp(b, "on") != 0 && strcmp(b, "off") != 0))

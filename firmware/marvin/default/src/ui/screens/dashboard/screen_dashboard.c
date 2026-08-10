@@ -643,15 +643,24 @@ static void detector_on_release(leButtonWidget *btn)
 }
 
 /* Paint one actuator toggle. Same scheme pair as the detector rows, plus the state dot
- * the mockup puts at the button's right edge. Three states, because the dot answers
- * "is this actuator actually enabled" and not "did we ask":
+ * the mockup puts at the button's right edge.
+ *
+ * The two halves answer different questions, which is what lets one row carry both the
+ * master switch and the live state. The **button** shows what the operator asked for
+ * (ActuatorEnable_Get) — the toggle is the overall enable and has to keep reading that
+ * way even while marvin itself is holding the node's gate shut between songs. The
+ * **dot** shows the node's own report, so it answers "is this actuator live right now"
+ * and not "did we ask":
  *
  *   node absent  — greyed like the SELECT SONG gate below (the toggle would command a
  *                  node nobody can hear), dot dark.
  *   pending      — commanded but not yet confirmed by the node's heartbeat. Normally
  *                  the sub-500 ms gap after a tap; if it sticks, the node isn't taking
  *                  the command and a green dot would be a lie.
- *   confirmed    — the node reports the gate marvin asked for.
+ *   enabled, dot dark — enabled but not playing: lemmy and lightshow are gated off
+ *                  outside a song (the performance window), so the row reads "armed,
+ *                  idle" rather than either lying green or greying out.
+ *   live         — the node reports its output on.
  *
  * Uses the same "no disabled styling in Legato's button paint, so swap the scheme"
  * approach as apply_run_chrome — see the long note there. */
@@ -660,16 +669,17 @@ static void actuator_paint(unsigned i)
     t1s_actuator_t act = (t1s_actuator_t)i;
     bool present = ActuatorEnable_Present(act);
     bool pending = ActuatorEnable_Pending(act);
-    bool on      = ActuatorEnable_Reported(act);
+    bool want    = ActuatorEnable_Get(act);
+    bool live    = ActuatorEnable_Reported(act);
 
     const leScheme *btn_scheme = &SCHEME_BUTTON_DISABLED;
     const leScheme *dot_scheme = &SCHEME_FILL_ZINC_600;
 
     if (present)
     {
-        btn_scheme = on ? &SCHEME_TOGGLE_ON : &SCHEME_TOGGLE_OFF;
+        btn_scheme = want ? &SCHEME_TOGGLE_ON : &SCHEME_TOGGLE_OFF;
         if (pending)     { dot_scheme = &SCHEME_FILL_YELLOW_400; }
-        else if (on)     { dot_scheme = &SCHEME_FILL_GREEN_400; }
+        else if (live)   { dot_scheme = &SCHEME_FILL_GREEN_400; }
     }
 
     if (present) { s_actuator[i]->widget.flags |=  LE_WIDGET_ENABLED; }
@@ -1018,7 +1028,8 @@ static void build_song_card(leWidget *content)
                   (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_600, LE_HALIGN_LEFT);
 
     /* Metric row: GENRE · DURATION · TIER. The mockup also lists BPM, dropped because the
-     * catalog's column isn't populated in practice (SONG_INFO_BPM is kept, unused).
+     * catalog has no tempo to show — its 6th column carries lemmy's per-song nod trim
+     * instead (game_catalog.h). SONG_INFO_BPM is kept, unused.
      *
      * The fields tile the info column edge to edge — a label clips its text at its own
      * right edge, so a box narrower than its content silently truncates while a generous
@@ -1240,7 +1251,8 @@ void ScreenDashboard_RefreshActuators(void)
         t1s_actuator_t act = (t1s_actuator_t)i;
         uint8_t state = (uint8_t)((ActuatorEnable_Present(act)  ? 1u : 0u)
                                 | (ActuatorEnable_Reported(act) ? 2u : 0u)
-                                | (ActuatorEnable_Pending(act)  ? 4u : 0u));
+                                | (ActuatorEnable_Pending(act)  ? 4u : 0u)
+                                | (ActuatorEnable_Get(act)      ? 8u : 0u));
 
         if (s_valid && (state == s_last[i])) { continue; }
         s_last[i] = state;
