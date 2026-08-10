@@ -30,9 +30,22 @@ static void print_bda(const char *label, const uint8_t *bda)
 
 static int cmd_pair(int argc, char **argv)
 {
-    (void)argc; (void)argv;
-    Fauxmote_EnterPairing();
-    printf("pairing mode ON — press the Wii's red SYNC button now\n");
+    if (argc < 2) {
+        Fauxmote_EnterPairing();
+        printf("pairing mode ON — press the Wii's red SYNC button now\n");
+        return 0;
+    }
+    if (strcmp(argv[1], "temp") != 0) {
+        printf("usage: pair [temp [gen]]\n");
+        printf("  pair            bond via the Wii's red SYNC button (persistent)\n");
+        printf("  pair temp       one-time sync screen; a player slot, no bond\n");
+        printf("  pair temp gen   as above, but general instead of limited discovery\n");
+        return 1;
+    }
+    bool general = (argc >= 3) && (strcmp(argv[2], "gen") == 0);
+    Fauxmote_EnterPairingTemp(general);
+    printf("temporary pairing ON (%s discovery) — open the Wii's one-time sync screen\n",
+           general ? "general" : "limited");
     return 0;
 }
 
@@ -78,9 +91,10 @@ static int cmd_status(int argc, char **argv)
     (void)argc; (void)argv;
     print_bda("bd_addr   ", esp_bt_dev_get_address());
     print_bda("bonded Wii", Fauxmote_WiiAddr());
-    printf("discoverable=%d connected=%d assigned=%d report_mode=0x%02x\n",
-           Fauxmote_IsDiscoverable(), Wiimote_IsConnected(), Wiimote_IsAssigned(),
-           Wiimote_ReportMode());
+    printf("discoverable=%d (%s) connected=%d assigned=%d report_mode=0x%02x\n",
+           Fauxmote_IsDiscoverable(),
+           Fauxmote_IsPairingTemp() ? "temporary/guest" : "bonding",
+           Wiimote_IsConnected(), Wiimote_IsAssigned(), Wiimote_ReportMode());
     uint32_t since_rx = Wiimote_MsSinceRx();
     if (since_rx == UINT32_MAX) {
         printf("last rx    (none)  tx_stall=%lu ms\n", (unsigned long)Wiimote_TxStallMs());
@@ -259,7 +273,7 @@ void Cli_Start(void)
      * editing for a stable console over the UART. */
     linenoiseSetDumbMode(1);
 
-    register_cmd("pair", "enter pairing/sync mode (then press the Wii SYNC button)", cmd_pair);
+    register_cmd("pair", "pair [temp [gen]] — bond via SYNC, or temp = one-time sync (no bond)", cmd_pair);
     register_cmd("stop", "leave pairing mode (idle)", cmd_stop);
     register_cmd("reconnect", "device-initiated reconnect to the last bonded Wii", cmd_reconnect);
     register_cmd("disconnect", "close both HID channels + drop the ACL (stays bonded)", cmd_disconnect);

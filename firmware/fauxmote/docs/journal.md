@@ -4,6 +4,37 @@ Running log of planning, decisions, open questions, and work-in-progress for fau
 
 ---
 
+**2026-08-09 — IMPLEMENTED: the 1+2 "temporary" / guest pairing mode, as a second window beside red-SYNC bonding.** Builds clean on both transports; **pending on-hardware test.** Written against the 2026-08-11 brief that preceded it (superseded by this entry).
+
+**The protocol fact, from [wiibrew `Wiimote`](https://wiibrew.org/wiki/Wiimote), and it is the whole difference:**
+
+> "The PIN code for bonding is the binary Bluetooth address of the host machine, in reverse, while the code for temporary pairing is the binary Bluetooth address of the Wiimote, also in reverse."
+
+Same page: 1+2 is "a special temporary/'guest' discoverable mode", the Wiimote **does not bond** in it. Bonding stays the default — the 2026-06-12 decision to target it still holds for normal operation; temporary is for re-slotting a controller.
+
+**What landed.**
+
+- `main/bt_hid_device.{c,h}` — a `pair_mode_t` (`PAIR_BOND`/`PAIR_TEMP`) describing the armed window; `gap_cb`'s PIN handler picks `param->pin_req.bda` or `esp_bt_dev_get_address()` off it and logs which was used. Both entry points funnel through one static `enter_pairing(mode, scan_general)` so the windows can't drift; `set_wiimote_discoverable()` takes the scan mode. The mode resets on `StopPairing` **and** on `AUTH_CMPL` — the flag describes a window, and leaving it latched would answer a later bonding PIN request with the wrong address.
+- `mf_proto.h` — `MF_CMD_PAIR_TEMP = 0x0B`, `MF_ST_PAIR_TEMP = bit7` (the last free STATUS flag).
+- `main/mf_link.c` — dispatch + report the bit inside the existing discoverable branch.
+- `main/console_cli.c` — `pair temp [gen]`; `status` names the armed window.
+
+**The brief said TWO copies of `mf_proto.h`; there are THREE** — fauxmote, marvin, and `firmware/fretboard/mf_proto.h` (the fretboard drives fauxmote directly over T1S when it is the active detector; the header's own comment says so). It also had the drift backwards: **marvin's copy was the correct one** and the fauxmote/fretboard pair carried the stale `MF_MSG_POINTER … (planned)` comment. All three are now byte-for-byte identical (`md5 -q` across the three paths is the check).
+
+**Q6 answered, and it dissolved rather than resolved.** The question was whether a temp session should leave the stored link key in place. It cannot: a link key is stored **per peer address and there is only one**, both flows pair the same two addresses, so a completed temp pairing overwrites the SYNC key in Bluedroid's NVS bond table regardless of what fauxmote does. The brief's "unlink on entry" therefore buys nothing and only costs the bond if the window is aborted. So this pass **destroys nothing** and adds `MF_ST_PAIR_TEMP` for visibility; whether the bond is *observably* dead (does `reconnect` still authenticate after a power cycle?) is a hardware measurement, and the unlink-vs-keep policy waits on it. Escape hatch if it is dead and Greg still wants a durable bond: a **second BD_ADDR** for guest pairing (`esp_base_mac_addr_set` before controller init) — two addresses, two link keys, so the permanent bond provably survives. Costs a reboot to switch and the Wii sees two controllers. Not built.
+
+**Q7 is now testable without a reflash** rather than answered: `pair temp` uses limited discovery (shared with bonding), `pair temp gen` uses general. If the Wii's one-time sync screen scans with a general inquiry, fauxmote is simply never found and it looks exactly like a PIN failure — so **check discovery before debugging the PIN**.
+
+**Worth trying first, because it may make this feature unnecessary for the swap:** if the Wii's player slots just follow *connection order*, then `disconnect` + a well-timed `reconnect` re-slots a bonded controller with no temp pairing at all. Cheap to check and it is step 0 of the hardware test.
+
+**Marvin side, still not done** (deliberately out of scope): SWAP → `Fauxmote_SendCmd(MF_CMD_PAIR_TEMP)` in `ui/screens/wiimotes/screen_wiimotes.c`'s `build_link_column`, where the key exists with no callback. Marvin is untouched here apart from the `mf_proto.h` sync.
+
+**Done looks like:** `pair temp` opens a window; the Wii's one-time sync screen finds fauxmote; the `PIN request from` / `temporary pairing, PIN from` log pair shows **our own** address being reversed; auth completes, both HID channels open, a player slot is assigned; and bare `pair` + red SYNC still bonds afterwards.
+
+**Aside, noticed while building and not chased:** `sdkconfig.defaults` sets `CONFIG_BT_SSP_ENABLED=n`, and IDF v6.0.1 warns `unknown kconfig symbol 'BT_SSP_ENABLED'`. Pre-existing, and legacy PIN pairing demonstrably works on hardware, so the setting is either renamed or redundant now — but the 2026-06-12 notes treat disabling SSP as load-bearing, so it is worth confirming rather than assuming.
+
+---
+
 **2026-08-09 — status moved to the onboard NeoPixel: red heartbeat + blue link state, time-sliced.** The Feather V2's RGB pixel (data GPIO 0, power-enable GPIO 2 active-high — both already dodged by the T1S pin choices, see below) replaces the discrete GPIO 13 LED, which is now retired so there's one place to look. One pixel can only show one colour, so the two indicators take turns inside a **2 s cycle**: red in `0..240 ms`, blue from `350 ms`. No overlap by construction, no ambiguous purple.
 
 - **Red = heartbeat, lemmy's pattern verbatim** (`firmware/lemmy/config.mcc/src/status_led.c`): 70 ms pulses, "lub-dub" (2nd pulse at 170 ms) when this node is on the T1S bus, single blip when it isn't. Bus test is `MfT1s_IsSynced()` — PLCA synced to marvin's beacon, the same sense as lemmy's `T1SFollower_IsConnected()`. UART-transport builds have no equivalent state and just blip.
@@ -101,7 +132,7 @@ IR is acked but not implemented (only needed for the pointer, not guitar gamepla
 **Core-Wiimote + test-CLI workstream (before guitar).**
 
 - **Step A DONE — manual test CLI + connection management.** `esp_console` REPL
-  (`console_cli.c`): `pair`/`stop`/`reconnect`/`unlink`/`status`/`btn`/`tap` — all
+  (`console_cli.c`): `pair [temp [gen]]`/`stop`/`reconnect`/`unlink`/`status`/`btn`/`tap` — all
   thin pass-throughs over the module API (logic lives in `wiimote.c`/`bt_hid_device.c`,
   so Marvin can drive the same API later). Boots idle; `pair` arms the HID listeners
   for that sync window and `stop` tears them down; servers are **armed per pairing
@@ -227,6 +258,10 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-08-09 | **Temporary (1+2) pairing is a second window beside bonding, selected by a `pair_mode_t` that describes the armed window and resets when it ends (`StopPairing` or `AUTH_CMPL`).** `Fauxmote_EnterPairingTemp(bool scan_general)` beside `Fauxmote_EnterPairing()`; both go through one static `enter_pairing()`; the GAP PIN handler picks host-bda vs own-bda off the mode. Wire: `MF_CMD_PAIR_TEMP = 0x0B`, reported back as `MF_ST_PAIR_TEMP` (bit7). | The two flows differ *only* in the PIN, so one code path with one flag keeps them from drifting — the alternative (a parallel entry point with its own copy of arm-servers/discoverable/state) is where a future fix lands in one window and not the other. Resetting on `AUTH_CMPL` matters: a latched `PAIR_TEMP` would answer a later red-SYNC PIN request with our own address and fail auth for no visible reason. Supersedes nothing — the 2026-06-12 "target bonding, not 1+2" decision still describes normal operation. |
+| 2026-08-09 | **A temporary session destroys nothing: no `Fauxmote_Unlink()` in the temp path. The unlink-vs-keep policy waits on a hardware measurement.** (Answers Q6.) | Q6 assumed fauxmote could choose whether to keep the bond. It cannot: a link key is stored per peer address and there is only one, and both flows pair the same two addresses — so a completed temp pairing overwrites the SYNC key in NVS whatever we do. The brief's "unlink on entry" therefore buys nothing and only costs the bond if the window is aborted, so the non-destructive default is strictly better. What is genuinely unknown is the *observable* result (does `reconnect` still authenticate after a power cycle?), which is a measurement, not a decision. `MF_ST_PAIR_TEMP` gives marvin the visibility to act once we know. If the bond does turn out dead and a durable one is still wanted, the fix is a second BD_ADDR for guest pairing (two addresses ⇒ two link keys), not an unlink policy. |
+| 2026-08-09 | **`EnterPairingTemp` refuses while discoverable or connected, exactly like `EnterPairing`; re-slotting a live link is `DISCONNECT` then `PAIR_TEMP`.** | Auto-tearing-down first would mean deferring the arming through the reader-exit → L2CAP deinit → init → vfs-register chain that a teardown already triggers, i.e. a new async state machine in the code path that has produced the most hardware bugs in this subproject. Two commands from marvin costs nothing by comparison, and the guard keeps a single meaning for "a window is armed". |
+| 2026-08-09 | **The temp window's scan mode is a parameter (`pair temp` = limited, `pair temp gen` = general) rather than a guess.** (Q7 stays open until observed.) | Whether the Wii's one-time sync screen uses a limited inquiry like the red-SYNC scan is undocumented, and the failure mode is indistinguishable from a PIN failure — fauxmote is simply never found. A parameter answers it in one hardware session instead of a rebuild per hypothesis. Kept CLI-only: `MF_CMD_PAIR_TEMP` always uses the default, so the wire protocol doesn't carry a debugging knob. |
 | 2026-07-28 | **The marvin link moves onto the shared 10BASE-T1S PLCA bus (LAN8651 MAC-PHY over SPI); UART is retained as a build-flag fallback.** Transport is selected by a Kconfig `choice` (`FAUXMOTE_LINK_TRANSPORT_T1S` default / `_UART`), mirroring marvin's `MARVIN_FRETBOARD_TRANSPORT`. The message layer (`mf_proto.h` TYPE + fixed payload, latest-wins slices, 200 ms watchdog, STATUS uplink) is unchanged and now lives in a transport-neutral `mf_link.c`; each transport backend (`marvin_link.c` UART / `mf_t1s.c` T1S) provides `MarvinLink_Start()` and an `mf_send_fn`. | Puts fauxmote on the same wire as the guitar (id 2) and detector (id 1) followers instead of a dedicated UART, so the coordinator drives every actuator over one bus. Splitting the message layer out keeps the wire semantics byte-for-byte identical across transports — only the framing binding changes (Ethernet FCS replaces `SOF`/`LEN`/`CRC8`). Keeping UART as a one-flag fallback preserves the proven bring-up path. |
 | 2026-07-28 | **Bus renumber: fauxmotes take PLCA ids 1–2 (at most two), and the target full-bus table becomes guitar 3, fretboard 4, beatbox 5, lemmy 6, lightshow 7 (coordinator stays 0).** `CONFIG_FAUXMOTE_T1S_NODE_ID` now defaults to 1, range 1–2. This pass changes **fauxmote + docs only**: the already-flashed guitar (id 2) and fretboard (id 1) firmware and marvin's coordinator node table still run the old ids — renumbering those three to 3/4 is a coordinated follow-up (all re-flash together). Until then a default-id-1 fauxmote collides with the fretboard's current id 1, so don't co-bus them yet (use id 2, or renumber the fretboard first). Full table: [`docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md) §7.1. | Controllers grouped low (1–2) keeps the actuator/detector/future nodes in a tidy contiguous block; capping fauxmotes at two matches the real build. Deferring the guitar/fretboard renumber avoids re-flashing working nodes in a session scoped to fauxmote. |
 | 2026-07-28 | **fauxmote's T1S data channel uses a new dedicated ethertype `0x88B7`; heartbeat node_type = `3` (controller).** Each mf_proto message = one Ethernet frame `[dst][src][0x88B7][TYPE][payload…]` to the coordinator MAC `02:00:00:00:00:00`; this node's MAC is `02:00:00:00:00:<id>`. Heartbeat stays on `0x88B6` with node_type code 3 beside 1=detector, 2=guitar. (Node-id assignment superseded by the bus-renumber entry above.) | A distinct ethertype keeps the fauxmote channel cleanly demultiplexable from the guitar/detector traffic at the coordinator, and per-node ids/MACs let several fauxmotes share the bus later (one PLCA node each). Reuses the existing heartbeat frame format so the coordinator's presence table just gains a controller type. |
@@ -252,6 +287,11 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 - Exact marvin FLEXCOM instance + pins for the command link (integration-time). *fauxmote side settled: UART1 on Feather RX=`GPIO7`/TX=`GPIO8`.*
 - Whether to retire the `MF_AUX_STARPOWER` bit from the shared `mf_proto.h` now that star power is expressed via the ACCEL slice. Deferred — a marvin-side decision, and the two `mf_proto.h` copies must stay byte-for-byte in sync (fauxmote's copy currently leads on the ACCEL constants until the marvin side lands).
+- **Q7: does the Wii's one-time (1+2) sync screen scan with a limited inquiry (LIAC) or a general one?** Answerable only on hardware, and now testable without a reflash: `pair temp` uses limited (shared with bonding), `pair temp gen` uses general. Whichever finds fauxmote is the answer; fold it into `Fauxmote_EnterPairingTemp`'s default and drop the argument once known.
+- **Q8: after a temporary session, does `reconnect` still authenticate — i.e. is the bond observably alive?** The ESP32's link key for that Wii is overwritten by the temp pairing either way (see the 2026-08-09 decision), so this is about what the *Wii* kept. Auth OK ⇒ nothing more to do. Auth failure ⇒ choose between unlinking at temp-session end (honest `MF_ST_BONDED`, a swap costs a re-SYNC) and a second BD_ADDR for guest pairing (keeps a durable bond, costs a reboot to switch and shows the Wii two controllers). Greg wants the permanent bond kept if it can be.
+- **Q9: do the Wii's player slots simply follow connection order?** If so, `disconnect` + a well-timed `reconnect` re-slots a bonded controller and the temporary-pairing mode is unnecessary for marvin's SWAP. Cheap to check and worth checking first.
+
+(Q6 dissolved 2026-08-09: fauxmote cannot choose to keep the link key through a temp pairing — one key per peer address, and both flows pair the same pair of addresses. Replaced by Q8, which is the measurement that actually matters — see decision log.)
 
 (Q5 resolved 2026-07-02: marvin↔fauxmote link = UART first, layered message protocol; spec at [`../../../docs/marvin-fauxmote-link.md`](../../../docs/marvin-fauxmote-link.md) — see decision log.)
 
@@ -264,6 +304,33 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 ---
 
 ## Session log
+
+### 2026-08-09 — temporary (1+2) pairing mode
+
+Implemented the second pairing window from the 2026-08-11 brief. `pair_mode_t` +
+`Fauxmote_EnterPairingTemp(scan_general)` in `bt_hid_device.{c,h}`, `MF_CMD_PAIR_TEMP`
+`0x0B` / `MF_ST_PAIR_TEMP` bit7 in `mf_proto.h`, dispatch + status in `mf_link.c`,
+`pair temp [gen]` in `console_cli.c`. Docs: link spec §5.3/§5.4, fauxmote `SPEC.md` §3.
+
+Three things the brief had wrong or open, resolved while doing it:
+
+- **`mf_proto.h` has three copies, not two** (fretboard's too), and the drift ran the
+  other way — marvin's was correct, fauxmote's and fretboard's carried the stale
+  `(planned)` comment. All three re-synced.
+- **Q6 dissolved.** One link key per peer address means a temp pairing overwrites the
+  SYNC key no matter what fauxmote does, so "should we unlink?" had no purchase. Nothing
+  is destroyed; the real question became Q8 (is the bond *observably* alive afterwards),
+  which is a hardware measurement.
+- **Q9 added, and it may obsolete the feature** for the SWAP use case: if slots follow
+  connection order, `disconnect` + `reconnect` re-slots a bonded controller with no temp
+  pairing. Step 0 of the hardware test.
+
+**Builds clean on both transports** — T1S (default) and, verified separately with its own
+`SDKCONFIG`, the UART fallback. Note for next time: `idf.py -D CONFIG_FOO=y` does **not**
+set a Kconfig choice, and `SDKCONFIG_DEFAULTS` is ignored once `sdkconfig` exists, so the
+only honest way to build the other transport is `-D SDKCONFIG=<other path>` (confirm by
+looking for `marvin_link.c` vs `mf_t1s.c` in the build log — the binary sizes differ,
+0xa6be0 vs 0xb0880). Nothing tested on hardware yet.
 
 ### 2026-07-28 — marvin link onto 10BASE-T1S (fauxmote side, ahead of hardware)
 

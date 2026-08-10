@@ -78,6 +78,9 @@ static void handle_link_cmd(uint8_t op)
     s_last_result = 0;
     switch (op) {
     case MF_CMD_PAIR:       Fauxmote_EnterPairing();     break;
+    /* Default (limited) discovery over the wire; the general-discovery variant stays a
+     * CLI-only probe until hardware says which one the Wii's one-time sync uses. */
+    case MF_CMD_PAIR_TEMP:  Fauxmote_EnterPairingTemp(false); break;
     case MF_CMD_STOP:       Fauxmote_StopPairing();      break;
     case MF_CMD_RECONNECT:  Fauxmote_Reconnect();        break;
     case MF_CMD_DISCONNECT: Fauxmote_Disconnect();       break;
@@ -94,7 +97,10 @@ static void handle_link_cmd(uint8_t op)
 static void build_status(uint8_t out[MF_LEN_STATUS])
 {
     uint8_t flags = 0;
-    if (Fauxmote_IsDiscoverable()) flags |= MF_ST_DISCOVERABLE | MF_ST_PAIRING;
+    if (Fauxmote_IsDiscoverable()) {
+        flags |= MF_ST_DISCOVERABLE | MF_ST_PAIRING;
+        if (Fauxmote_IsPairingTemp()) { flags |= MF_ST_PAIR_TEMP; }
+    }
     if (Wiimote_IsConnected())
     {
         flags |= MF_ST_CONNECTED;

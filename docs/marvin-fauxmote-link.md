@@ -225,7 +225,16 @@ the result is reflected in the next `STATUS`.
 
 | Byte | Field | Values |
 |---|---|---|
-| 0 | opcode | `0x01` PAIR (enter sync/pairing) · `0x02` STOP (leave pairing) · `0x03` RECONNECT · `0x04` UNLINK (erase bond) · `0x05` EXT_ATTACH · `0x06` EXT_DETACH · `0x07` STATUS_REQ (send a `STATUS` now) · `0x08` DISCONNECT · `0x09` REBOOT · `0x0A` BT_RESET |
+| 0 | opcode | `0x01` PAIR (enter sync/pairing) · `0x02` STOP (leave pairing) · `0x03` RECONNECT · `0x04` UNLINK (erase bond) · `0x05` EXT_ATTACH · `0x06` EXT_DETACH · `0x07` STATUS_REQ (send a `STATUS` now) · `0x08` DISCONNECT · `0x09` REBOOT · `0x0A` BT_RESET · `0x0B` PAIR_TEMP |
+
+`PAIR` opens a **bonding** window for the Wii's red SYNC button; `PAIR_TEMP` opens a
+**temporary/guest** window for the Wii's one-time sync screen. Same handshake — the only
+difference is the PIN, which is the host's BD_ADDR reversed for bonding and fauxmote's own
+reversed for temporary. The temporary flow hands out a player slot *without* the Wii
+bonding, so it is how you re-slot a controller rather than register one; the Wii will not
+remember fauxmote afterwards. Both windows are refused while already discoverable or
+connected, so re-slotting a live link is `DISCONNECT` then `PAIR_TEMP`. Which window is
+armed comes back as `STATUS` bit7.
 
 `RECONNECT` is a no-op when the link is already up or an attempt is in flight.
 `DISCONNECT` closes both HID channels, staying bonded and reconnectable. `BT_RESET` does
@@ -248,7 +257,7 @@ is alive and gate/annotate commands.
 
 | Byte | Field | Encoding |
 |---|---|---|
-| 0 | flags | `bit0` discoverable, `bit1` connected (HID data channel), `bit2` assigned (Wii gave a player slot), `bit3` ext-attached, `bit4` pairing-active, `bit5` bonded (bond in NVS), `bit6` host-silent, `bit7` reserved. fauxmote sets `bit0` and `bit4` **together** — discoverable and pairing-active are the same state in the current code |
+| 0 | flags | `bit0` discoverable, `bit1` connected (HID data channel), `bit2` assigned (Wii gave a player slot), `bit3` ext-attached, `bit4` pairing-active, `bit5` bonded (bond in NVS), `bit6` host-silent, `bit7` pairing-temporary. fauxmote sets `bit0` and `bit4` **together** — discoverable and pairing-active are the same state in the current code |
 | 1 | player_slot | `0` = none, else `1..4` |
 | 2 | report_mode | the Wii's last-requested report ID (e.g. `0x37`); defaults to `0x30` (core buttons) before the Wii sets a mode, never `0` |
 | 3 | last_result | result of the most recent `LINK_CMD`: `0` = ok/idle, nonzero = error code |
@@ -256,6 +265,9 @@ is alive and gate/annotate commands.
 `bit6` (host-silent) means both HID channels are open but the Wii has sent nothing for
 3 s — the session exists and is being ignored. `bit1` alone is therefore not proof the
 Wii is listening; `bit1 && !bit6` is.
+
+`bit7` (pairing-temporary) distinguishes the two pairing windows and is only meaningful
+alongside `bit4`: set = the guest/one-time flow (`PAIR_TEMP`), clear = red-SYNC bonding.
 
 ## 6. Semantics & timing
 

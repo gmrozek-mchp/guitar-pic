@@ -38,9 +38,19 @@ typedef enum {
  * past this is a zombie channel — and the L2CAP VFS would otherwise block for 40 s. */
 #define TX_STALL_MS  2000u
 
+/* Which pairing handshake the armed window expects. The only difference is the PIN:
+ * bonding answers with the host's address reversed, temporary with our own. Bonding
+ * (red SYNC) registers us persistently; temporary (the Wii's one-time sync screen,
+ * 1+2 on a real remote) gives us a player slot without bonding. */
+typedef enum {
+    PAIR_BOND = 0,
+    PAIR_TEMP,
+} pair_mode_t;
+
 static uint8_t s_wii_bda[6];     /* last bonded Wii address (from auth) */
 static bool    s_have_wii;
 static bool    s_discoverable;
+static pair_mode_t s_pair_mode;  /* describes the armed window; reset when it ends */
 static reconnect_stage_t s_reconnect;
 static TickType_t s_reconnect_at;
 static volatile bool s_disconnecting;   /* Fauxmote_Disconnect in progress (re-entry guard) */
@@ -83,27 +93,43 @@ static reconnect_stage_t reconnect_stage(void)
 
 /* Advertise as a Wiimote: Class of Device 0x002504 (peripheral/joystick, with the
  * limited-discoverable service bit) + limited-discoverable scan mode. The Wii's
- * SYNC scan uses a limited inquiry (LIAC), so general discovery isn't enough. */
-static void set_wiimote_discoverable(void)
+ * SYNC scan uses a limited inquiry (LIAC), so general discovery isn't enough.
+ * Whether the one-time sync screen scans the same way is unverified, so `general`
+ * exists to try the other mode without a rebuild. */
+static void set_wiimote_discoverable(bool general)
 {
     esp_bt_cod_t cod = {0};
     cod.minor = 0x01;
     cod.major = ESP_BT_COD_MAJOR_DEV_PERIPHERAL;
     cod.service = 0x01;
     esp_bt_gap_set_cod(cod, ESP_BT_SET_COD_ALL);
-    esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_LIMITED_DISCOVERABLE);
+    esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE,
+                             general ? ESP_BT_GENERAL_DISCOVERABLE
+                                     : ESP_BT_LIMITED_DISCOVERABLE);
 }
 
 static void gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param)
 {
     switch (event) {
     case ESP_BT_GAP_PIN_REQ_EVT: {
-        /* Console-SYNC (bonding) pairing: PIN = the host's BD_ADDR, reversed. */
+        /* Bonding: PIN = the host's BD_ADDR reversed. Temporary: our own, reversed. */
+        const uint8_t *pin_src = param->pin_req.bda;
+        if (s_pair_mode == PAIR_TEMP) {
+            const uint8_t *own = esp_bt_dev_get_address();
+            if (own == NULL) {
+                ESP_LOGE(TAG, "PIN request: own BD_ADDR unavailable, rejecting");
+                esp_bt_gap_pin_reply(param->pin_req.bda, false, 0, NULL);
+                break;
+            }
+            pin_src = own;
+        }
         esp_bt_pin_code_t pin;
         for (int i = 0; i < 6; i++) {
-            pin[i] = param->pin_req.bda[5 - i];
+            pin[i] = pin_src[5 - i];
         }
         log_bda("PIN request from", param->pin_req.bda);
+        log_bda(s_pair_mode == PAIR_TEMP ? "  temporary pairing, PIN from (reversed)"
+                                         : "  bonding, PIN from (reversed)", pin_src);
         esp_bt_gap_pin_reply(param->pin_req.bda, true, 6, pin);
         break;
     }
@@ -115,6 +141,9 @@ static void gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param)
         } else {
             ESP_LOGW(TAG, "auth FAILED, status=%d", param->auth_cmpl.stat);
         }
+        /* The window is over either way, so a later PIN request (a red-SYNC bonding
+         * attempt) must not inherit this one's mode. */
+        s_pair_mode = PAIR_BOND;
         break;
     default:
         ESP_LOGD(TAG, "gap event %d", event);
@@ -353,16 +382,35 @@ void Fauxmote_BtStart(void)
     ESP_LOGI(TAG, "fauxmote up (idle). Use the `pair` console command to sync with a Wii.");
 }
 
-void Fauxmote_EnterPairing(void)
+/* Open a pairing window in the given mode. Both entry points share this so the two
+ * windows can't drift apart in anything but the PIN and the scan mode. */
+static void enter_pairing(pair_mode_t mode, bool scan_general)
 {
     if (s_discoverable || Wiimote_IsConnected()) {
         ESP_LOGW(TAG, "pairing: already discoverable/connected");
         return;
     }
+    s_pair_mode = mode;
     start_hid_servers();          /* arm the HID listeners for this sync window */
-    set_wiimote_discoverable();
+    set_wiimote_discoverable(scan_general);
     s_discoverable = true;
-    ESP_LOGI(TAG, "pairing mode ON — limited-discoverable as a Wiimote (sync the Wii now)");
+    ESP_LOGI(TAG, "pairing mode ON (%s, %s-discoverable) as a Wiimote — sync the Wii now",
+             mode == PAIR_TEMP ? "temporary/guest" : "bonding",
+             scan_general ? "general" : "limited");
+}
+
+void Fauxmote_EnterPairing(void)
+{
+    enter_pairing(PAIR_BOND, false);
+}
+
+/* The Wii's one-time sync screen (1+2 on a real remote). Gives us a player slot without
+ * bonding, so the Wii won't remember us — use it to re-slot a controller, not to
+ * register one. Refuses while discoverable or connected, so a swap of a live link is
+ * Fauxmote_Disconnect() first. */
+void Fauxmote_EnterPairingTemp(bool scan_general)
+{
+    enter_pairing(PAIR_TEMP, scan_general);
 }
 
 void Fauxmote_StopPairing(void)
@@ -370,6 +418,7 @@ void Fauxmote_StopPairing(void)
     esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
     esp_bt_l2cap_stop_all_srv();  /* tear down any armed (unconsumed) HID listeners */
     s_discoverable = false;
+    s_pair_mode = PAIR_BOND;
     ESP_LOGI(TAG, "pairing mode OFF (idle)");
 }
 
@@ -458,6 +507,7 @@ void Fauxmote_Unlink(void)
 
 bool Fauxmote_IsDiscoverable(void) { return s_discoverable; }
 bool Fauxmote_IsConnecting(void)   { return s_reconnect != RC_IDLE; }
+bool Fauxmote_IsPairingTemp(void)  { return s_pair_mode == PAIR_TEMP; }
 
 int Fauxmote_ChannelsOpen(void)
 {

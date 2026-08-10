@@ -34,8 +34,10 @@ in marvin/fretboard/edge-ai changes as part of this subproject.
   VID `0x057e`, PID `0x0306`, matching Class-of-Device, and the Wiimote HID report
   descriptor.
 - **Pairing PIN (legacy):** the PIN is a BD_ADDR in **reverse byte order** (raw 6
-  bytes). The 1+2 temporary-pair flow uses the *Wiimote's own* address — which
-  fauxmote knows — so fauxmote can answer the GAP PIN request itself.
+  bytes) — the *host's* for the red-SYNC bonding flow, the *Wiimote's own* for the 1+2
+  temporary flow. Both are implemented: fauxmote knows its own address, so it answers
+  either GAP PIN request itself (`pair` / `pair temp`). The temporary flow gives us a
+  player slot without bonding, for re-slotting a controller.
 - **Guitar extension:** identity bytes `00 00 A4 20 01 03` at register offset `0xfa`
   of the `0xa4` extension space. The 6-byte report (frets G/R/Y/B/O, strum up/down,
   whammy in byte 3, touch bar, analog stick, +/− buttons; **byte 0/1 bits 7-6 = 1**

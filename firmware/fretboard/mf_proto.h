@@ -23,7 +23,7 @@ enum {
     MF_MSG_WIIMOTE  = 0x02,   /* m->f, 4B: menu-nav input */
     MF_MSG_LINK_CMD = 0x03,   /* m->f, 1B: bluetooth link management */
     MF_MSG_ACCEL    = 0x04,   /* m->f, 3B: accelerometer (tilt) */
-    MF_MSG_POINTER  = 0x05,   /* m->f, 3B: IR pointer (planned) */
+    MF_MSG_POINTER  = 0x05,   /* m->f, 3B: IR pointer */
     MF_MSG_STATUS   = 0x81,   /* f->m, 4B: link/connection state */
 };
 
@@ -94,6 +94,12 @@ enum {
     MF_CMD_DISCONNECT = 0x08,   /* close both HID channels (stays bonded) */
     MF_CMD_REBOOT     = 0x09,   /* restart fauxmote; last resort, bond survives */
     MF_CMD_BT_RESET   = 0x0A,   /* disconnect + explicit L2CAP deinit/re-init */
+    /* Pair via the Wii's one-time sync screen instead of its red SYNC button: same
+     * handshake, but the PIN is fauxmote's own address reversed rather than the Wii's,
+     * and the Wii hands out a player slot without bonding. Use it to re-slot a
+     * controller. Refused while discoverable or connected — send MF_CMD_DISCONNECT
+     * first. Reported back as MF_ST_PAIR_TEMP. */
+    MF_CMD_PAIR_TEMP  = 0x0B,
 };
 
 /* --- STATUS (4B): [0] flags, [1] player_slot, [2] report_mode, [3] last_result */
@@ -108,6 +114,9 @@ enum {
  * MF_CMD_REBOOT + MF_CMD_RECONNECT. A plain MF_CMD_RECONNECT should suffice. */
 #define MF_ST_HOST_SILENT  (1u << 6)
 #define MF_HOST_SILENT_MS  3000u
+/* The armed pairing window is the temporary/guest flow (MF_CMD_PAIR_TEMP), not red-SYNC.
+ * Only meaningful alongside MF_ST_PAIRING. */
+#define MF_ST_PAIR_TEMP    (1u << 7)
 
 /* CRC-8/CCITT, poly 0x07, init 0x00, no reflection. Over TYPE, LEN, payload. */
 static inline uint8_t mf_crc8(const uint8_t *data, size_t len)
