@@ -773,6 +773,13 @@ static void detector_on_release(leButtonWidget *btn)
     if (want_nn && !detector_nn_available()) { return; }
 
     Detector_SetActive(want_nn ? DETECTOR_FRETBOARD : DETECTOR_CV_MARVIN_V1);
+
+    /* The selection alone does not hand the game over: the node acts on its arm bit, which
+     * is this selection AND the gameplay window (Detector_FretboardDriving). Pushing it
+     * here is what makes a tap during a song take effect at once — NN arms the node, CV
+     * disarms it before marvin resumes driving the wire, so the two never contend. Outside
+     * a song the bit is already false and this is a no-op. */
+    FretboardLink_UpdateArm();
     detector_show_active();
 }
 
@@ -1396,6 +1403,7 @@ void ScreenDashboard_ApplySelection(void)
     if (Detector_GetActive() == DETECTOR_FRETBOARD && !detector_nn_available())
     {
         Detector_SetActive(DETECTOR_CV_MARVIN_V1);
+        FretboardLink_UpdateArm();
     }
     detector_show_active();
 }

@@ -2146,6 +2146,30 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-08-10 (fix) — the dashboard's NEURAL NETWORK row changed the selection but never armed the node
+
+Greg: the dashboard's COMPUTER VISION / NEURAL NETWORK rows "don't seem to take on the NN while in
+gameplay." They didn't. `detector_on_release` called `Detector_SetActive()` and repainted, and stopped
+there — but the selection is only half of the handover. The fretboard node actuates on its **arm bit**,
+pushed over the `0x88B9` control channel by `FretboardLink_UpdateArm()` from
+`Detector_FretboardDriving()` (selection AND the gameplay window), and that bit is edge-triggered: it
+is re-pushed only when it changes. The two callers that existed were `GameTiming_SetEnabled` (window
+edges) and the console `active` command — whose comment says exactly why it is there, "so selecting it
+mid-song takes effect immediately, and selecting cv disarms it at once." The touch path was the one
+place that made the same state change without the same push.
+
+So a mid-song tap on NEURAL NETWORK lit the row, silenced marvin's CV publish (`Detector_Publish`
+filters on the active id) and left the node disarmed: nothing drove the guitar. The reverse tap was
+worse in principle — CV selected, node still armed, both sources on the wire, since
+`fretboard_link_task` re-reads `Detector_FretboardDriving()` every heartbeat and resumes driving.
+Before a song either tap looked fine, because the arm bit is false in both states and there is nothing
+to push.
+
+Fix is the console's: pair every `Detector_SetActive` with `FretboardLink_UpdateArm`. Added in
+`detector_on_release` and in `ScreenDashboard_ApplySelection`'s fall-back-to-CV branch (a no-op there —
+SELECT SONG is gated while a run is in flight, so the window is closed — kept for the pairing). Builds
+clean; untested on hardware.
+
 ### 2026-08-09 — Dashboard ACTUATORS wired to the nodes, with a heartbeat echo closing the loop (pending hardware)
 
 Built and clean on all four projects; nothing exercised on hardware yet. What to check, in order — each item exists because it is a case the design is specifically supposed to handle:
