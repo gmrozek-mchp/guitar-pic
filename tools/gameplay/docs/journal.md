@@ -157,7 +157,8 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| 2026-08-10 | **Some captured gameplay frames hold the amp's *idle* composite, and nothing spatial can reject them — so the reader gets a temporal filter (`Amp2pTracker`): a rise is accepted at once, a fall only after `AMP2P_FALL_CONFIRM` (3) consecutive equal reads.** | Roughly one frame in 11 of the left capture (525 frames) shows score 0, no multiplier, no streak odometer, no star-power pills, and the amp shifted a pixel or two — mid-song, on strictly consecutive frame epochs with no dropped or duplicated records, so it is real captured content and not a decode artefact. Every spatial gate passes it: the digits are a crisp `0` (distance 347, margin 2999), and the **chrome probe scores it *better* than a real gameplay frame** (SAD 4.1–5.9 vs 4.1–13.5) because `amp2p_<side>_ref.png` is itself a score-0 crop — so raising or lowering TAU cannot separate them, and there is no threshold to tune. What does separate them is time: 523 of the 525 are exactly one frame long, while a play's score never falls. Confirming only *falls* means the value marvin acts on gains no latency, and a real song reset (the strip sits at 0 for many frames) still lands. Filters all 527 left / 424 right occurrences. |
+| 2026-08-10 | **Capture sweeps read frames in *frame-number* order, never lexicographic (`evaluate.capture_frames`); and the exported strips are zero-padded to 5 digits.** | `export-region` padded to 4 digits, so on any capture past 9999 frames `…-1001.png` sorts between `…-10009.png` and `…-10010.png`. Both monotonic evals took `sorted(glob("*.png"))`, so they scored a **shuffled** sequence — which is silently self-concealing: the ordering check's own "big drops are song resets" escape hatch absorbed the jumps, and the adjacent-delta list (the check that exists because a misread leading digit reads *higher*, where ordering can't see it) filled with hundreds of impossible values. Sorting on the trailing integer is the real fix and is robust at any width; the wider pad just keeps a plain `ls` or shell glob honest up to 99999. This retro-invalidated two recorded findings — see the 2026-08-10 (correction) session-log entry. |
+| 2026-08-10 | ~~**Some captured gameplay frames hold the amp's *idle* composite, and nothing spatial can reject them — so the reader gets a temporal filter (`Amp2pTracker`).**~~ **WITHDRAWN same day — the "idle composite" frames were early-song frames mis-ordered by the 4-digit filename sort (row above).** `Amp2pTracker` is kept as an unexercised safety net (it filters **0** frames on both real captures), not as a fix for an observed artefact. Its rise-fast/fall-slow rule is still the right shape if a real single-frame dropout ever appears. | Roughly one frame in 11 of the left capture (525 frames) shows score 0, no multiplier, no streak odometer, no star-power pills, and the amp shifted a pixel or two — mid-song, on strictly consecutive frame epochs with no dropped or duplicated records, so it is real captured content and not a decode artefact. Every spatial gate passes it: the digits are a crisp `0` (distance 347, margin 2999), and the **chrome probe scores it *better* than a real gameplay frame** (SAD 4.1–5.9 vs 4.1–13.5) because `amp2p_<side>_ref.png` is itself a score-0 crop — so raising or lowering TAU cannot separate them, and there is no threshold to tune. What does separate them is time: 523 of the 525 are exactly one frame long, while a play's score never falls. Confirming only *falls* means the value marvin acts on gains no latency, and a real song reset (the strip sits at 0 for many frames) still lands. Filters all 527 left / 424 right occurrences. |
 | 2026-08-10 | **6 digits is now read rather than refused: the container width rules out the measured pitch, so `AMP2P_GRID_6` carries the layouts that physically fit, the ink says a 6th digit is present, and the *bank* picks between candidates. The read is flagged `layout_measured=False`.** | Reversal of the 2026-08-09 "report, don't decode" decision, on a measurement that was not available then. The strip's dark container is **49 px** on both sides (`AMP2P_CONTAINER_W`, block-local 11..60 left / 14..63 right, bright bezel immediately left of it), and six cells at the measured pitch 9 need 52 — so pitch 9 is excluded *by measurement*, and pitch 8 is the widest that fits. That turns the guess from "what does the layout look like" into "which of two layouts", which is small enough to decide per frame. Detection is physical, not heuristic: six digits cannot fit at pitch 9, so a 6-digit strip must ink left of the 5-cell grid, and across **22 400 five-digit frames the leftmost inked column is never left of the grid's own first column**. Between candidates the glyph bank decides, because reading a (6,8) strip through 7 px cells drags a neighbouring column into every glyph. Still not measured, hence the flag and the `layout` field: the first real 6-digit capture confirms or corrects the pitch, and only then does it become an `AMP2P_GRID` row. |
 | 2026-08-10 | **The two amps share one algorithm *and* one template bank; only the block origin and `AMP2P_RIGHT_EDGE` differ.** | Worth testing rather than assuming, since the sides were registered independently and their right edges differ by 3 px. Measured on the two captures: per-column ink occupancy lands on 7 px cores at pitch 9 on both sides, and a bank built from the **left** capture alone reads the right capture identically (same 13 739 frames, same range, 0 violations), and vice versa (14 400 of 14 758, the shortfall all gate rejections, no wrong values). The combined bank is best on both. So no per-side banks, no per-side thresholds. |
 | 2026-08-10 | **`amp2p-monotonic` gates every read on the chrome probe, and scores a decrease as a violation only when it is small (`PLAY_RESET_DROP` 1000).** | Two corrections the multi-song captures forced. (a) The digit reader only asks what the band says, so on a cutscene frame with no amp it still found lit cells and returned a number — 12 such reads on the left capture before gating, 0 after. Presence is the caller's job and the harness has to model that. (b) A capture spans several songs and the score restarts at zero, so "never decreases" is false across a whole capture; the two cases separate by size, since a misread digit is worth at most ~1000 on a plausible score while a song boundary drops tens of thousands. Also: a misread does **not** always decrease — reading a leading `3` as a `9` reads *higher* — so the distinct-delta list is a co-equal check, and it is now restricted to consecutive frames so it stays diagnostic. |
@@ -215,13 +216,11 @@ subsampled path costs <1% CPU at 5–10 Hz.
      score passes 99999 → check `read-amp2p` prints `layout=(7, 8) EXTRAPOLATED` and the right
      number, then promote it to an `AMP2P_GRID` row and drop the flag. 5 digits is now *measured*
      (11 199 / 11 306 frames per side).
-  2. **Root-cause the idle-composite frames.** ~1 frame in 11 of the left capture holds the amp's
-     pre-overlay art mid-song (no multiplier, no streak, no pills, amp shifted) on strictly
-     consecutive frame epochs — so marvin's capture is presenting a stale or partially composited
-     picture, which is a **capture-pipeline** question, not a reader one, and it affects every
-     reader that samples a single frame. `Amp2pTracker` makes the score immune; the 1-player
-     score/streak/multiplier readers have no equivalent filter and should be checked against a
-     1-player capture for the same artefact.
+  2. ✅ ~~**Root-cause the idle-composite frames.**~~ **Withdrawn 2026-08-10 (same day): there is no
+     artefact.** The frames were early-song frames spliced into mid-sequence by `export-region`'s
+     4-digit filename sort; with `evaluate.capture_frames` the tracker filters **0** frames on both
+     captures. Nothing to root-cause, and the 1-player readers need no equivalent audit. See the
+     correction session-log entry. `Amp2pTracker` is retained as an unexercised safety net.
   3. **Star-power pill count.** The pill column is *mirrored* — left of the left amp, right of the
      right amp. The 76×78 blocks now clip part of it in view (visible at the block edges in both
      captures), so the rects still need widening (host-supplied, so no reflash) before it can be
@@ -308,6 +307,58 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Session log
 
+### 2026-08-10 (correction) — the capture sweeps were reading frames out of order; two findings withdrawn
+
+`export-region` zero-padded frame numbers to 4 digits and both monotonic evals took
+`sorted(glob("*.png"))`, so on a >9999-frame capture `…-1001.png` sorts between `…-10009.png`
+and `…-10010.png`. Measured on the right capture: **495 backward steps, every displaced frame in
+1001–1495** — early-song frames spliced into the middle of the sequence. Fixed by
+`evaluate.capture_frames` (sort on the trailing integer) plus a 5-digit pad in `export-region` /
+`score-capture`.
+
+The bug was self-concealing, which is why it survived: the ordering check treats a big drop as a
+song boundary, so every splice was absorbed as a "reset" rather than reported as a violation.
+
+**Both sweeps re-run correctly, same reader, same committed corpus:**
+
+| | left | right |
+|---|---|---|
+| frames / amp on screen | 15 455 / 14 939 | 14 941 / 14 093 |
+| read | 14 758 | 13 739 |
+| ordering violations | 0 | 0 |
+| **song resets** | **0** (was "412") | **0** (was "412") |
+| **idle-composite frames filtered** | **0** (was 527) | **0** (was 424) |
+| false reads | 0 | 0 |
+| peak | 58 806 | 66 098 |
+| worst dist / min margin | 1621 / 205 | 2386 / 286 |
+
+Deltas are now clean — left `[2,3,4,6,7,8,9,10,12,15,16,18,20,21,24,50,100,150,200,300]`, right the
+same plus `[5,28,32,36,40,224]` — where before they carried ~300 impossible values (43251, 44871, …).
+**That matters more than the violation count:** a misread leading digit reads *higher*, so ordering
+alone cannot catch it and the delta list is the check that does. The pollution had disabled it on
+every capture over 9999 frames.
+
+**Two findings from the entry below are withdrawn:**
+
+1. **"About one frame in 11 is the amp's idle composite"** — no. Those were frames 1001–1495,
+   spliced in by the sort. Early-song frames legitimately show score 0, no multiplier (1× at song
+   start), no streak odometer (only appears ~25+ streak) and no star-power pills — which is exactly
+   the description recorded as "idle art". The chrome-probe observation (it scores them *better*
+   than mid-song frames, because `amp2p_<side>_ref.png` is itself a score-0 crop) is consistent with
+   that and is not evidence of a pipeline fault. With correct ordering the tracker filters **0**
+   frames on both captures. The **capture-pipeline open question is withdrawn**, and the 1-player
+   readers do *not* need the audit it asked for.
+2. **"412 song resets"** — no. Both captures are one continuous play; the resets were the splices.
+
+`Amp2pTracker` stays, but honestly labelled: it is an **unexercised safety net**, not a fix for an
+observed artefact. Its tests are synthetic (they build the reads directly) and still pass, and
+rise-fast/fall-slow is still the right shape if a real single-frame dropout ever turns up — it just
+has no evidence behind it today. Removing it would be defensible; keeping it costs nothing.
+
+Everything else in the entry below stands: the geometry, the corpus and its self-check, the
+per-side interchangeability, the 6-digit container bound, and the per-frame read numbers (peaks,
+false reads, cell-count histograms and dist/margin are all order-independent).
+
 ### 2026-08-10 (later) — the amp digit reader re-cut on both sides; 6 digits becomes readable; and one frame in 11 is lying
 
 Greg's two gameplay captures at the locked rects — `web-20260809-143135` (**left**, 15 455
@@ -339,7 +390,7 @@ single bad exemplar in a small class does not degrade gracefully, it inverts a d
 |---|---|---|
 | frames / amp on screen | 15 455 / 14 939 | 14 941 / 14 093 |
 | read | 14 758 (98.8%) | 13 739 (97.5%) |
-| ordering violations | **0** | **0** |
+| ordering violations | **0** | **0** |  <!-- measured out of order; re-measured 0/0 in the correction entry -->
 | reads on a frame with no amp | **0** | **0** |
 | peak score | 58 806 | 66 098 |
 | cell-count hist | {1:1274, 2:30, 3:524, 4:1912, 5:11199} | {1:245, 2:46, 3:350, 4:2129, 5:11306} |
@@ -364,8 +415,10 @@ exactly, `dist` 858/255 against a gate of 2600); the alternative (6, 8) candidat
 correctly and then gated, because chopping 7 px glyphs to 6 px is not a real 6 px font. Flagged
 `layout_measured=False` until a real capture confirms the pitch.
 
-**The find that matters most: about one frame in 11 of the left capture is the amp's *idle*
-composite mid-song** — score 0, no multiplier, no streak odometer, no star-power pills, amp
+**[WITHDRAWN 2026-08-10 — see the correction entry above: these were early-song frames
+mis-ordered by the 4-digit filename sort, and with correct ordering the tracker filters 0 frames.]**
+~~The find that matters most: about one frame in 11 of the left capture is the amp's *idle*
+composite mid-song~~ — score 0, no multiplier, no streak odometer, no star-power pills, amp
 shifted a pixel or two. Frame epochs are strictly consecutive with no drops or duplicates and all
 15 455 frames are distinct, so it is real captured content. It defeats every spatial gate: the `0`
 matches at distance 347 with 2999 of margin, and the **chrome probe likes it *better* than a real

@@ -446,7 +446,7 @@ def cmd_score_capture(args: argparse.Namespace) -> int:
                 snap = CompletedSnapshot(
                     width=rec.w, height=rec.h, frame_epoch=rec.hdr.frame_epoch, bgr=rec.bgr
                 )
-                save_snapshot(snap, out_dir / f"{slot.prefix}-{n:04d}.png")
+                save_snapshot(snap, out_dir / f"{slot.prefix}-{n:05d}.png")
                 saved += 1
                 n += 1
                 if args.count and saved >= args.count:

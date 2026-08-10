@@ -159,6 +159,10 @@ def save_region_strips(
     Each such strip is one complete region frame (single record), so it maps
     straight to a `CompletedSnapshot` and reuses `save_snapshot`. Returns the
     written paths, ordered as encountered.
+
+    Numbering is zero-padded to 5 digits so a lexicographic sort matches frame order
+    for captures up to 99999 frames; past that, consumers must sort on the number
+    (gameplay's `evaluate.capture_frames` does).
     """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -170,5 +174,5 @@ def save_region_strips(
             width=rec.w, height=rec.h, frame_epoch=rec.hdr.frame_epoch, bgr=rec.bgr
         )
         n = len(written) + 1
-        written.extend(save_snapshot(snap, out / f"{prefix}-{n:04d}.png"))
+        written.extend(save_snapshot(snap, out / f"{prefix}-{n:05d}.png"))
     return written

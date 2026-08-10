@@ -14,8 +14,10 @@ All distances are integer L1 over uint8 fingerprints.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -510,6 +512,22 @@ def score_eval(samples: list[Sample], mode: str = "training", seed: int = 1234) 
     )
 
 
+def capture_frames(directory) -> list[Path]:
+    """Every `*.png` in an extracted-capture directory, in true frame order.
+
+    Exported strips are `<prefix>-<n>.png` at a fixed zero-pad width, so a plain
+    lexicographic sort interleaves `…-1001.png` between `…-10009.png` and
+    `…-10010.png` on any capture longer than the pad. The ordering and adjacent-delta
+    checks below are only meaningful in frame order, so sort on the trailing integer
+    and fall back to the name when a file has none.
+    """
+    keyed: list[tuple[int, int, str, Path]] = []
+    for f in Path(directory).glob("*.png"):
+        m = re.search(r"(\d+)$", f.stem)
+        keyed.append((0, int(m.group(1)), f.name, f) if m else (1, 0, f.name, f))
+    return [entry[3] for entry in sorted(keyed, key=lambda t: t[:3])]
+
+
 @dataclass
 class ScoreMonotonicResult:
     n_frames: int
@@ -530,12 +548,10 @@ def score_monotonic_eval(
     """Label-free accuracy proxy over a whole extracted-capture directory.
 
     A play's score only climbs, so any read that *decreases* vs the running max is
-    a misread. Reads every `*.png` (sorted) with templates from the committed
-    corpus, registered once, and reports the violation count + digit-count
-    histogram. The capture isn't committed, so this is a local check.
+    a misread. Reads every `*.png` in frame order (`capture_frames`) with templates
+    from the committed corpus, registered once, and reports the violation count +
+    digit-count histogram. The capture isn't committed, so this is a local check.
     """
-    from pathlib import Path
-
     if samples is None:
         samples = load_score_corpus()
     catalog = build_score_catalog(samples, mode=mode)
@@ -550,7 +566,7 @@ def score_monotonic_eval(
     hist: dict[int, int] = defaultdict(int)
     first = last = -1
     violations: list[tuple[str, int, int]] = []
-    files = [f for f in sorted(Path(frames_dir).glob("*.png"))
+    files = [f for f in capture_frames(frames_dir)
              if load_bgr(f).shape[:2] in (block_shape, (CANONICAL_H, CANONICAL_W))]
     for f in files:
         r = read_score(load_bgr(f), catalog, calib)
@@ -607,8 +623,9 @@ def amp2p_score_monotonic_eval(
     """Label-free accuracy proxy over a whole extracted 2-player amp capture.
 
     A play's score only climbs, so any read that *decreases* vs the running max
-    within that play is a misread. Reads every `*.png` (sorted) with the bank from
-    the committed corpus and registers once on the corpus. Two things make the
+    within that play is a misread. Reads every `*.png` in frame order
+    (`capture_frames`) with the bank from the committed corpus and registers once on
+    the corpus. Two things make the
     result meaningful on a real multi-song capture:
 
     - **The chrome probe gates every read** (`present.py`), because this reader only
@@ -632,8 +649,6 @@ def amp2p_score_monotonic_eval(
     Captures are not committed, so this is a local check (see docs/journal.md for the
     reference numbers).
     """
-    from pathlib import Path
-
     from . import present
 
     if samples is None:
@@ -644,7 +659,7 @@ def amp2p_score_monotonic_eval(
     probe = present.build_probes()["2pL" if side == "left" else "2pR"]
 
     block_shape = amp2p.block_size(side)
-    files = [f for f in sorted(Path(frames_dir).glob("*.png"))
+    files = [f for f in capture_frames(frames_dir)
              if load_bgr(f).shape[:2] in (block_shape, (CANONICAL_H, CANONICAL_W))]
 
     PLAY_RESET_DROP = 1000  # a bigger fall is a new song, not a misread digit

@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from gameplay import amp2p, perturb
+from gameplay import amp2p, evaluate, perturb
 from gameplay.metadata import (
     AMP2P_BAND_H,
     AMP2P_BAND_Y0,
@@ -403,3 +403,43 @@ def test_bank_is_deterministic(amp2p_corpus):
     assert a.digits == b.digits
     for ta, tb in zip(a.templates, b.templates):
         assert np.array_equal(ta.vec, tb.vec)
+
+
+# ─── capture ordering ─────────────────────────────────────────────────────────
+
+
+def test_capture_frames_orders_by_frame_number(tmp_path):
+    """Frame order, not lexicographic order.
+
+    `export-region` zero-pads to a fixed width, so once a capture passes that width
+    a plain sort splices low-numbered frames into the middle (`-1001` between
+    `-10009` and `-10010`). The ordering and adjacent-delta checks in the monotonic
+    evals are meaningless on a shuffled sequence, and the shuffle hides itself: the
+    ordering check absorbs each splice as a "song reset".
+    """
+    numbers = [1, 999, 1000, 1001, 1495, 9999, 10000, 10009, 10010, 14941]
+    for n in numbers:
+        (tmp_path / f"score-2pR-{n:04d}.png").write_bytes(b"")
+    got = [int(p.stem.rsplit("-", 1)[1]) for p in evaluate.capture_frames(tmp_path)]
+    assert got == sorted(numbers)
+    # The bug this guards against, spelled out: plain sorting really does misorder.
+    lex = [int(p.stem.rsplit("-", 1)[1]) for p in sorted(tmp_path.glob("*.png"))]
+    assert lex != sorted(numbers)
+
+
+def test_capture_frames_tolerates_mixed_pad_widths(tmp_path):
+    """A directory holding both 4- and 5-digit exports still comes out in order."""
+    for name in ("score-2pR-0999.png", "score-2pR-01000.png", "score-2pR-10010.png"):
+        (tmp_path / name).write_bytes(b"")
+    got = [int(p.stem.rsplit("-", 1)[1]) for p in evaluate.capture_frames(tmp_path)]
+    assert got == [999, 1000, 10010]
+
+
+def test_capture_frames_keeps_unnumbered_files_last(tmp_path):
+    """Stray files (montages, notes) sort after the frames instead of interleaving."""
+    (tmp_path / "score-2pR-00002.png").write_bytes(b"")
+    (tmp_path / "score-2pR-00001.png").write_bytes(b"")
+    (tmp_path / "montage.png").write_bytes(b"")
+    assert [p.name for p in evaluate.capture_frames(tmp_path)] == [
+        "score-2pR-00001.png", "score-2pR-00002.png", "montage.png",
+    ]

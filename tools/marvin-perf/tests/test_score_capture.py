@@ -148,11 +148,11 @@ def test_save_region_strips_extracts_only_region(tmp_path: Path) -> None:
     ]
     written = save_region_strips(records, tmp_path / "scores")
     names = sorted(p.name for p in written)
-    assert names == ["score-0001.png", "score-0002.png"]  # only the 2 REGION strips
+    assert names == ["score-00001.png", "score-00002.png"]  # only the 2 REGION strips
 
     from PIL import Image
 
-    with Image.open(tmp_path / "scores" / "score-0002.png") as im:
+    with Image.open(tmp_path / "scores" / "score-00002.png") as im:
         assert im.size == (w, h)
         assert im.getpixel((0, 0)) == (0x40, 0x40, 0x40)
 
@@ -183,9 +183,9 @@ def test_export_kinds_separate_the_two_2p_scoreboards(tmp_path: Path) -> None:
         kind, prefix = _EXPORT_KINDS[slot.id]
         written = save_region_strips(records, tmp_path / slot.id, kind=kind, prefix=prefix)
         assert [p.name for p in written] == [
-            f"{prefix}-{i:04d}.png" for i in range(1, expect + 1)
+            f"{prefix}-{i:05d}.png" for i in range(1, expect + 1)
         ]
 
     kind, prefix = _EXPORT_KINDS["sensing-2p"]
     written = save_region_strips(records, tmp_path / "bands", kind=kind, prefix=prefix)
-    assert [p.name for p in written] == ["sensing-2p-0001.png"]
+    assert [p.name for p in written] == ["sensing-2p-00001.png"]

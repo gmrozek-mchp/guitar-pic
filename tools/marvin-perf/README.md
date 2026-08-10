@@ -65,7 +65,8 @@ CLI helpers (record, set-mask, set-overlay, snapshot, screendump, export-ml).
     uv run marvin-perf score-capture --port /dev/cu.usbmodem... --slot score-2p-left
     uv run marvin-perf score-capture --port /dev/cu.usbmodem... --slot score-2p-right
 
-    # Extract strips of one kind from a recorded capture into <prefix>-NNNN.png
+    # Extract strips of one kind from a recorded capture into <prefix>-NNNNN.png
+    # (5-digit, so a lexicographic sort is frame order up to 99999 frames)
     uv run marvin-perf export-region session/ --out scores/
     uv run marvin-perf export-region session/ --kind score-2p-left --out scores-2pL/
     uv run marvin-perf export-region session/ --kind sensing-2p --out bands-2pL/
