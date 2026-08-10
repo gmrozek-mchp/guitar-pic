@@ -208,7 +208,10 @@ Console: `fauxmote pointer <x> <y>` / `fauxmote pointer off` — the raw, uncali
 Default when the slice is stale/absent: **off** (pointer off-screen).
 
 **Producer.** marvin's wiimotes/manual-override screen: a touch on its live-video rect maps
-to a position in this slice and latches there. The map needs calibrating, because the Wii
+to a position in this slice and latches there, and the release pulses `MF_W_A` in the
+`WIIMOTE` slice so a tap also clicks. That pulse is ORed over whatever the screen has
+latched for ~120 ms and released on marvin's own TX cadence — it is an ordinary
+`WIIMOTE` frame on the wire, so fauxmote needs no notion of a "tap". The map needs calibrating, because the Wii
 turns fauxmote's synthesized dots into a cursor using console-side settings marvin cannot
 read — a per-axis affine solved by `fauxmote calib` (two commanded points, the operator
 touches the cursor at each) and persisted in marvin's QSPI settings. See

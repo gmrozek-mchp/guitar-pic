@@ -1,10 +1,17 @@
 #include "net/fauxmote/fauxmote_pointer.h"
 
 #include "net/fauxmote/fauxmote_link.h"
+#include "net/fauxmote/mf_proto.h"
 #include "flash/settings.h"
 #include "log.h"
 
 #include <stdio.h>
+
+/* How long the tap's A press is held. Long enough for the Wii to see a press and a
+ * release across several of its input reports, short enough to read as a click. The
+ * link's floor wake bounds the release, so the effective hold is this plus up to one
+ * refresh period. */
+#define TAP_A_MS   120u
 
 /* Gain is Q8: 256 is 1:1. The clamp is wide enough for any plausible Wii pointer
  * sensitivity in either direction, and narrow enough that a sample taken by touching
@@ -154,6 +161,9 @@ void FauxmotePointer_SetEnabled(bool on)
             cal_end();
         }
         point_hide();
+        /* A tap's A press must not outlive the screen — otherwise letting go and
+         * navigating away inside the pulse confirms whatever the cursor was over. */
+        Fauxmote_CancelNavPulse();
     }
 }
 
@@ -226,6 +236,20 @@ void FauxmotePointer_Touch(uint8_t fx, uint8_t fy, bool press)
 
     point_at(map_axis(fx, s_cal.x_gain, s_cal.x_off),
              map_axis(fy, s_cal.y_gain, s_cal.y_off));
+}
+
+void FauxmotePointer_Release(void)
+{
+    if (!s_enabled) { return; }
+
+    /* A calibration touch is a measurement of where the cursor already is — clicking
+     * would activate whatever it happens to be over, mid-routine. */
+    if (s_state != CAL_IDLE) { return; }
+
+    /* Nothing aimed yet (a release with no pointer behind it) has nothing to click. */
+    if (!s_latched) { return; }
+
+    Fauxmote_PulseNav(MF_W_A, (uint16_t)TAP_A_MS);
 }
 
 bool FauxmotePointer_CalStart(uint8_t u_lo, uint8_t u_hi)

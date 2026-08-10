@@ -575,10 +575,11 @@ static void video_touchMove(leWidget *wgt, leWidgetEvent_TouchMove *evt)
     leWidgetEvent_Accept(&evt->event, wgt);
 }
 
-/* Release leaves the pointer where it was: latched, so the operator can now reach for
- * A or HOME on the wiimote card. */
+/* A tap is aim-then-click: the pointer stays latched where it was left and the release
+ * pulses A, so touching a menu item activates it. */
 static void video_touchUp(leWidget *wgt, leWidgetEvent_TouchUp *evt)
 {
+    FauxmotePointer_Release();
     leWidgetEvent_Accept(&evt->event, wgt);
 }
 

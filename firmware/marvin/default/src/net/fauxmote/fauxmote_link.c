@@ -48,6 +48,13 @@ static uint8_t s_nav_sx = MF_STICK_CENTER;
 static uint8_t s_nav_sy = MF_STICK_CENTER;
 static bool    s_nav_dirty;
 
+/* One-shot nav-core pulse (Fauxmote_PulseNav). Overlaid on s_nav_core by the TX task
+ * for its duration; the deadline is tested there rather than by a timer, since that
+ * task already wakes at the floor rate. s_pulse_on is TX-task-private. */
+static uint8_t    s_pulse_bits;
+static TickType_t s_pulse_until;
+static bool       s_pulse_on;
+
 static uint8_t s_ptr_x;
 static uint8_t s_ptr_y;
 static uint8_t s_ptr_flags;   /* MF_PTR_VISIBLE */
@@ -145,6 +152,8 @@ static void fx_tx_task(void *param)
         nav[3] = s_nav_sy;
         nav_dirty = s_nav_dirty;
         s_nav_dirty = false;
+        uint8_t    pulse       = s_pulse_bits;
+        TickType_t pulse_until = s_pulse_until;
         ptr[0] = s_ptr_x;
         ptr[1] = s_ptr_y;
         ptr[2] = s_ptr_flags;
@@ -156,6 +165,28 @@ static void fx_tx_task(void *param)
         acc_dirty = s_acc_dirty;
         s_acc_dirty = false;
         taskEXIT_CRITICAL();
+
+        /* Nav-core pulse overlay. Signed tick difference so the comparison survives the
+         * tick counter wrapping. Both edges force a WIIMOTE frame: the release has to go
+         * out even though no producer changed anything. */
+        bool pulse_on = (pulse != 0u) &&
+                        ((int32_t)(pulse_until - xTaskGetTickCount()) > 0);
+
+        if (pulse_on) { nav[0] |= pulse; }
+
+        if (pulse_on != s_pulse_on)
+        {
+            nav_dirty  = true;
+            s_pulse_on = pulse_on;
+        }
+
+        /* Retire an expired pulse, unless a new one was armed since the snapshot. */
+        if (!pulse_on && pulse != 0u)
+        {
+            taskENTER_CRITICAL();
+            if (s_pulse_until == pulse_until) { s_pulse_bits = 0u; }
+            taskEXIT_CRITICAL();
+        }
 
         /* GUITAR slice: marvin drives it except while the fretboard owns the
          * game (in a song AND the selected detector), when the fretboard drives
@@ -345,6 +376,30 @@ void Fauxmote_SendNav(uint8_t core, uint8_t dpad, uint8_t stick_x, uint8_t stick
     s_nav_sx    = (uint8_t)(stick_x & 0x3Fu);
     s_nav_sy    = (uint8_t)(stick_y & 0x3Fu);
     s_nav_dirty = true;
+    taskEXIT_CRITICAL();
+    (void)xSemaphoreGive(s_tx_notify);
+}
+
+void Fauxmote_PulseNav(uint8_t core_bits, uint16_t ms)
+{
+    if (!s_ready || core_bits == 0u || ms == 0u) { return; }
+
+    taskENTER_CRITICAL();
+    s_pulse_bits  = core_bits;
+    s_pulse_until = xTaskGetTickCount() + pdMS_TO_TICKS(ms);
+    s_nav_dirty   = true;
+    taskEXIT_CRITICAL();
+    (void)xSemaphoreGive(s_tx_notify);
+}
+
+void Fauxmote_CancelNavPulse(void)
+{
+    if (!s_ready) { return; }
+
+    taskENTER_CRITICAL();
+    s_pulse_bits  = 0u;
+    s_pulse_until = 0u;
+    s_nav_dirty   = true;      /* so the release goes out now, not at the next wake */
     taskEXIT_CRITICAL();
     (void)xSemaphoreGive(s_tx_notify);
 }

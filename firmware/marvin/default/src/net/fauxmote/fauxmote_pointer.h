@@ -30,9 +30,15 @@ bool FauxmotePointer_IsEnabled(void);
  * move samples: calibration takes presses only, while pointing follows both. No-op
  * while disarmed.
  *
- * The pointer LATCHES: it stays where the last touch left it so the operator can
- * then press A on the wiimote card. Only disarming (or the console) hides it. */
+ * The pointer LATCHES: it stays where the last touch left it, so releasing does not
+ * take the cursor away. Only disarming (or the console) hides it. */
 void FauxmotePointer_Touch(uint8_t fx, uint8_t fy, bool press);
+
+/* Touch released — the click half of the tap. Pulses A so the Wii activates whatever
+ * the cursor is now over; aiming alone would leave the operator no way to commit.
+ * Silent while disarmed, and while a calibration is in progress, where a touch is a
+ * measurement and must not press anything. */
+void FauxmotePointer_Release(void);
 
 /* Console (`fauxmote calib …`). Prompts and results go to the LOG, not to the console
  * return path, because the interesting ones are emitted from the touch handler long

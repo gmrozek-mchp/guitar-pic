@@ -39,6 +39,14 @@ void Fauxmote_SendGuitar(uint8_t mask, uint8_t whammy, uint8_t aux);
 void Fauxmote_SendNav(uint8_t core, uint8_t dpad, uint8_t stick_x, uint8_t stick_y);
 void Fauxmote_SendCmd(uint8_t op);
 
+/* Hold `core_bits` (MF_W_*) in the nav slice for `ms`, then release — a tap the Wii
+ * sees as a real press followed by a real release. ORed over whatever a producer has
+ * latched via SendNav rather than replacing it, so a pulse cannot drop a held button.
+ * Released by the TX task's floor wake, so the hold lands within one refresh period
+ * of the request. A second call restarts the pulse. */
+void Fauxmote_PulseNav(uint8_t core_bits, uint16_t ms);
+void Fauxmote_CancelNavPulse(void);
+
 /* Priority gate. While on, SendGuitarMask (the gameplay-mirror hook) is ignored so
  * a manual producer owns the GUITAR slice; SendGuitar/SendNav still apply. The
  * wiimotes manual-override screen holds this while shown. */
