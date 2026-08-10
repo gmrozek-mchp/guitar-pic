@@ -290,10 +290,9 @@ The setup path from `main_menu` → MULTIPLAYER through to 2-player gameplay, wa
 are act-then-wait (see Conventions) — marvin confirms its side, the human confirms
 theirs, then the screen advances.
 
-Snapshots are referenced by raw capture number (`snapshot-NNNNN`) in the
-gitignored `tools/marvin-perf/snapshots/`; this path is **not yet imported into the
-`gh3_screens/` corpus**, so the observer does not classify these screens yet (see
-Open items).
+All of these screens are now in the `gh3_screens/` corpus and classified by the
+observer (imported 2026-08-09; `faceoff_end_menu` 2026-08-10). Entries below cite the
+corpus filename where one exists.
 
 ### guitar_select_2p
 - **reached from:** `main_menu` → MULTIPLAYER
@@ -390,7 +389,32 @@ Open items).
   (§4.2). It is **classified by scoreboard-chrome presence**, not a whole-frame
   centroid — see the gameplay journal 2026-07-15, and 2026-07-14 for the per-highway
   sense-line calibration.
-- **leads to:** the 2-player results/end screens — **TBD, not yet captured.**
+- **leads to:** `faceoff_end_menu` when the song completes.
+
+### faceoff_end_menu  *(after a 2-player face-off completes)*
+- **reached from:** `in_song_2p` (song done).
+- **screen:** a newspaper spread — per-player streak / score / notes-hit on the right
+  page, album art and "Player N Conquers" headline on the left.
+- **paradigm:** static-list (cursor moves; confirm). The selected row is a **dark bar
+  with light text** — the inverse of most GH3 highlights.
+- **items (top → bottom, index; snapshot = that item selected):**
+  0. CONTINUE — `gh3_screens/faceoff_end_menu__continue.png`
+  1. RETRY SONG — `gh3_screens/faceoff_end_menu__retry_song.png`
+  2. MORE STATS — `gh3_screens/faceoff_end_menu__more_stats.png`
+- **select:** `STRUM_DN×index, GREEN`.
+- **back (RED): none — this screen has no BACK affordance.** Its legend shows only
+  SELECT and UP/DOWN, so RED does nothing. **CONTINUE is the only exit**, which is why
+  `nav_to_main_menu` special-cases it instead of falling through to its RED default.
+- **leads to:**
+  - CONTINUE → `song_select`, from where RED backs out toward `main_menu`
+  - RETRY SONG → replays the song (unverified)
+  - MORE STATS → a stats page (unverified; out of scope)
+- **Marvin deliberately does not act here at the end of a run.** The results stay on
+  screen until the *next* run starts, and it is that run's `nav_to_main_menu` anchor
+  that presses CONTINUE to leave. Note this screen is also why the class matters
+  beyond navigation: while it was unclassified it read UNKNOWN, and the
+  `play_until_done` shake debounce *holds* on UNKNOWN, so the play loop would never
+  have recognised the song as over.
 
 _(more screens added as captured)_
 

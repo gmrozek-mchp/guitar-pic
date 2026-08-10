@@ -45,6 +45,14 @@
 /* Poll bounds. */
 #define GC_STEP_POLL_MS     150u
 #define GC_STEP_TIMEOUT_MS  4000u  /* wait for a menu transition after a step */
+/* Budget for the post-step wait that lets a confirmed screen actually change. Longer
+ * than GC_STEP_TIMEOUT_MS because some GH3 transitions are genuinely slow — confirming
+ * the multiplayer mode takes a few seconds to bring up character select (Greg,
+ * measured on hardware) — and the cost of being too short is not a delay but a
+ * *repeated input*: the wait lapses, the loop re-observes the same screen, and the
+ * step re-fires a strum + GREEN into a menu that has already been committed. Only
+ * bounds how long a genuinely stuck screen takes to reach the retry path. */
+#define GC_TRANSITION_MS    10000u
 #define GC_LOADING_TIMEOUT_MS  20000u
 #define GC_PLAY_POLL_MS     300u
 #define GC_CONNECT_TIMEOUT_MS  12000u  /* wait for fauxmote↔Wii reconnect */
@@ -65,6 +73,14 @@
 #define GC_MAX_CONFIRM      4    /* re-observe/re-move tries to land a cursor before GREEN */
 #define GC_MAX_CONFIRM_FAIL 4    /* consecutive un-confirmable steps before FAILED */
 #define GC_SATURATE_STRUMS  24   /* max strum-ups to drive a readable list to its top */
+/* Consecutive unreadable observations tolerated before giving up on a plan step.
+ * UNKNOWN is *not* evidence of being off-plan — menus animate, and some transient
+ * states have no corpus exemplar at all (the 2-player character/ready screens advance
+ * per side, so the frame between them is genuinely unmodelled). Pressing RED on an
+ * unreadable frame navigates *backwards*, undoing marvin's own progress: on hardware
+ * that turned the character-select hop into a GREEN/RED loop that never escaped. So
+ * UNKNOWN waits; only a decisive unexpected screen recovers. */
+#define GC_MAX_UNKNOWN      24
 /* Consecutive decisive off-gameplay reads before believing a song ended. Missing a
  * note shakes the GH3 screen, which shifts the whole frame — and the scoreboard
  * presence probes have no positional headroom at all (measured: all three exceed
@@ -338,7 +354,7 @@ static void build_plan_2p(const game_selection_t *sel)
     s_plan[n++] = (gc_step_t){ GP_SCREEN_main_menu,          ACT_SELECT_INDEX, 3, GP_SCREEN_guitar_select_2p,    false, "MULTIPLAYER" };
     s_plan[n++] = (gc_step_t){ GP_SCREEN_guitar_select_2p,   ACT_CONFIRM_READY, 0, GP_SCREEN_multiplayer_menu,   true,  "guitar (await P2)" };
     s_plan[n++] = (gc_step_t){ GP_SCREEN_multiplayer_menu,   ACT_SELECT_INDEX, 1, GP_SCREEN_character_select_2p, false, "PRO FACE-OFF" };
-    s_plan[n++] = (gc_step_t){ GP_SCREEN_character_select_2p,ACT_CONFIRM,      0, GP_SCREEN_player_ready_2p,     false, "character" };
+    s_plan[n++] = (gc_step_t){ GP_SCREEN_character_select_2p,ACT_CONFIRM,      0, GP_SCREEN_player_ready_2p,     true,  "character (await P2)" };
     s_plan[n++] = (gc_step_t){ GP_SCREEN_player_ready_2p,    ACT_SELECT_INDEX, 0, GP_SCREEN_venue_select,        true,  "PLAY SHOW (await P2)" };
     s_plan[n++] = (gc_step_t){ GP_SCREEN_venue_select,       ACT_CONFIRM,      0, GP_SCREEN_song_select,         false, "venue" };
     s_plan[n++] = (gc_step_t){ GP_SCREEN_song_select,        ACT_SELECT_SONG,  0, GP_SCREEN_difficulty_select,   false, "song" };
@@ -435,6 +451,11 @@ static bool nav_to_main_menu(void)
         switch (sc)
         {
             case GP_SCREEN_practice_end_menu: (void)select_and_confirm(sc, 4); break;  /* QUIT → main_menu */
+            /* The face-off results screen has no BACK affordance at all — its legend
+             * offers only SELECT and UP/DOWN, so RED does nothing and the default arm
+             * below would spin until the exit budget ran out. CONTINUE (item 0) is the
+             * only way off it, and it lands on song_select, which RED does back out of. */
+            case GP_SCREEN_faceoff_end_menu:  (void)select_and_confirm(sc, 0); break;  /* CONTINUE → song_select */
             case GP_SCREEN_quit_confirm:      (void)select_and_confirm(sc, 1); break;  /* QUIT (confirm) → main_menu */
             case GP_SCREEN_pause_menu:        (void)select_and_confirm(sc, 6); break;  /* QUIT → quit_confirm */
             default:                          send_input(GC_RED);              break;  /* back up one level */
@@ -679,6 +700,7 @@ static void run(void)
 
     int recover = 0;
     int confirm_fail = 0;
+    int unknown = 0;
     for (int iter = 0; iter < GC_MAX_ITERS; iter++)
     {
         if (s_stop_req) { finish("READY"); return; }
@@ -721,10 +743,11 @@ static void run(void)
                  * screen). ACT_WAIT already blocked until its target screen. */
                 else if (st->act != ACT_WAIT)
                 {
-                    (void)wait_screen_change(st->from, GC_STEP_TIMEOUT_MS);
+                    (void)wait_screen_change(st->from, GC_TRANSITION_MS);
                 }
                 recover = 0;
                 confirm_fail = 0;
+                unknown = 0;
             }
             else
             {
@@ -733,6 +756,14 @@ static void run(void)
                 if (++confirm_fail > GC_MAX_CONFIRM_FAIL) { finish("FAILED"); return; }
                 LOG_INFO("GC: unconfirmed on screen %u — retrying\r\n", (unsigned)sc);
             }
+        }
+        else if (sc == GP_SCREEN_UNKNOWN)
+        {
+            /* Unreadable, not off-plan — hold position and look again (see
+             * GC_MAX_UNKNOWN). Bounded so a permanently unreadable screen still
+             * reaches a terminal outcome instead of spinning forever. */
+            if (++unknown > GC_MAX_UNKNOWN) { finish("NO SCREEN"); return; }
+            vTaskDelay(pdMS_TO_TICKS(GC_STEP_POLL_MS));
         }
         else
         {

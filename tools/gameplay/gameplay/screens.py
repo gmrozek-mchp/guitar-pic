@@ -42,6 +42,10 @@ SCREEN_IDS: tuple[str, ...] = (
     # because every firmware use is symbolic and no numeric screen id is persisted
     # or put on a wire — keep it that way, or this becomes a schema change.
     "guitar_select_2p",
+    # The 2-player (pro face-off) results screen — newspaper spread with per-player
+    # stats and a 3-item menu. Named to parallel practice_end_menu. Caveat: 1-player
+    # quickplay may share this screen; if so it becomes a shared node like song_select.
+    "faceoff_end_menu",
     "multiplayer_menu",
     "character_select_2p",
     "player_ready_2p",

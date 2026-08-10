@@ -152,3 +152,15 @@ not menu-row selections (neither screen is a static list).
 | venue_select__video_shoot.png | 88461 | venue select — Video Shoot (Studio 999) |
 | venue_select__mitchs_moose_lounge.png | 89308 | venue select — Mitch's Moose Lounge |
 | venue_select__backyard_bash.png | 89695 | venue select — Backyard Bash (22 Arcadia Avenue) |
+
+### 2-player results screen
+
+Captured 2026-08-10 after a completed pro face-off. Exiting needs **GREEN on CONTINUE**
+— the screen has no BACK affordance (its legend shows only SELECT and UP/DOWN), and
+CONTINUE returns to `song_select`.
+
+| file | from | screen / selection |
+|------|-----:|--------------------|
+| faceoff_end_menu__continue.png | 37507 | face-off end — CONTINUE |
+| faceoff_end_menu__retry_song.png | 38345 | face-off end — RETRY SONG |
+| faceoff_end_menu__more_stats.png | 39191 | face-off end — MORE STATS |

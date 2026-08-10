@@ -392,6 +392,55 @@ on every measured layout, and the tracker). The 4 `test_export_c` / `test_firmwa
 failures in the tree are from the in-flight `faceoff_end_menu` screen (GP_N_SCREENS 19→20 shifted
 the classifier indices), not from this work.
 
+### 2026-08-10 (later still) — `faceoff_end_menu`: the 2-player results screen, and two bugs the hardware run exposed
+
+Greg got a full 2-player game through, which surfaced the end of the flow.
+
+- **New screen class `faceoff_end_menu`** (3 corpus frames): the results newspaper spread after a
+  pro face-off. Static list, items CONTINUE (0) / RETRY SONG (1) / MORE STATS (2). Band
+  **(375, 87, 495, 148)**, signed off against a ruler overlay — item centres y ≈97/117/138 at
+  ~20.3 px pitch. **The selected row is a dark bar with light text**, the inverse of most GH3
+  highlights, which is why a brightness-argmax probe found newsprint instead of the bar; the
+  deviation-from-unselected-baseline reader doesn't care. Corpus 134 → **137 samples, 20 classes**.
+  - LOO **3/3**, and `practice_end_menu` stays 5/5 — no confusion between the two end screens.
+    Selection reader **43/43** clean, slop 99.8%, dy budget **±7**.
+  - `GP_N_SCREENS` 19 → 20, `GP_N_MENUS` 10 → 11.
+- **This screen has no BACK at all.** Its legend offers only SELECT and UP/DOWN, so RED does
+  nothing — `nav_to_main_menu`'s RED default would have spun until the exit budget ran out. It now
+  special-cases CONTINUE (item 0), which lands on `song_select`, which RED *does* back out of.
+- **Marvin deliberately doesn't act here at song end** (Greg's requirement): the results stay up
+  until the next run starts, and it is that run's anchor that presses CONTINUE.
+- **The class also fixes a bug the debounce created.** While `faceoff_end_menu` was unclassified it
+  read UNKNOWN — and `play_until_done`'s shake debounce *holds* on UNKNOWN by design — so the play
+  loop would never have recognised the song as over. Adding the class is what closes that; the two
+  changes were only safe together.
+
+**Two controller bugs from the same run, both worth recording as classes of mistake:**
+
+- **RED on UNKNOWN was undoing marvin's own progress.** On `character_select_2p`, marvin's GREEN
+  moves only *its* half to the ready panel, so the next frame is "P1 panel + P2 strip" — a state
+  with no corpus exemplar, which reads UNKNOWN. `step_for(UNKNOWN)` returned NULL, which fell into
+  the recover arm, which pressed **RED** — backing P1 out to the strip. Log showed the exact loop:
+  `character` → `unknown` → `recover (RED)` → `character_select_2p` → repeat until FAILED. UNKNOWN
+  is *not* evidence of being off-plan; it is no reading. It now holds and re-observes (bounded by
+  `GC_MAX_UNKNOWN` 24, then terminal `NO SCREEN`), and only a decisive unexpected screen recovers.
+  Notably this is the **same distinction** the shake debounce already made in `play_until_done` —
+  right in one place, wrong in the other.
+- **The character hop is human-gated and wasn't marked as such.** That mixed frame persists until
+  the *human* advances their own half (both panels up is what makes the frame classify as
+  `player_ready_2p`), so the step needed `await_player`, not a short transition wait. Consequence
+  worth knowing: the human reaches their panel *before* marvin picks PLAY SHOW. Fine — both sides
+  simply have to confirm, order is irrelevant.
+- Also from Greg's note that confirming the mode takes a few seconds to bring up character select:
+  the post-step transition budget went **4 s → 10 s** (`GC_TRANSITION_MS`). The cost of being too
+  short is not a delay but a *repeated input* — the wait lapses, the loop re-observes the same
+  screen, and the step re-fires a strum + GREEN into an already-committed menu.
+
+**Digit corpus re-cut (Greg):** `data/scores/score2p__*.png` is back at **36 frames — 18 left, 18
+right — all 76×78 at the locked origin**, replacing the 10 old-origin crops deleted earlier. That
+clears the 27 pending skips: `test_amp2p` runs and passes 36/36, so the 2p amp digit reader is
+validated at the new geometry on **both** sides. Full suite **124 passed, 0 skipped**.
+
 ### 2026-08-10 (later) — P1 READY!-badge probe ported; the 2p guitar-select step verifies its own confirm
 
 The badge probe built 2026-08-09 (host-only) is now on marvin, and it closes the ambiguity that

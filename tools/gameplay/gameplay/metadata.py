@@ -101,6 +101,18 @@ MENU_LAYOUTS: dict[str, MenuLayout] = {
     # single-index model cannot express and does not need to. Item centres
     # y 298/327/356/385, exact 29 px pitch; the band sits below the character art
     # (which varies frame to frame) and well left of the P2 panel at x≈380.
+    # 2-player results screen. Band signed off against a ruler overlay: item centres
+    # y ~97/117/138 at ~20.3 px pitch. The selected row is a *dark* bar with light text
+    # (the inverse of most GH3 highlights), and the bar runs wider than this band
+    # (x 361..543) — x is kept inside the label text to stay off the page edge and the
+    # icon right of CONTINUE. Exiting this screen needs GREEN on CONTINUE: it has no
+    # BACK affordance (its legend shows only SELECT and UP/DOWN), which is why
+    # nav_to_main_menu special-cases it instead of pressing RED.
+    "faceoff_end_menu": MenuLayout(
+        "faceoff_end_menu",
+        ("continue", "retry_song", "more_stats"),
+        band=(375, 87, 495, 148),
+    ),
     "player_ready_2p": MenuLayout(
         "player_ready_2p",
         ("play_show", "change_character", "change_outfit", "change_guitar"),
