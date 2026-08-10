@@ -75,19 +75,31 @@ int gp_fingerprint(const uint8_t *frame, int width, int height, uint8_t *out)
         }
     }
 
+    /* Cells over a per-song / per-run region (gp_fp_keep, from the host's
+     * fingerprint.EXCLUDED_REGIONS) take no part in the statistics below and are
+     * emitted as 0. Excluding them from the *normalization* is the point, not just
+     * from the compare: a bright magazine cover shifts the frame's mean/std and so
+     * moves every other cell too. Length is unchanged, so the centroids and the L1
+     * keep one shape — a zero on both sides adds nothing to the distance. */
 #if GP_FP_NORMALIZE
     double sum = 0.0;
-    for (int i = 0; i < GP_FP_LEN; i++) { sum += s_fp_f[i]; }
-    float mean = (float)(sum / (double)GP_FP_LEN);
+    int nkeep = 0;
+    for (int i = 0; i < GP_FP_LEN; i++)
+    {
+        if (gp_fp_keep[i / GP_FP_BPP]) { sum += s_fp_f[i]; nkeep++; }
+    }
+    float mean = (nkeep > 0) ? (float)(sum / (double)nkeep) : 0.0f;
     double var = 0.0;
     for (int i = 0; i < GP_FP_LEN; i++)
     {
+        if (!gp_fp_keep[i / GP_FP_BPP]) { continue; }
         double d = (double)s_fp_f[i] - (double)mean;
         var += d * d;
     }
-    float std = (float)sqrt(var / (double)GP_FP_LEN);
+    float std = (nkeep > 0) ? (float)sqrt(var / (double)nkeep) : 0.0f;
     for (int i = 0; i < GP_FP_LEN; i++)
     {
+        if (!gp_fp_keep[i / GP_FP_BPP]) { out[i] = 0u; continue; }
         float v = (std > 1e-6f)
                 ? ((s_fp_f[i] - mean) / std * GP_NORM_STD + GP_NORM_MEAN)
                 : GP_NORM_MEAN;
@@ -99,6 +111,7 @@ int gp_fingerprint(const uint8_t *frame, int width, int height, uint8_t *out)
 #else
     for (int i = 0; i < GP_FP_LEN; i++)
     {
+        if (!gp_fp_keep[i / GP_FP_BPP]) { out[i] = 0u; continue; }
         long q = lroundf(s_fp_f[i]);
         if (q < 0)        { q = 0; }
         else if (q > 255) { q = 255; }

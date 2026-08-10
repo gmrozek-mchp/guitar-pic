@@ -62,6 +62,52 @@ class FingerprintConfig:
 
 DEFAULT_CONFIG = FingerprintConfig()
 
+# Regions whose content varies for reasons unrelated to *which screen* this is, as
+# (x0, y0, x1, y1). A cell at least half inside one is dropped from the fingerprint:
+# excluded from the normalization statistics and emitted as 0.
+#
+# The end screens (practice_end_menu / faceoff_end_menu) put the song's magazine
+# cover here, and it changes per song. Measured on hardware: an unseen song's cover
+# moved a real practice_end frame to within 156 of the *other* end screen's centroid
+# (t_margin 645), so the margin gate rejected a screen the absolute gate had
+# comfortably accepted at 0.30x t_abs -- the run then hung waiting for a decisive
+# name. Both corpus end classes happen to share one cover, so what separates their
+# centroids is mostly the right page, and a changed cover swamps it.
+#
+# Dropping the cells from the *normalization* is the load-bearing half. Normalizing
+# over the whole frame and then ignoring these cells still leaks: a bright cover
+# shifts the frame's mean/std and therefore moves every other cell too. Measured on
+# the same frame: zero-after-normalize gives a margin of 343, excluding them from the
+# statistics gives 940.
+# Stated on 12x8 grid-cell boundaries so "excluded region" and "dropped cells" are
+# the same thing. Off-boundary rects leave straddling cells partly over the art,
+# which leaks exactly what the mask exists to remove.
+EXCLUDED_REGIONS: tuple[tuple[int, int, int, int], ...] = (
+    (120, 60, 360, 420),   # left magazine page: per-song cover art, title, artist
+)
+
+
+def cell_keep_mask(config: FingerprintConfig = DEFAULT_CONFIG,
+                   min_overlap: float = 0.5) -> np.ndarray:
+    """(rows, cols) bool: which grid cells contribute to the fingerprint."""
+    ys = _region_bounds(config.rows, CANONICAL_H)
+    xs = _region_bounds(config.cols, CANONICAL_W)
+    keep = np.ones((config.rows, config.cols), dtype=bool)
+    for r, (y0, y1) in enumerate(ys):
+        for c, (x0, x1) in enumerate(xs):
+            area = (y1 - y0) * (x1 - x0)
+            for ex0, ey0, ex1, ey1 in EXCLUDED_REGIONS:
+                ox = max(0, min(x1, ex1) - max(x0, ex0))
+                oy = max(0, min(y1, ey1) - max(y0, ey0))
+                if area and ox * oy >= min_overlap * area:
+                    keep[r, c] = False
+    return keep
+
+
+def slot_keep_mask(config: FingerprintConfig = DEFAULT_CONFIG) -> np.ndarray:
+    """Per-element (length,) bool mask — the cell mask expanded over B,G,R."""
+    return np.repeat(cell_keep_mask(config).reshape(-1), BPP)
+
 
 def _to_canonical(image: np.ndarray) -> np.ndarray:
     """Ensure a uint8 HxWx3 array at the canonical 720x480 (resize if needed)."""
@@ -92,7 +138,10 @@ def fingerprint(image: np.ndarray, config: FingerprintConfig = DEFAULT_CONFIG) -
     """Compute the fixed-region fingerprint of a BGR frame.
 
     Returns a uint8 vector of length `config.length`, region-major (row 0 first),
-    each region contributing [B, G, R].
+    each region contributing [B, G, R]. Cells inside EXCLUDED_REGIONS are 0 and take
+    no part in the normalization; the vector keeps its full length so centroids, the
+    L1 compare and the exported tables all keep one shape (a zero on both sides
+    contributes nothing to the distance).
     """
     img = _to_canonical(image)
     ys = _region_bounds(config.rows, CANONICAL_H)
@@ -110,10 +159,14 @@ def fingerprint(image: np.ndarray, config: FingerprintConfig = DEFAULT_CONFIG) -
             means[r, c] = patch.reshape(-1, BPP).mean(axis=0)
 
     vec = means.reshape(-1)
+    keep = slot_keep_mask(config)
     if config.normalize:
-        std = vec.std()
+        kept = vec[keep]
+        std = kept.std()
         if std > 1e-6:
-            vec = (vec - vec.mean()) / std * _NORM_STD + _NORM_MEAN
+            vec = (vec - kept.mean()) / std * _NORM_STD + _NORM_MEAN
         else:
             vec = np.full_like(vec, _NORM_MEAN)
-    return vec.round().clip(0, 255).astype(np.uint8)
+    out = vec.round().clip(0, 255).astype(np.uint8)
+    out[~keep] = 0
+    return out

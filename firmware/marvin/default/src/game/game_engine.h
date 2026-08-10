@@ -65,4 +65,30 @@ QueueHandle_t GameEngine_BusQueue(void);
  * one read the instant after actuating. */
 bool GameEngine_Observe(game_state_t *out, uint32_t timeout_ms);
 
+/* ── end-of-song watch (frame-rate) ───────────────────────────────────────── */
+
+/* Arm or disarm the end-of-song probe (game/gameplay_endprobe.h).
+ *
+ * While armed the observer runs the probe on *every* frame it drains — 225 luma
+ * samples, integer — instead of discarding the frame. On a confirmed results
+ * screen it cuts the timing pipeline itself and signals the semaphore below.
+ * That directness is the point: routing the stop through the controller's poll
+ * would put the 300 ms sleep back in the path, which is the delay this exists to
+ * remove. The controller still decides that the *run* ended, off gp_classify.
+ *
+ * Arm when the actuation window opens and disarm when it closes; disarming also
+ * clears the confirm state, so the next song starts from a clean tracker. */
+void GameEngine_ArmEndWatch(bool armed);
+
+/* Wait for the end-of-song probe to fire, up to timeout_ms. Returns true if it
+ * fired (actuation has *already* been cut by then), false on timeout. Replaces a
+ * blind sleep in the controller's play loop so the loop wakes on the event
+ * instead of a poll tick. Only meaningful while armed. */
+bool GameEngine_WaitEndOfSong(uint32_t timeout_ms);
+
+/* Did the probe fire during the armed window, and has it stayed fired? Lets the
+ * controller distinguish "the song ended" from "Stop was requested" after the
+ * play loop breaks, without re-reading a frame. */
+bool GameEngine_EndOfSongSeen(void);
+
 #endif

@@ -491,6 +491,7 @@ static void set_performing(bool on)
  * Every terminal path routes through here so the ordering can't be forgotten. */
 static void finish(const char *st)
 {
+    GameEngine_ArmEndWatch(false);  /* close the window before releasing the wire */
     GameTiming_SetEnabled(false);   /* also sends one release */
     set_performing(false);          /* lemmy and lightshow go still with the song */
     s_busy = false;
@@ -591,6 +592,7 @@ static void play_until_done(void)
 {
     status("PLAYING");
     GameTiming_SetEnabled(true);   /* controller owns the actuation window */
+    GameEngine_ArmEndWatch(true);  /* frame-rate end-of-song veto for that window */
     set_performing(true);          /* lemmy + lightshow live for the song, nod per song */
     TickType_t play_start = xTaskGetTickCount();
     DashboardFeed_PostPlaytime(0u);    /* reset the dashboard playtime bar (run reset the rest) */
@@ -607,7 +609,13 @@ static void play_until_done(void)
 
     for (;;)
     {
-        vTaskDelay(pdMS_TO_TICKS(GC_PLAY_POLL_MS));
+        /* Wait on the end-of-song probe instead of sleeping through it. It fires
+         * within ~33 ms of the results screen appearing and has already cut the
+         * pipeline by the time this returns; a timeout is the ordinary poll tick.
+         * The classifier below still decides the run ended — the probe only buys
+         * back the ~1 s of actuation that the poll-and-confirm path used to leave
+         * running on the results menu. */
+        (void)GameEngine_WaitEndOfSong(GC_PLAY_POLL_MS);
         if (s_stop_req) { break; }
 
         DashboardFeed_PostPlaytime((uint32_t)(xTaskGetTickCount() - play_start)
@@ -620,11 +628,26 @@ static void play_until_done(void)
         {
             /* Any positive gameplay read clears the end-of-song evidence. `loading`
              * and UNKNOWN neither confirm nor deny (UNKNOWN is the shake case), so
-             * they hold the count rather than resetting or advancing it. */
+             * they hold the count rather than resetting or advancing it — unless the
+             * end-of-song probe has fired, which resolves them (see below). */
             if (gs.screen == GP_SCREEN_in_song || gs.screen == GP_SCREEN_in_song_2p)
             {
                 off_gameplay = 0;
                 off_screen   = GP_SCREEN_UNKNOWN;
+
+                /* The probe vetoed actuation but the classifier still sees the
+                 * highway: a false positive. Restoring the window here (rather
+                 * than in the observer) keeps the rule that only the controller
+                 * grants actuation, and is why an aggressive probe is safe — the
+                 * cost of a false fire is the notes missed in this interval, not
+                 * the run. Re-arming resets the confirm state. */
+                if (!GameTiming_IsEnabled())
+                {
+                    LOG_WARN("GC: end-of-song probe was a false alarm (screen %u) — resuming\r\n",
+                             (unsigned)gs.screen);
+                    GameTiming_SetEnabled(true);
+                    GameEngine_ArmEndWatch(true);
+                }
             }
 
             if (gs.screen == GP_SCREEN_in_song)
@@ -654,6 +677,25 @@ static void play_until_done(void)
                     DashboardFeed_PostHumanScore(human_score);
                 }
             }
+            else if (GameEngine_EndOfSongSeen())
+            {
+                /* The probe saw the results screen and this read is not the highway:
+                 * the song is over. This case has to come before the UNKNOWN hold
+                 * below, because the classifier does not necessarily recognize the
+                 * end screen at all — its practice_end_menu exemplars are all one
+                 * song, and the left magazine page carries per-song cover art, so a
+                 * different song's results page can sit at UNKNOWN indefinitely.
+                 * Waiting for a decisive *name* would then hang the run until STOP.
+                 *
+                 * The probe is the decisive evidence here, and it is not the shake
+                 * case GC_END_CONFIRM defends against (a jolt cannot light the
+                 * results collage). Only a positive gameplay read above overrules
+                 * it, which is exactly the false-alarm path. */
+                LOG_INFO("GC: song ended — end-of-song probe, screen %u\r\n",
+                         (unsigned)gs.screen);
+                ended_naturally = true;
+                break;
+            }
             else if (gs.screen != GP_SCREEN_loading && gs.screen != GP_SCREEN_UNKNOWN)
             {
                 /* Decisive off-gameplay read. Require the *same* screen to persist,
@@ -672,6 +714,8 @@ static void play_until_done(void)
                     off_screen   = gs.screen;
                     off_gameplay = 1;
                 }
+                /* Reached only when the probe has *not* fired (that case returns
+                 * above), so this is still the full shake defence it was built as. */
                 if (off_gameplay >= GC_END_CONFIRM) { ended_naturally = true; break; }
                 LOG_INFO("GC: off-gameplay read %u (%d/%d) — holding\r\n",
                          (unsigned)gs.screen, off_gameplay, GC_END_CONFIRM);

@@ -20,10 +20,12 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import endprobe
 from .classifier import build_templates
 from .corpus import Sample, load_amp2p_corpus, load_corpus, load_score_corpus
 from .evaluate import labelled_fps, recommend_thresholds
-from .fingerprint import CANONICAL_H, CANONICAL_W, FingerprintConfig
+from .fingerprint import (BPP as _FP_BPP, CANONICAL_H, CANONICAL_W,
+                          EXCLUDED_REGIONS, FingerprintConfig, cell_keep_mask)
 from .highlight import build_selection_calibration
 from .corpus import load_streak_corpus
 from .amp2p import build_amp2p_bank
@@ -103,6 +105,26 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
     song_cfg = DEFAULT_SONG_CONFIG
     song_len = song_cfg.cols * song_cfg.rows
 
+    # End-of-song probe margins, measured here so the emitted comment quotes the
+    # corpus rather than a stale number — and so the export fails if a re-picked
+    # point table stops separating (the amp2p block takes the same stance: a
+    # disagreement between metadata and reality is a failed export, not a reader
+    # that quietly points at the wrong pixels).
+    _canon = [s for s in samples if s.image.shape[:2] == (CANONICAL_H, CANONICAL_W)]
+    _end_c = np.array([endprobe.contrasts(s.image) for s in _canon
+                       if s.screen_id in ("practice_end_menu", "faceoff_end_menu")])
+    _play_c = np.array([endprobe.contrasts(s.image) for s in _canon
+                        if s.screen_id in ("in_song", "in_song_2p")])
+    if _end_c.size == 0 or _play_c.size == 0:
+        raise ValueError("endprobe export needs both end-screen and gameplay corpus frames")
+    for _i, _t in enumerate(endprobe.THRESH):
+        if not (_play_c[:, _i].max() < _t < _end_c[:, _i].min()):
+            raise ValueError(
+                f"endprobe patch {_i}: threshold {_t} does not separate "
+                f"gameplay (max {_play_c[:, _i].max()}) from end (min {_end_c[:, _i].min()})"
+            )
+    _end_lo, _end_hi, _play_hi = int(_end_c.min()), int(_end_c.max()), int(_play_c.max())
+
     screen_index = {sid: i for i, sid in enumerate(templates.ids)}
     L: list[str] = []
     w = L.append
@@ -126,9 +148,27 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
       % (cfg.samples_per_region or 0))
     w("#define GP_FP_NORMALIZE %d" % int(cfg.normalize))
     w("#define GP_FP_LEN %d" % cfg.length)
+    w("#define GP_FP_BPP %d" % _FP_BPP)
+    w("#define GP_FP_CELLS %d" % (cfg.cols * cfg.rows))
     w("#define GP_N_SCREENS %d" % len(templates.ids))
     w("#define GP_CLS_T_ABS %d" % rec.rec_t_abs)
     w("#define GP_CLS_T_MARGIN %d" % rec.rec_t_margin)
+    w("")
+    _keep = cell_keep_mask(cfg)
+    _dropped = [(int(c), int(r)) for r in range(cfg.rows) for c in range(cfg.cols)
+                if not _keep[r, c]]
+    w("/* Per-cell contribution mask. A 0 cell is excluded from the fingerprint's")
+    w("   normalization statistics *and* emitted as 0 — see fingerprint.EXCLUDED_REGIONS.")
+    w("   %d of %d cells are dropped, over: %s."
+      % (len(_dropped), cfg.cols * cfg.rows,
+         "; ".join("(%d,%d)-(%d,%d)" % r for r in EXCLUDED_REGIONS)))
+    w("   Excluding them from the statistics is the load-bearing part: normalizing over")
+    w("   the whole frame lets a per-song magazine cover shift the mean/std and so move")
+    w("   every other cell. Measured on a real hardware frame that the classifier had")
+    w("   rejected — practice_end vs faceoff_end margin 156 (reject) -> 940 (accept). */")
+    w("static const uint8_t gp_fp_keep[GP_FP_CELLS] = {%s};"
+      % ",".join("1" if _keep[r, c] else "0"
+                 for r in range(cfg.rows) for c in range(cfg.cols)))
     w("")
     for i, sid in enumerate(templates.ids):
         w("#define GP_SCREEN_%s %d" % (_c_ident(sid), i))
@@ -471,6 +511,44 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
     w("static const gp_probe_t gp_ready_p1 =")
     w("  {{%d,%d,%d,%d}, %d, %d, %d, gp_ready_p1_mask, gp_ready_p1_ref};"
       % (rx0, ry0, rx1, ry1, rx1 - rx0, ry1 - ry0, ready.npix))
+    w("")
+
+    # ── end-of-song probe (frame-rate actuation veto) ───────────────────────
+    w("/* ── end-of-song probe (see gameplay/endprobe.py) ──")
+    w("   Runs on EVERY frame, unlike everything above: 9 lattice patches, %d luma"
+      % (len(endprobe.BRIGHT) * endprobe.BRIGHT[0].n ** 2
+         + len(endprobe.ANCHORS) * endprobe.ANCHORS[0].n ** 2))
+    w("   samples total, all integer. Its only job is to cut actuation the instant the")
+    w("   results screen appears — gp_classify still owns the verdict on whether the run")
+    w("   ended. Bright patches sit on the right-hand sketch collage and notes column,")
+    w("   dark anchors on the left collage; both are page furniture common to")
+    w("   practice_end_menu and faceoff_end_menu, and no results field can reach them.")
+    w("   The test is a CONTRAST against the median anchor, not a level: out on the")
+    w("   collage the bright patches only reach ~110-160 luma, and an absolute threshold")
+    w("   does not survive the feed's gain/offset slop (0.85 gain with -20 offset closes")
+    w("   the margin). A difference cancels offset exactly and only scales with gain. */")
+    w("#define GP_END_N_BRIGHT %d" % len(endprobe.BRIGHT))
+    w("#define GP_END_N_ANCHOR %d    /* odd: the reducer is a median */" % len(endprobe.ANCHORS))
+    w("#define GP_END_K_HITS %d      /* of GP_END_N_BRIGHT; leaves one patch free */"
+      % endprobe.K_HITS)
+    w("#define GP_END_CONFIRM_FRAMES %d  /* ~%d ms at 60 fps */"
+      % (endprobe.CONFIRM_FRAMES, round(endprobe.CONFIRM_FRAMES * 1000 / 60)))
+    w("")
+    w("typedef struct { uint16_t x, y; uint8_t n, stride; } gp_end_patch_t;")
+    w("")
+    w("static const gp_end_patch_t gp_end_bright[GP_END_N_BRIGHT] = {")
+    for p in endprobe.BRIGHT:
+        w("  {%d,%d,%d,%d}," % (p.x, p.y, p.n, p.stride))
+    w("};")
+    w("static const gp_end_patch_t gp_end_anchor[GP_END_N_ANCHOR] = {")
+    for p in endprobe.ANCHORS:
+        w("  {%d,%d,%d,%d}," % (p.x, p.y, p.n, p.stride))
+    w("};")
+    w("/* Per-patch contrast threshold, midway between the worst end-screen contrast and")
+    w("   the best gameplay contrast on the corpus (measured: end %d..%d, gameplay <= %d). */"
+      % (_end_lo, _end_hi, _play_hi))
+    w("static const uint8_t gp_end_thresh[GP_END_N_BRIGHT] = {%s};"
+      % ",".join(str(int(t)) for t in endprobe.THRESH))
     w("")
 
     w("#endif /* MARVIN_GAMEPLAY_METADATA_H */")

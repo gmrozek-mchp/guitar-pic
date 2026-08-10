@@ -38,6 +38,7 @@ _DRIVER_C = r"""
 #include "game/gameplay_score.h"
 #include "game/gameplay_present.h"
 #include "game/gameplay_amp2p.h"
+#include "game/gameplay_endprobe.h"
 #include "game/gameplay_metadata.h"
 int main(int argc, char **argv) {
     if (argc < 5) return 2;
@@ -75,6 +76,13 @@ int main(int argc, char **argv) {
         gp_read_amp2p(buf, w, h, (uint8_t)atoi(argv[5]), &a);
         printf("%d %d %d %d %d\n", (int)a.value, (int)a.ncells,
                (int)a.layout_measured, (int)a.layout_w, (int)a.layout_pitch);
+    } else if (strcmp(mode, "endprobe") == 0) {
+        int16_t con[GP_END_N_BRIGHT];
+        uint8_t anchor = 0;
+        int hits = gp_end_probe(buf, w, h, con, &anchor);
+        printf("%d %d", hits, (int)anchor);
+        for (int k = 0; k < GP_END_N_BRIGHT; k++) printf(" %d", (int)con[k]);
+        printf("\n");
     } else if (strcmp(mode, "mult") == 0) {
         printf("%d\n", gp_read_multiplier(buf, w, h));
     } else if (strcmp(mode, "streak") == 0) {
@@ -108,6 +116,7 @@ def driver(tmp_path_factory):
          str(_FW_SRC / "game" / "gameplay_score.c"),
          str(_FW_SRC / "game" / "gameplay_present.c"),
          str(_FW_SRC / "game" / "gameplay_amp2p.c"),
+         str(_FW_SRC / "game" / "gameplay_endprobe.c"),
          "-lm", "-o", str(exe)],
         capture_output=True, text=True,
     )
@@ -378,3 +387,59 @@ def test_c_amp2p_reads_six_digits_and_flags_the_extrapolation(driver, tmp_path, 
         assert c_val == expected, f"{s.path.name} {side}: C={c_val} Python={expected}"
         assert c_n == 6 and (c_w, c_pitch) == (7, 8)
         assert c_meas == 0, "an extrapolated layout must not claim to be measured"
+
+
+def _c_endprobe(exe: Path, image, tmp: Path) -> tuple[int, int, list[int]]:
+    parts = [int(v) for v in _c_run(exe, image, tmp, "endprobe").split()]
+    return parts[0], parts[1], parts[2:]
+
+
+def test_c_endprobe_matches_python(corpus, driver, tmp_path):
+    """The frame-rate end-of-song probe must be byte-faithful, not merely agree.
+
+    The C runs on every frame inside the actuation window, so a divergence would
+    show up as either a missed veto (errant presses on the results menu) or a
+    spurious one (dropped notes mid-song). Comparing the anchor level and every
+    per-patch contrast — not just the hit count — pins the integer rounding that
+    both sides floor-divide, which is where a port like this actually drifts.
+    """
+    from gameplay import endprobe as ep
+
+    for s in corpus:
+        if s.image.shape[:2] != (CANONICAL_H, CANONICAL_W):
+            continue
+        py = ep.read(s.image)
+        c_hits, c_anchor, c_con = _c_endprobe(driver, s.image, tmp_path)
+        assert c_anchor == py.anchor, f"{s.path.name}: anchor C={c_anchor} Py={py.anchor}"
+        assert c_con == list(py.contrast), f"{s.path.name}: contrast C={c_con} Py={py.contrast}"
+        assert c_hits == py.hits, f"{s.path.name}: hits C={c_hits} Py={py.hits}"
+
+
+def test_c_endprobe_fires_on_end_screens_only(corpus, driver, tmp_path):
+    from gameplay import endprobe as ep
+
+    fired, missed = [], []
+    for s in corpus:
+        if s.image.shape[:2] != (CANONICAL_H, CANONICAL_W):
+            continue
+        hits = _c_endprobe(driver, s.image, tmp_path)[0]
+        is_end_screen = s.screen_id in ("practice_end_menu", "faceoff_end_menu")
+        if hits >= ep.K_HITS and not is_end_screen:
+            fired.append(s.path.name)
+        if hits < ep.K_HITS and is_end_screen:
+            missed.append(s.path.name)
+    assert not fired, f"C probe fired off an end screen: {fired}"
+    assert not missed, f"C probe missed an end screen: {missed}"
+
+
+def test_c_endprobe_rejects_a_non_canonical_frame(driver, tmp_path):
+    import numpy as np
+
+    small = np.zeros((240, 320, 3), dtype=np.uint8)
+    raw = tmp_path / "small.bgr"
+    raw.write_bytes(small.tobytes())
+    out = subprocess.run(
+        [str(driver), str(raw), "320", "240", "endprobe"],
+        capture_output=True, text=True, check=True,
+    )
+    assert int(out.stdout.split()[0]) == -1

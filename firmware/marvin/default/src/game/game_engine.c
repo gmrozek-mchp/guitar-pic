@@ -4,7 +4,9 @@
 #include "game/gameplay_select.h"
 #include "game/gameplay_amp2p.h"
 #include "game/gameplay_score.h"
+#include "game/gameplay_endprobe.h"
 #include "game/gameplay_metadata.h"
+#include "game/game_timing.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -13,6 +15,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "semphr.h"
 
 #include "log.h"
 #include "video/video.h"
@@ -48,6 +51,15 @@ static StackType_t   s_task_stack[GAME_TASK_STACK_WORDS];
 static StaticTask_t  s_task_tcb;
 
 static volatile bool s_req_pending;
+
+/* End-of-song watch. `s_end_armed` is set by the controller around the actuation
+ * window; the tracker and the fired flag are owned by game_task. The semaphore is
+ * how the controller's play loop learns about it without polling. */
+static volatile bool s_end_armed;
+static volatile bool s_end_fired;
+static gp_end_tracker_t s_end_track;
+static SemaphoreHandle_t s_end_sig;
+static StaticSemaphore_t s_end_sig_buf;
 
 /* Streak tracker state: advanced by the observer across in_song reads, reset when
  * gameplay is left (owned solely by game_task; not shared). */
@@ -108,6 +120,38 @@ static void game_task(void *param)
     {
         Video_FrameInfo frame;
         if (xQueueReceive(frames, &frame, portMAX_DELAY) != pdTRUE) { continue; }
+
+        /* End-of-song watch, on every frame while the actuation window is open.
+         * This is the one thing here that is not request-driven, and it can be
+         * because it costs 225 integer luma samples — the heavy readers below are
+         * what the request/response protocol exists to rate-limit. Cutting the
+         * pipeline from inside the frame loop is deliberate: the controller's poll
+         * would re-introduce the delay this removes. */
+        if (s_end_armed && frame.buffer != NULL
+            && frame.bytes_per_pixel == GAME_BYTES_PER_PIXEL)
+        {
+            int hits = gp_end_probe((const uint8_t *)frame.buffer,
+                                   (int)frame.width, (int)frame.height, NULL, NULL);
+            bool latched = gp_end_tracker_update(&s_end_track, hits);
+            if (latched && !s_end_fired)
+            {
+                s_end_fired = true;
+                GameTiming_SetEnabled(false);   /* release the wire now, not in 300 ms */
+                (void)xSemaphoreGive(s_end_sig);
+                LOG_INFO("GAME: end-of-song probe fired (%d/%d hits) — actuation cut\r\n",
+                         hits, GP_END_K_HITS);
+            }
+            else if (!latched && s_end_fired)
+            {
+                /* Released. Clearing the flag re-arms the edge, but the pipeline is
+                 * NOT switched back on here: the controller owns the actuation
+                 * window, so the observer may only ever veto it, never grant it.
+                 * The controller restores it once its own classifier read confirms
+                 * the song is still running. */
+                s_end_fired = false;
+                LOG_INFO("GAME: end-of-song probe released (%d hits)\r\n", hits);
+            }
+        }
 
         /* Drain every frame so the queue never backs up. Classify only while a
          * request is pending — no free-running scan. */
@@ -261,6 +305,9 @@ void GameEngine_Initialize(void)
                                       s_resp_queue_storage, &s_resp_queue_buf);
     configASSERT(s_resp_queue != NULL);
 
+    s_end_sig = xSemaphoreCreateBinaryStatic(&s_end_sig_buf);
+    configASSERT(s_end_sig != NULL);
+
     (void)xTaskCreateStatic(game_task, "GameEngine", GAME_TASK_STACK_WORDS,
                             NULL, GAME_TASK_PRIORITY, s_task_stack, &s_task_tcb);
 }
@@ -284,4 +331,34 @@ bool GameEngine_Observe(game_state_t *out, uint32_t timeout_ms)
     taskEXIT_CRITICAL();
 
     return (xQueueReceive(s_resp_queue, out, pdMS_TO_TICKS(timeout_ms)) == pdTRUE);
+}
+
+void GameEngine_ArmEndWatch(bool armed)
+{
+    if (armed)
+    {
+        /* Clear state before arming, and drain a stale signal from a prior window,
+         * so a song can't inherit the previous one's fired flag. */
+        gp_end_tracker_reset(&s_end_track);
+        s_end_fired = false;
+        if (s_end_sig != NULL) { (void)xSemaphoreTake(s_end_sig, 0); }
+        s_end_armed = true;
+    }
+    else
+    {
+        s_end_armed = false;
+        gp_end_tracker_reset(&s_end_track);
+        s_end_fired = false;
+    }
+}
+
+bool GameEngine_WaitEndOfSong(uint32_t timeout_ms)
+{
+    if (s_end_sig == NULL) { return false; }
+    return (xSemaphoreTake(s_end_sig, pdMS_TO_TICKS(timeout_ms)) == pdTRUE);
+}
+
+bool GameEngine_EndOfSongSeen(void)
+{
+    return s_end_fired;
 }

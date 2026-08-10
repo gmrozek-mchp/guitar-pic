@@ -157,6 +157,10 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-08-10 | **The screen fingerprint drops grid cells over per-song / per-run content, and drops them from the *normalization statistics* — not merely from the compare. `fingerprint.EXCLUDED_REGIONS` = the left magazine page, stated on cell boundaries; 24 of 96 cells.** | Forced by a hardware failure, and the mechanism is not the obvious one. A finished 1P run classified UNKNOWN and hung. The frame was `practice_end_menu` on an unseen song, sitting at **0.30x t_abs** — the absolute gate was never the problem. The *margin* gate rejected it: 2872 to `practice_end_menu` vs 3028 to `faceoff_end_menu`, a margin of **156** against t_margin 645. Both corpus end classes were captured over the same Slow Ride cover, so what separates their centroids is mostly the right page, and a changed cover swamps that difference. Excluding the cells from the normalization is the load-bearing half, because the fingerprint standardizes per frame: a bright cover shifts the frame's mean/std and therefore moves **every** cell, not just the ones over the cover. Measured on that frame — zero-after-normalize gives margin 343, excluding from the statistics gives **940**. Cost is one `player_ready_2p` LOO frame (130/137 -> 129/137); slop robustness is unchanged at 99.7%, UNKNOWNs improve 6 -> 5, and impostor leak improves. The region is declared on cell boundaries because an off-boundary rect leaves straddling cells partly over the art, leaking exactly what the mask removes (a test asserts a change confined to the region moves no kept cell). Vector length is unchanged and excluded slots are 0 on both sides, so centroids, the L1 and every exported table keep one shape. |
+| 2026-08-10 | **End of song is detected by a frame-rate probe whose test is a *contrast* — 6 bright patches minus the median of 3 dark anchors — not a brightness level.** Absolute per-patch thresholds were tried first and are not viable. | The probe has to live out on the end screen's sketch collage (the pages themselves can't supply 6 scattered points that clear both end layouts *and* every gameplay-bright zone), and out there the bright patches only reach ~110–160 luma against a gameplay floor near 50. Under the recorded slop envelope that is not separable: 0.85 gain with −20 offset takes a 110-luma patch to 73.5 while a 45-luma gameplay patch rises to 71.75. The search for absolute-threshold points returned **zero** candidates, which is the measurement that settled it rather than a preference. A difference cancels offset exactly and only scales with gain, and the measured contrast (end 86..123 vs gameplay ≤ 8) absorbs ±15% gain with room to spare — 0 wrong across 154 perturbed frames. The anchor is a *median* of three so one anchor landing on something unexpected cannot drag the reference on its own. |
+| 2026-08-10 | **The observer may only ever *veto* actuation, never grant it: it calls `GameTiming_SetEnabled(false)` directly from the frame loop, and the controller is the only thing that switches it back on.** `GP_END_K_HITS` 5 of 6, `GP_END_CONFIRM_FRAMES` 2. | Two constraints pull opposite ways. The stop must not go through the controller's 300 ms poll — that poll *is* the ~1.0–1.35 s of errant actuation this exists to remove — so the observer has to cut the pipeline itself. But "the controller owns the actuation window" is a rule worth keeping, and an observer that could re-enable would own it jointly. Making the veto one-directional satisfies both: cutting is safe from anywhere, and the controller restores the window once its own `gp_classify` read shows the highway is still present. That is also what makes an aggressive 5-of-6 the right threshold — a false positive costs the notes missed in one poll interval and self-clears, while a false negative costs presses that can select RESTART or QUIT on the results menu. The failure modes are not symmetric, so the thresholds should not be either. |
+| 2026-08-10 | **Positional-shake tolerance is required on the gameplay side of the probe and refused on the end side** (gameplay: worst case over ±5 px; end: ±2 px, for a static per-rig capture offset only). | Applied symmetrically first, which cut the usable point pool to 1–3 and nearly killed the approach. It is the wrong model: the shake comes from missing a note, so it only happens during *gameplay*, and the results screen is static. A shift also cannot make dark content bright — it can only drag something bright onto a patch, which is a gameplay-side risk. So the conservative bound belongs there alone. This is the same physical fact `GC_END_CONFIRM` was built around (a jolted frame misses the presence probes and the centroid classifier then names a menu), which is why the probe firing is admissible as independent evidence *against* the shake case and lets the end-of-run confirm drop from 3 reads to 1. |
 | 2026-08-10 | **The firmware amp reader takes its block origin from `gp_probes[]` — `side` *is* the probe index — and the exporter refuses to emit if `AMP2P_BLOCK` and the probe rect disagree.** | The digit grid, the labelled corpus crops and the hand-painted registration mask are all cut against one origin, and the block was already re-registered once. Re-emitting the rect for the reader would create a second definition that a future re-registration could silently desync from the presence probe; sharing it makes that impossible, and the export-time assert turns the remaining hazard (metadata regenerated against a moved origin) into a failed export instead of a reader that quietly points at the wrong pixels. |
 | 2026-08-10 | **`gp_edge` moved to a shared `game/gameplay_cov.h` rather than being copied into the new reader.** | Two readers rounding grid edges differently would diverge *silently* — the coverage grids would still look plausible. This is the C mirror of the host's `covcore.py` extraction, done for the same reason. `gameplay_score.c` keeps its behaviour (verified: both TUs still syntax-check clean and the existing C↔Python cross-checks still pass). |
 | 2026-08-10 | **The firmware port carries no chrome registration and no temporal tracker (v0).** | Registration: every frame measured on both sides locks to (0,0), and the presence probe already fails loudly if the block drifts — the same call the 1p score port made. Tracker: it is an unexercised safety net that filters 0 frames on both reference captures, so porting state plus a fall-confirm latency question buys nothing measurable. Both are additive later without changing `gp_read_amp2p`'s interface. |
@@ -210,6 +214,43 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Open questions
+
+- **End-of-song probe follow-ups** (landed 2026-08-10; confirmed on hardware the same day — a
+  finished 1P run is now named and the veto cuts actuation, so the follow-ups below are about
+  *coverage*, not whether it works).
+  0. ✅ ~~**What screen does a 1P ROBOT run actually end on?**~~ **Resolved 2026-08-10:** it is
+     `practice_end_menu` on a different song, rejected by the *margin* gate because the per-song
+     magazine cover is a large bright region and the fingerprint normalizes per frame. Fixed by
+     `fingerprint.EXCLUDED_REGIONS` (see the decision log). The frame is kept as a held-out
+     regression at `data/regression/practice_end_menu__anarchy_in_the_uk.png` — deliberately not in
+     `gh3_screens/`, since adding it would move the centroids it exists to test.
+  1. **Is the surround actually constant across songs?** Shipped on Greg's instruction to assume it
+     is, and all 6 bright patches depend on it. The corpus cannot answer: all 8 end frames are Slow
+     Ride, from two plays. **Closes with:** `marvin-perf snapshot` after 2–3 *different* songs
+     (1P practice) plus 1–2 face-off ends. The same frames retire (2) below, since each carries a
+     different score and streak.
+  2. **The results-field exclusions are assumed, not measured.** Every end frame we have shows one
+     score/streak/notes-hit, so "constant across frames" proves nothing about whether a field moves
+     with the value — this is exactly the error Greg caught by eye on the discarded point. The
+     rectangles in `endprobe.SELECTION_EXCLUSIONS` are drawn by rule (and a test asserts all 225
+     samples clear them). **Closes with:** the snapshots in (1).
+  3. **False positives against real gameplay are unmeasured.** The evidence is 6 static frames plus
+     the slop envelope; nothing shows star power, a bright camera cut, or the 2P performer crossing
+     a patch. **Closes with:** a region-stream capture over the patch area through a full song —
+     the 6 bright patches fit one slot at `--rect 570,16,140,210` (29 400 px is over the 21 666
+     single-strip cap, so split into two passes or trim to the four right-most). Any frame reaching
+     5 of 6 contrast thresholds mid-song is a real finding.
+  4. **The transition shape is unknown.** Whether GH3 fades or cuts to the results page decides if
+     a *dimmer* threshold would fire a few frames earlier still. Same capture as (3) answers it.
+  5. **The point-selection sweep is not committed.** It was an ad-hoc morphology script (needs
+     `scipy`, which is deliberately *not* a project dependency since nothing shipped uses it). What
+     survives in the repo is the part that matters: `endprobe.SELECTION_EXCLUSIONS` plus the
+     criteria in the module docstring, and a test asserting all 225 samples respect them. Re-picking
+     against the new snapshots means rebuilding ~40 lines of blob-finding, not rediscovering the
+     reasoning.
+  6. **Pause is deliberately not covered.** `pause_menu` is a dark ornate panel (luma 3.8/21.0), so
+     a brightness/contrast probe cannot see it, and it would need its own probe. Today a pause still
+     ends the run via the classifier path.
 
 - **2-player amp scoreboard follow-ups** (score digits done 2026-08-09, re-validated on both
   sides 2026-08-10). The reader is built so each remaining gap is *visible* rather than guessed.
@@ -313,6 +354,153 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-08-10 (hardware) — the end-of-song veto works on device
+
+Greg rebuilt and ran it: a finished 1P run is named rather than UNKNOWN, and the frame-rate veto cuts
+actuation at the end of play. That closes the loop the fingerprint mask opened — the hung run was the
+symptom that started this whole thread.
+
+What it does *not* settle: the surround-is-constant assumption (open question 1) and the results-field
+exclusions (2) still rest on one song's snapshot plus the six static end frames, and false positives
+against real gameplay (3) remain unmeasured. Those need the region-stream captures, not another run.
+
+Committed as one change, host + firmware. The `results.c` / `dashboard_feed.*` / `game_showdown.c`
+edits in the tree at the time belong to the parallel dashboard-diagnostics work and were left out.
+
+### 2026-08-10 (fix) — the fingerprint was sampling the per-song magazine cover
+
+Greg, on seeing the diagnosis: *"are we sampling over the song page? This is obviously a problem as it
+will change per song."* Yes — 24 of the 96 grid cells sit on it, and it is the root cause of the hung
+run. He supplied `snapshot-2612`, which is plainly `practice_end_menu` (CONTINUE / RESTART / CHANGE
+SPEED / CHANGE SECTION / QUIT, `575 OUT OF 691`, streak 120) for **Anarchy in the U.K.** — a different
+song, with a *bright* cover where the corpus's Slow Ride cover is dark.
+
+That retires my previous entry's conclusion (a missing screen class) and my dismissal of the cover-art
+hypothesis. The dismissal failed for two reasons worth remembering: I blanked the page to **black**,
+which moves the frame *toward* the existing dark cover instead of away from it, and I compared
+fingerprints normalized over the whole frame, which is the very coupling at issue. I also read the
+distance headroom and stopped there — the binding gate was the margin.
+
+Measured, through the real code path:
+
+| | LOO | t_abs | t_margin | d(practice_end) | runner | margin | verdict |
+|---|---|---|---|---|---|---|---|
+| full frame | 130/137 | 9487 | 645 | 2872 | 3028 | **156** | UNKNOWN |
+| page masked | 129/137 | 5964 | 115 | **709** | 1638 | **929** | practice_end_menu |
+
+- Distance falls ~4x and the margin improves ~6x. Cost is a single `player_ready_2p` LOO frame;
+  slop robustness holds at 99.7% and UNKNOWNs drop 6 -> 5.
+- Excluding the cells from the **normalization** is what matters: zero-after-normalize only reaches
+  margin 343 (still a reject), excluding from the statistics reaches 929.
+- The region is cell-aligned on purpose — an off-boundary rect leaves straddling cells partly over the
+  art. A test asserts that a change confined to the region moves no contributing cell.
+- Ported in the same pass: `gp_fp_keep[96]` is exported and `gameplay_classify.c` skips masked cells in
+  both the statistics and the output. The C cross-check still matches Python on every corpus frame.
+- The frame is kept as a **held-out** regression (`data/regression/`), outside `gh3_screens/` so it
+  cannot move the centroids it tests. It also gives the first real evidence for the surround-is-constant
+  assumption the end probe rests on: all 6 bright patches fire on this unseen song.
+
+Residual, not addressed: `575 OUT OF 691` and `streak: 120` on the *right* page are also per-run, and
+the corpus can't see that (one play per class). They are small text-on-white regions and the 929 margin
+leaves room, so this is noted rather than masked.
+
+### 2026-08-10 (first hardware run) — the probe works; the *verdict* hung on UNKNOWN
+
+Greg's first 1P ROBOT run on hardware. The probe did its job — `GAME: end-of-song probe fired
+(6/5 hits) — actuation cut` — but the run then never ended and he had to press STOP (playtime
+380 s, so the stall is included).
+
+**Bug was in my wiring of the verdict, not the probe.** `play_until_done()` treats UNKNOWN as
+"neither confirms nor denies" so it *holds* the confirm count (deliberately — UNKNOWN is the shake
+case). The classifier reported `GAME: unknown` on the end screen and stayed there, so the count
+never advanced and the loop never broke. I had left the run-end decision entirely dependent on the
+classifier naming a decisive screen, which the fast probe was supposed to make unnecessary.
+
+Fixed: a fired probe plus any non-gameplay read now ends the run, ahead of the UNKNOWN hold. Only a
+*positive gameplay* read overrules the probe, which is the existing false-alarm path. This is safe
+against the shake conjunction because `GameEngine_EndOfSongSeen()` tracks the **current** latch, not
+"fired once" — the observer clears it on the falling edge, so a transient fire has already lapsed by
+the time the controller's observation returns.
+
+**Why the classifier said UNKNOWN is still open, and it is not what I first guessed.** Measured:
+
+- Per-song cover art is *not* the cause. Blanking the entire left magazine page moves the
+  fingerprint by L1 6250 against `t_abs` 9487, and it still classifies as `practice_end_menu`.
+- The end classes have enormous headroom: distances **290–821** vs `t_abs` 9487 (~11×), margins
+  **3126–3742** vs `t_margin` 645 (~5×), with the other end screen as runner-up in every case. No
+  plausible song-to-song variation moves 821 past 9487.
+
+~~So the screen he was stuck on is almost certainly **not `practice_end_menu`**...~~
+**WRONG — corrected the same day when Greg supplied the snapshot.** It *is* `practice_end_menu`,
+just a different song (Anarchy in the U.K.). Both measurements above were sound but neither was the
+binding constraint, and I stopped at the absolute gate: the frame sits at **0.30x t_abs**, and what
+rejected it was the **margin** gate (practice_end 2872 vs faceoff_end 3028 -> margin **156** against
+t_margin 645). My test of the cover-art hypothesis was also flawed twice over — I blanked the page to
+*black*, which moves it toward the existing dark cover rather than away, and I compared fingerprints
+that had been normalized over the whole frame. See the next entry.
+
+Follow-on hazard, flagged not fixed: `nav_to_main_menu` has no case for UNKNOWN, so it falls to
+`send_input(GC_RED)` and would spin its 16-iteration budget if that screen ignores RED the way
+`faceoff_end_menu` does. Not guessing an input for an unidentified screen.
+
+### 2026-08-10 (end-of-song probe) — a frame-rate actuation veto, host-proven and ported
+
+Greg: a finished song transitions to the results screen fast enough that marvin strums a few
+errant buttons into its menu. Measured cause in `play_until_done()`: `GC_PLAY_POLL_MS` 300 ms ×
+`GC_END_CONFIRM` 3 same-screen reads ≈ **1.0–1.35 s** of live actuation past the end, and on
+`practice_end_menu` a strum moves the cursor while a GREEN commits it — so the presses can select
+RESTART or QUIT. Greg's proposal: sample a handful of scattered pixels at full frame rate and
+watch for the results screen's constant light background.
+
+Built and landed, host + firmware, in one pass. **6 bright patches + 3 dark anchors, 225 integer
+luma samples per frame** (`gameplay/endprobe.py` → `game/gameplay_endprobe.{h,c}`).
+
+- **Point selection went through Greg** (the standing screen-region rule). Three rounds: an
+  auto-picked lattice set was rejected on his eye — he called the outer collage background
+  uncertain, confirmed the notes-column point, and flagged one point as "could be stepped on by a
+  score", which turned out to sit inside the face-off Notes-Hit field. He then set the bar at **6
+  points minimum** and told us to assume the surround is constant.
+- **Per-layout beat shared-substrate, then the surround reopened it.** Requiring light-and-solid
+  on *both* end layouts leaves 466 px, and the two survivors are in the surround — the two pages
+  genuinely put different content in the same place. Confined to the pages: practice yields 8
+  points but face-off only 5, all clustered in one ~130×120 corner (2P gameplay's right highway
+  reaches x≈610 and the performer owns the centre-top). With the surround admitted, one **shared**
+  set of 6 covers both layouts, which is what shipped.
+- **Contrast, not level — this is the load-bearing decision.** Out on the collage the bright
+  patches only reach ~110–160 luma, and 0.85 gain with −20 offset (`perturb.envelope`) collapses
+  an absolute threshold's margin to nothing; the first attempt at absolute thresholds found **zero**
+  usable points for exactly this reason. Testing `bright − median(anchors)` cancels offset exactly
+  and only scales with gain. Anchors are a median so one anchor landing on something unexpected
+  can't drag the reference.
+- **Shake tolerance was my error, corrected on Greg's challenge.** I had imposed ±5 px stability on
+  the end-screen side, which cut the candidate pool to 1–3 points. The shake happens during
+  *gameplay* (a missed note jolts the frame) and the end screen is static; a shift can't make dark
+  content bright, only drag something bright onto a patch. So the conservative max-over-shift bound
+  belongs on the **gameplay side only**. The end side keeps ±2 px for a static per-rig offset.
+- **Gameplay exclusions are structural, not measured.** 6 static corpus gameplay frames cannot show
+  a note under a patch, star power, or the performer walking past, so both highways, both
+  scoreboards, the centre performer and the section text are refused by rule. Likewise the left
+  magazine page (per-song cover art and text) and every results field.
+- **Results.** Clean: 6/6 hits on all 8 end frames, 0/6 on all 6 gameplay frames; per-patch
+  contrast **end 86..123 vs gameplay ≤ 8**. Slop battery: **0 wrong of 154** perturbed frames. No
+  other corpus screen fires (max 2/6) — the contrast form kills the other light-paper menus because
+  their anchors brighten too. C matches Python **byte-for-byte** (anchor + all 6 contrasts + hits)
+  on all 138 corpus frames; the unit is clean under `-Wall -Wextra -Wconversion -Wsign-conversion`.
+- **Fast veto, slow verdict.** The observer runs the probe on every frame it drains (it previously
+  discarded them) and, on `GP_END_K_HITS` 5-of-6 for `GP_END_CONFIRM_FRAMES` 2 (~33 ms), cuts
+  `GameTiming_SetEnabled(false)` *itself* and signals a semaphore — routing the stop through the
+  controller's poll would put the 300 ms back in the path. `gp_classify` still decides the run
+  ended. The observer may only ever **veto**, never grant: the controller restores actuation when
+  its own read shows the highway is still there, so a false fire costs the notes missed in one poll
+  interval, not the run. That asymmetry is what makes 5-of-6 safe.
+- The play loop now waits on the semaphore instead of sleeping, and when the probe has fired the
+  end-of-run confirm drops from 3 to 1 — `GC_END_CONFIRM` exists to survive the shake case, and a
+  shake cannot light the results collage, so the probe is independent evidence against it.
+
+**Not yet on hardware** (Greg builds in MPLAB) and **not yet validated against real gameplay
+frames** — the false-positive evidence is 6 static frames plus the slop battery. Both follow-ups
+are in Open questions.
 
 ### 2026-08-10 (port) — the amp score reader is on marvin: observer + both dashboard cards
 
