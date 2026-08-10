@@ -153,6 +153,15 @@ static bool strum_q_needs_by(uint8_t bit, uint32_t by_ms)
     return false;
 }
 
+/* Last (mask, teacher) handed to the actuator links. The pipeline iterates every
+ * TP_TICK_MS whether or not anything moved, so forwarding every iteration would
+ * put ~540 frames/s on each link during gameplay; both links carry their own
+ * 50 ms floor re-send, which is what covers a dropped frame. Invalidated on the
+ * enable edge, where ownership of the wire changes hands. */
+static bool    s_pub_valid;
+static uint8_t s_pub_mask;
+static uint8_t s_pub_teacher;
+
 static void publish_mask(uint8_t mask, uint8_t teacher_mask)
 {
     s_output_mask = mask;
@@ -160,6 +169,14 @@ static void publish_mask(uint8_t mask, uint8_t teacher_mask)
     {
         return;
     }
+    if (s_pub_valid && (mask == s_pub_mask) && (teacher_mask == s_pub_teacher))
+    {
+        return;
+    }
+    s_pub_valid   = true;
+    s_pub_mask    = mask;
+    s_pub_teacher = teacher_mask;
+
     FretboardLink_SendWithTeacher(mask, teacher_mask,
                                   (uint8_t)PERF_ACTUATOR_PRODUCER_TIMING);
 }
@@ -470,6 +487,12 @@ void GameTiming_SetEnabled(bool enabled)
         return;
     }
     s_pipeline_enabled = enabled;
+
+    /* Another producer owns the wire outside the window (menu nav, manual
+     * control, the direct release below), so what the links last heard is
+     * unknown here — force the next publish through rather than eliding it as
+     * an unchanged mask. */
+    s_pub_valid = false;
 
     /* The gameplay window opening/closing is what gates the fretboard: it may
      * drive the game only inside a song, never during menu nav or manual

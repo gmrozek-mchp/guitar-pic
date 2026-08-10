@@ -129,6 +129,15 @@ static void fx_tx_task(void *param)
      * over. Starts true: boots outside a song, so marvin owns the controller. */
     bool driving = true;
 
+    /* Last GUITAR payload put on the wire, and when its floor re-send comes due.
+     * The deadline is tracked explicitly rather than inferred from the semaphore
+     * timing out: a producer that signals every few ms without changing anything
+     * would keep the take from ever expiring, and the floor — which is what feeds
+     * fauxmote's 200 ms link watchdog — would never fire. */
+    uint8_t    last_g[MF_LEN_GUITAR];
+    bool       last_g_valid = false;
+    TickType_t g_floor_at   = xTaskGetTickCount();
+
     for (;;)
     {
         /* Wake on a producer change (low latency) or the floor refresh timeout. */
@@ -198,12 +207,26 @@ static void fx_tx_task(void *param)
         bool suppress = Detector_FretboardDriving();
         if (!suppress)
         {
-            send_frame(MF_MSG_GUITAR, g, MF_LEN_GUITAR);   /* every wake: change + floor refresh */
+            /* On a change, or when the floor re-send falls due — not on every
+             * wake: the gameplay pipeline signals at its own tick rate whether
+             * or not the mask moved. */
+            bool changed = !last_g_valid || (memcmp(last_g, g, MF_LEN_GUITAR) != 0);
+            if (changed || ((int32_t)(xTaskGetTickCount() - g_floor_at) >= 0))
+            {
+                send_frame(MF_MSG_GUITAR, g, MF_LEN_GUITAR);
+                memcpy(last_g, g, MF_LEN_GUITAR);
+                last_g_valid = true;
+                g_floor_at   = xTaskGetTickCount() + pdMS_TO_TICKS(FX_REFRESH_MS);
+            }
         }
         else if (driving)
         {
             uint8_t rel[MF_LEN_GUITAR] = { 0u, MF_WHAMMY_REST, 0u };
             send_frame(MF_MSG_GUITAR, rel, MF_LEN_GUITAR);   /* release once on handoff */
+            /* Marvin is silent for the rest of the window, so what fauxmote holds
+             * by the time it ends is the fretboard's doing — send unconditionally
+             * on the way back rather than comparing against this release. */
+            last_g_valid = false;
         }
         driving = !suppress;
 

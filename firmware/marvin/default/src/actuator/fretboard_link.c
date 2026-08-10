@@ -32,9 +32,9 @@
 #define DS_START_BYTE           0x03u
 #define DS_END_BYTE             0xFCu
 
-/* Idle heartbeat: re-send last mask if the timing pipeline goes quiet, so
- * a stalled detector or paused game can't leave a stale frets-active
- * pattern stuck on the wire. 50 ms is well below human-perceptible. */
+/* Floor re-send of the last mask: bounds how long a dropped frame can leave the
+ * node holding a byte marvin no longer commands, and covers a link that was down
+ * when the change happened. 50 ms is well below human-perceptible. */
 #define FBL_HEARTBEAT_MS        50u
 
 static QueueHandle_t s_cmd_queue;
@@ -243,17 +243,29 @@ static void fretboard_link_task(void *param)
     uint8_t last_mask = 0u;
     bool    was_driving = false;
 
+    /* Last byte the node was successfully told, and when the heartbeat re-send
+     * falls due. The deadline is tracked explicitly rather than taken from the
+     * receive timing out: producers post faster than FBL_HEARTBEAT_MS during
+     * gameplay, so a receive that always succeeds would never let the heartbeat
+     * fire. Latched only on a successful send, so a link-down attempt is retried
+     * at the heartbeat rate. */
+    bool       sent_valid = false;
+    uint8_t    sent_mask  = 0u;
+    TickType_t floor_at   = xTaskGetTickCount();
+
     for (;;)
     {
         uint8_t mask;
-        if (xQueueReceive(s_cmd_queue, &mask, pdMS_TO_TICKS(FBL_HEARTBEAT_MS)) == pdTRUE)
+        int32_t left = (int32_t)(floor_at - xTaskGetTickCount());
+        if (left < 0) { left = 0; }
+
+        if (xQueueReceive(s_cmd_queue, &mask, (TickType_t)left) == pdTRUE)
         {
             last_mask = mask;
         }
-        else
-        {
-            mask = last_mask;
-        }
+        mask = last_mask;
+
+        bool floor_due = ((int32_t)(xTaskGetTickCount() - floor_at) >= 0);
 
         /* While the fretboard owns the game (in-song + active), it drives the
          * guitar node directly peer-to-peer; marvin releases the wire once and
@@ -264,13 +276,27 @@ static void fretboard_link_task(void *param)
             if (!was_driving)
             {
                 (void)send_one_byte(0u);
+                sent_valid  = false;   /* the fretboard owns the byte from here */
                 was_driving = true;
+            }
+            /* Keep the deadline ahead of now even while silent, or the receive
+             * above degenerates to a zero-timeout spin. */
+            if (floor_due)
+            {
+                floor_at = xTaskGetTickCount() + pdMS_TO_TICKS(FBL_HEARTBEAT_MS);
             }
             continue;
         }
         was_driving = false;
 
-        (void)send_one_byte(mask);
+        if (!floor_due && sent_valid && (mask == sent_mask)) { continue; }
+
+        if (send_one_byte(mask))
+        {
+            sent_valid = true;
+            sent_mask  = mask;
+        }
+        floor_at = xTaskGetTickCount() + pdMS_TO_TICKS(FBL_HEARTBEAT_MS);
     }
 }
 

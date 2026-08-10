@@ -4,6 +4,34 @@ Running log of planning, decisions, open questions, and work-in-progress for mar
 
 ---
 
+**2026-08-10 (bus load) — CV gameplay put ~1080 frames/s on the bus for a mask that changes a few dozen times a second. Both actuator links now send on change or on their floor, not on every producer signal. NOT YET ON HARDWARE.**
+
+- **Greg's observation, and it reconciles to the digit.** marvin ~1k tx/s, fauxmote 566 rx/s while playing with CV. `timing_pipeline_task` calls `advance()` → `publish_mask()` in **both** branches of its receive — the detector frame *and* the `TP_TICK_MS` (2 ms) timeout — with no change detection. The CV detector publishes once per captured frame at 60 Hz, so each 16.67 ms interval is 1 frame + 8 idle ticks: **60 × 9 = 540 publishes/s**. Each fans out to two transmits (`Fauxmote_SendGuitarMask` → FxTx, `xQueueOverwrite` → FretLink), so 1080 tx/s, and fauxmote counts its own 540 GUITAR frames plus marvin's broadcast heartbeat ≈ 560. Note the tick alone sets a 500/s floor **even with the detector stopped**.
+- **The redundancy bought nothing, because both links already had the answer.** `FX_REFRESH_MS` and `FBL_HEARTBEAT_MS` are both 50 ms, and a floor re-send is exactly what covers a dropped frame or a link that was down at the moment of the change. Publishing every tick did not improve on that; it multiplied it by 27, and dragged `PerfLog_EmitActuator` and `DashboardFeed_PostFret` along at the same rate.
+- **Fixed in three places, and the third is the one that is easy to get wrong.** (1) `publish_mask` forwards only when `(mask, teacher_mask)` moved — `s_output_mask` still updates every call so the TIMING snapshot stays truthful, and the memo is invalidated on the `GameTiming_SetEnabled` edge because another producer owns the wire outside the window (menu nav, manual control, and its own direct release-to-0). (2) FxTx sends GUITAR on change or floor, not on every wake. (3) FretLink likewise, latching `sent_mask` **only on a successful `send_one_byte`** so a link-down attempt retries at the floor rate — the same pattern the arm/model/teacher pushes in that file already use.
+- **The floor deadlines had to become explicit `xTaskGetTickCount()` comparisons rather than the blocking timeout.** This is the trap: a naive change-only gate keeps the *old* structure, where "50 ms elapsed" is inferred from `xSemaphoreTake`/`xQueueReceive` timing out. Under a 540/s producer they **never** time out, so the floor would never fire — starving fauxmote's 200 ms link watchdog (`MF_INPUT_TIMEOUT_MS`) and removing the dropped-frame cover entirely. Both loops now bound their wait by the deadline and test it after the receive. FretLink also advances the deadline on the fretboard-driving path, or the zero-timeout receive would spin.
+- **Checked the receivers before trusting a 50 ms floor.** fauxmote's watchdog is 200 ms — 4× margin. The guitar node has **no command staleness timeout at all** (`t1s_follower.c` holds the last mask indefinitely), so there the floor is purely dropped-frame recovery, not a safety requirement.
+- **Expected result: ~4 edges per note** (fret assert / strum on / strum off / release), so at 8 notes/s roughly 32 changes/s + 20/s floor per link ≈ **100 tx/s against 1080**. Rejected adding a short repeat-window after each edge for wire-loss redundancy: the CRC/symbol-error counters say loss on this PLCA segment is rare, and the 50 ms floor is the designed answer to it.
+- **Knock-on to flag: the `PERF_REC_ACTUATOR` stream drops from 540/s to edge rate.** More honest — it is a "what went out on the wire" record — but any `tools/marvin-perf` analysis that assumes a fixed cadence there will notice.
+- Files: `game/game_timing.c`, `net/fauxmote/fauxmote_link.c`, `actuator/fretboard_link.c`. Full firmware build clean, no new warnings. **No MCC, no MGS Generate.** To verify: play a CV song and watch the bus screen — marvin TX should sit near 100/s with fauxmote near 60/s, and the game must still play (a lost strum would show as missed notes).
+
+---
+
+**2026-08-10 (later) — the TOP SCORES board went stale at song end: the update was a droppable message when it needed to be a flag. FIX NOT YET ON HARDWARE.**
+
+- **Symptom (Greg, on hardware):** after a showdown ended, the dashboard board still showed the *previous* rows; tapping SHOWDOWN again brought it up to date. So the row reached results.csv, and only the refresh was lost.
+- **Two answers narrowed it to one cause.** The board kept the OLD rows rather than going blank, which rules out "the reload ran and returned nothing" (a failed card read empties the board, it does not preserve it) — so the apply never ran at all. And the dashboard was on screen with the windowed video, so `s_shown` was true and the feed's hidden-deferral path was not involved. That leaves the post itself.
+- **Root cause: `DASH_EVT_RESULTS` rode the shared queue, which is `xQueueSend(..., 0)` — drop-on-full.** My own classification of it was backwards. The 2026-08-09 entry reasoned it was "an edge, but an idempotent one whose next occurrence is another whole song away, so a dropped post costs a board that catches up at the end of the next run." The second half does not follow from the first: *because* the next one is a whole song away there is no successor to correct the loss, so one drop leaves the board stale indefinitely — until something unrelated happens to call `Showdown_Reload`, which is exactly what a new SHOWDOWN tap does.
+- **And it is posted at the fullest moment the queue ever sees.** `DashboardFeed_PostFret` fires per note from the deterministic actuation path, right up to the last note; RESULTS is posted immediately after. A 16-deep queue drained under the render lock is plausibly full there.
+- **The file already had the right pattern and its header already said so.** `DASH_EVT_STATUS` gets a depth-1 overwrite mailbox precisely because it is an edge that must not be crowded out by telemetry, and the header ends with "Any new event type should be classified the same way before it is added." That instruction was there and I got the classification wrong anyway — the lesson is that "idempotent" is not the test; **"is there a successor that would correct a loss"** is.
+- **Fix: RESULTS carries no payload, so it needs less than a mailbox — a `volatile bool`.** A flag cannot be crowded out, needs no queue slot, and stays wait-free. It also nudges the consumer with the existing `DF_EVT_WAKE`, but does not depend on it: if the nudge is the thing that gets dropped, the 500 ms idle tick finds the flag anyway. Set-then-nudge, never the reverse. `DASH_EVT_RESULTS` is gone from the enum rather than left unused.
+- **Latched after the shown gate, cleared before the read.** After, so an update arriving while the dashboard is hidden is still deferred rather than cleared and lost. Before, so a post landing during the SD read survives into the next pass — worst case one redundant re-read, rather than a swallowed update.
+- **Two diagnosability gaps closed, because this took two questions to Greg that the log should have answered.** `Results_TopN` returned 0 identically for "no file", "cannot open" and "no matching rows" — with `FF_FS_MAX_FILES = 1` the interesting failure is another task holding the one file slot, and it was invisible; it now warns with the FS error. And `Showdown_ReloadTop` now logs the filter and the row count on every reload, since an empty board is a legitimate answer there and the count alone cannot distinguish a working reload from a failed one.
+- **Honest status:** the drop is a hypothesis that fits every observed detail, not a proven root cause — nothing counts dropped posts today. The fix is correct regardless (an edge with no successor must not be droppable), and the new `SHDN: board ... -> N row(s)` line will confirm it on the next run: it should appear at song end, not only on a tap.
+- Files: `ui/dashboard_feed.{c,h}`, `results/results.c`, `game/game_showdown.c`. All four TUs pass `-fsyntax-only -Wall -Wextra -std=gnu11`. No design change, **no MGS Generate, no MCC**. To verify: play a showdown to the end and watch for `SHDN: board` in the log without touching the panel; the new row should appear on the board as the song ends.
+
+---
+
 **2026-08-10 — the 2P prompt asks a second question (client/partner vs Microchip employee), and the leaderboards split on the answer. NOT YET ON HARDWARE. Needs an MGS Generate.**
 
 - **The name prompt is now a two-dialog chain, and the run starts from the *second* one.** Keyboard OK records the name and opens the affiliation dialog; that answer records the affiliation and starts the run. Either dialog's X aborts the whole start — Greg's call over the mockup's forced choice, which has no exit at all: on a show floor a modal you cannot leave is indistinguishable from a hung machine, and a mis-tap on the name prompt would otherwise commit you to a run.
@@ -1915,6 +1943,8 @@ Scaffold is in place as of 2026-05-20: `detector/detector.{h,c}` owns the bus qu
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-08-10 | **`gp_fingerprint` now drops the grid cells over the per-song magazine cover (`gp_fp_keep[96]`, 24 of 96), excluding them from the normalization statistics as well as from the output.** | A finished 1P run classified UNKNOWN on device and the run hung. The frame was `practice_end_menu` for an unseen song, and it was the *margin* gate that rejected it (156 against t_margin 645) while the absolute gate had it at 0.30x t_abs — both corpus end classes share one cover, so what separates their centroids is mostly the right page and a changed cover swamps it. Skipping the cells in the statistics is the load-bearing half rather than a detail: the fingerprint standardizes per frame, so a bright cover shifts mean/std and moves every other cell too (measured on that frame: margin 343 if zeroed after normalizing, 929 if excluded from the statistics). Length is unchanged and masked slots are 0 in both the frame vector and the centroids, so nothing downstream — the L1, the export, the C cross-check — changes shape. Costs one `player_ready_2p` LOO frame; slop robustness unchanged at 99.7%. Host reasoning and the held-out regression frame are in `tools/gameplay/docs/journal.md` 2026-08-10. |
+| 2026-08-10 | **The gameplay window gets a frame-rate end-of-song veto: `game_task` runs `gp_end_probe` on every frame it drains and cuts `GameTiming_SetEnabled(false)` itself, rather than the controller detecting the end on its poll.** The observer may only ever veto; only the controller re-enables. | `play_until_done()` polled at `GC_PLAY_POLL_MS` 300 ms and needed `GC_END_CONFIRM` 3 same-screen reads, so ~1.0-1.35 s of actuation continued past the end of a song -- and on `practice_end_menu` a strum moves the cursor while a GREEN commits it, so those notes could select RESTART or QUIT. Routing the stop through the controller would leave that poll in the path, which is the whole delay. The probe is affordable on every frame precisely because it is nothing like the other readers: 225 integer luma samples against `gp_classify`'s thousands plus soft-float, and no scratch, so it needs none of the request/response rate limiting `game_task` exists to impose. One-directional veto keeps "the controller owns the actuation window" true while still letting the cut happen in the frame loop -- and makes a false fire cost the notes missed in one poll interval instead of the run, which is what justifies a 5-of-6 threshold. See `tools/gameplay/docs/journal.md` 2026-08-10 for the point-selection and contrast-vs-level reasoning. |
 | 2026-08-10 | **`results.csv` records the *human* player, so only a 2-player run to the end writes a row, and the `score` column is the human's amp — not marvin's.** Marvin's total stays on the dashboard and in the run log, unpersisted. `human_seen` is required as well as a value, and a run stopped before the song ends writes nothing; every skipped case logs which one it was. | Greg: "we are really only interested in human performance." Which settles the mode question, because **`GAME_MODE_1P_HUMAN` is retired** — 1P ROBOT is marvin playing alone, so 2-player face-off is the only mode where a human performance exists at all, and there the human is P2, the right amp. Persisting marvin's score too would mix a deterministic benchmark into a visitor leaderboard, and it is already visible in both places an operator looks. `human_seen` matters because the amp read is *gated*: without it, an opponent scoreboard that never produced a confident read would be indistinguishable from a human who scored nothing, and would write a 0 into the high-score table. Gating on a natural end (not just any exit from `play_until_done`, which also breaks on STOP) keeps partial totals out for the same reason. |
 | 2026-08-10 | **The results schema was rebuilt 12 columns → 7 (`player,setlist,index,song,difficulty,score,timestamp`), and `Results_TopN` now validates the file's header instead of skipping it.** Dropped `game`, `part`, `accuracy_pct`, `notes_hit`, `notes_total`. | Greg: song + score is all that matters; "get rid of" the accuracy columns. `game` and `part` only ever held one value each, and the three accuracy figures have **no reader** — marvin cannot see them (they are on the GH3 end screens), so they would be permanently zero, which is worse than absent because a zero column reads as a measurement. `setlist`+`index` had to stay: they are the key `Results_TopN` filters on. `song` stays because self-contained analysis on a PC is half the reason the format is CSV. **The header check is the load-bearing half of this change:** the reader addresses fields by index, so an old-schema file would have parsed `part` as the score and produced a wrong-but-entirely-plausible high-score table — silence being the failure mode that matters. It now returns no scores and names the header it found, which does mean an existing card file is ignored until deleted. Re-adding columns later is an append, which `csv_split` already tolerates in both directions. |
 | 2026-08-11 | **Touch on the wiimotes screen's live video aims the Wii IR pointer, through a per-axis affine map calibrated by two touches and persisted in QSPI settings (`ptr_cal_t`, `SETTINGS_VERSION` 3→4).** New `net/fauxmote/fauxmote_pointer.c` owns the map, the calibration state machine and the latched pointer; the screen contributes only an invisible `next_widget()` over the video rect reporting the touch as a fraction of the picture. A tap is **aim-then-click**: the pointer latches where the touch left it and the release pulses **A** for 120 ms via a new additive `Fauxmote_PulseNav`; pointing sits behind the existing slide-to-unlock. Calibration is advanced by **presses**, prompts go to the log, and `save` is explicit. Rejected: hand-tuning fauxmote's IR camera constants; a fixed identity map; sampling on any touch event; gating by scrim geometry; a 4-corner least-squares fit. | **Calibration is not optional, because the gain is unknowable from here:** fauxmote synthesizes the sensor-bar dots from fixed constants and the *Wii* turns those into a cursor using its own sensor-bar-position, TV-size and sensitivity settings, so the relation is affine with an unknown gain and offset and possibly an inverted axis — which fauxmote's own source anticipates. Two points recover all three per axis, in marvin, with no node firmware; hand-tuning the constants would bake one Wii's settings into the emulator. **The touch side needs no correction** because `heo_bind` scales the detected active picture rect onto exactly the video rect with no letterbox, so position within it already is the screen fraction. **Presses only** because a finger always emits move samples: sampling one would solve from two nearly identical points, and letting one point would move the cursor the operator is being asked to touch — hence a `press` flag rather than bare coordinates. **The armed flag, not scrim geometry, is the gate:** the scrim spans the card row and never reaches the video, so a geometric test would have been no gate at all. **Tap-clicks are Greg's call, taken after aim-only on hardware** — aiming with no commit means reaching for the card's A button and hoping the cursor holds, two hands for one touch. Latching is what makes deferring the click to the *release* safe: the cursor tracks the finger, so a drag corrects the aim before letting go. The press is an **overlay** on the nav slice rather than a write to it, because writing `s_nav_core` from the pointer path would race the screen's own buttons and could drop a held one; and it must **span real time**, since a press-then-release in one call collapses before the TX task samples it and the Wii sees nothing. Reusing the TX task's 50 ms floor wake to end the pulse avoids a timer entirely. Suppressed during a calibration step (a touch there measures where the cursor already is) and cancelled on disarm, so a click cannot fire on the way off the screen. Two points beat four corners because the relation really is affine and 25%/75% stays clear of any edge dead-zone; the optional `calib start <lo> <hi>` exists only so an extreme sensitivity that puts 25% off-screen is not a dead end. Uncalibrated stays the **identity** (gain 0 → 1:1) so the feature is useful before it is calibrated, which also makes `valid` a reporting field only. The **version bump wipes existing records** (backlight → 50%, boot profile re-learned): unavoidable, since a layout change moves the CRC and invalidates them regardless of the version field. |
@@ -2169,6 +2199,75 @@ Fix is the console's: pair every `Detector_SetActive` with `FretboardLink_Update
 `detector_on_release` and in `ScreenDashboard_ApplySelection`'s fall-back-to-CV branch (a no-op there —
 SELECT SONG is gated while a run is in flight, so the window is closed — kept for the pairing). Builds
 clean; untested on hardware.
+
+### 2026-08-10 (fix) — the screen fingerprint was sampling the per-song album cover
+
+Follow-on from the hung run below. The end screen *was* `practice_end_menu`; it classified UNKNOWN
+because the per-song magazine cover on the left page is a large bright region and the fingerprint
+normalizes per frame, so an unseen song moved the frame to within 156 of the other end screen's
+centroid (t_margin 645). Greg spotted the cause from the diagnosis — the grid samples that page.
+
+- `gameplay_classify.c`: `gp_fingerprint` skips cells whose `gp_fp_keep` entry is 0, in the mean/std
+  accumulation *and* when writing `out` (masked slots emit 0). Both loops of the un-normalized branch
+  too. Clean under `-Wall -Wextra`.
+- `gameplay_metadata.h`: new `GP_FP_BPP`, `GP_FP_CELLS`, `gp_fp_keep[96]`, and re-derived
+  `GP_CLS_T_ABS` 9487 -> 5964 / `GP_CLS_T_MARGIN` 645 -> 115 (the corpus distances shrink with the
+  noisy cells gone). Centroids re-emitted with zeros in the masked slots.
+- Vector length is unchanged, so no interface moved; the host C cross-check still matches Python on
+  every corpus frame, and a held-out real-hardware frame from an unseen song now classifies correctly.
+
+**Needs a rebuild + a re-run to confirm on hardware** — this is the change that should let a finished
+1P run be named, so `nav_to_main_menu` can QUIT out of it and the next START can anchor.
+
+### 2026-08-10 (fix) — the end-of-song probe fired but the run hung on classifier UNKNOWN
+
+First hardware run of the probe (1P ROBOT). It fired correctly and cut actuation, then the run never
+ended and Greg had to STOP it. My wiring bug: `play_until_done()` holds its confirm count on UNKNOWN
+(by design — UNKNOWN is the shake case), and the classifier read the end screen as UNKNOWN and stayed
+there, so the loop never broke. I had left the run-end verdict fully dependent on the classifier
+naming a decisive screen, which is the dependency the probe exists to remove.
+
+A fired probe plus any non-gameplay read now ends the run, evaluated *before* the UNKNOWN hold; only a
+positive gameplay read overrules it (the existing false-alarm path). Safe against
+shake-plus-spurious-fire because `GameEngine_EndOfSongSeen()` reflects the **current** latch — the
+observer clears it on the falling edge, so a transient fire has lapsed before the controller's
+observation returns.
+
+Separately open: the end screen classifying as UNKNOWN is *not* a threshold or per-song-art problem
+(measured — `practice_end_menu` sits at distance 290–821 against `t_abs` 9487 with margins 3126–3742
+against `t_margin` 645, and blanking the entire per-song left page still classifies correctly), so it
+is most likely a results screen with no corpus exemplar. Needs one snapshot of the stuck screen; see
+the gameplay journal's Open questions. Note `nav_to_main_menu` has no UNKNOWN case and defaults to
+RED, so the next run's anchor may not escape that screen.
+
+### 2026-08-10 — End-of-song actuation veto: the observer cuts the pipeline in the frame loop
+
+Greg reported marvin pressing a few errant buttons as a finished song flips to the results
+screen. Cause measured in the controller, not the vision: `GC_PLAY_POLL_MS` 300 ms x
+`GC_END_CONFIRM` 3 = **~1.0-1.35 s** of live actuation past the end.
+
+New pure unit `game/gameplay_endprobe.{h,c}` (+ a `gp_end_*` block in the generated
+`gameplay_metadata.h`), ported from `tools/gameplay/gameplay/endprobe.py` — see that journal for
+how the 6 bright + 3 anchor points were chosen with Greg and why the test is a contrast rather
+than a brightness level.
+
+- **`game_engine.c`** — the frame drain previously discarded every frame outside a request; it now
+  runs `gp_end_probe` there while `GameEngine_ArmEndWatch(true)` is set (225 integer luma samples,
+  no scratch, reentrant). On 5-of-6 for 2 consecutive frames (~33 ms) it calls
+  `GameTiming_SetEnabled(false)` and gives a binary semaphore. On release it clears the edge but
+  does **not** re-enable — new `GameEngine_WaitEndOfSong` / `GameEngine_EndOfSongSeen` expose it.
+- **`game_controller.c`** — `play_until_done()` arms the watch beside `GameTiming_SetEnabled(true)`,
+  waits on the semaphore instead of `vTaskDelay` (a timeout is the ordinary poll tick), restores the
+  window if its own read still shows the highway (logged as a false alarm), and drops the
+  end-of-run confirm from 3 reads to 1 once the probe has fired. `finish()` disarms before
+  releasing the wire.
+- `user.cmake` gains the new source. No MCC regen, no new peripheral, no new task.
+
+Verified host-side: C matches Python byte-for-byte (anchor level + all 6 contrasts + hit count) on
+all 138 corpus frames; the unit is clean under `-Wall -Wextra -Wconversion -Wsign-conversion`; both
+wired units syntax-check with the real FreeRTOS headers. **Pending Greg's MPLAB build**, and the
+false-positive evidence is still only 6 static gameplay frames plus the slop envelope — the capture
+that would settle it is itemized in the gameplay journal's Open questions.
 
 ### 2026-08-09 — Dashboard ACTUATORS wired to the nodes, with a heartbeat echo closing the loop (pending hardware)
 
