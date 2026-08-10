@@ -157,6 +157,10 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-08-10 | **The firmware amp reader takes its block origin from `gp_probes[]` — `side` *is* the probe index — and the exporter refuses to emit if `AMP2P_BLOCK` and the probe rect disagree.** | The digit grid, the labelled corpus crops and the hand-painted registration mask are all cut against one origin, and the block was already re-registered once. Re-emitting the rect for the reader would create a second definition that a future re-registration could silently desync from the presence probe; sharing it makes that impossible, and the export-time assert turns the remaining hazard (metadata regenerated against a moved origin) into a failed export instead of a reader that quietly points at the wrong pixels. |
+| 2026-08-10 | **`gp_edge` moved to a shared `game/gameplay_cov.h` rather than being copied into the new reader.** | Two readers rounding grid edges differently would diverge *silently* — the coverage grids would still look plausible. This is the C mirror of the host's `covcore.py` extraction, done for the same reason. `gameplay_score.c` keeps its behaviour (verified: both TUs still syntax-check clean and the existing C↔Python cross-checks still pass). |
+| 2026-08-10 | **The firmware port carries no chrome registration and no temporal tracker (v0).** | Registration: every frame measured on both sides locks to (0,0), and the presence probe already fails loudly if the block drifts — the same call the 1p score port made. Tracker: it is an unexercised safety net that filters 0 frames on both reference captures, so porting state plus a fall-confirm latency question buys nothing measurable. Both are additive later without changing `gp_read_amp2p`'s interface. |
+| 2026-08-10 | **The 6-digit layout is ported *with* its `layout_measured` flag rather than refused on device.** | Peak observed is 66 098, so a longer song reaching six digits is realistic, and refusing would drop the score entirely at the moment it matters most. The flag (surfaced in the `GAME:` log as `6-digit pitch EXTRAPOLATED`) keeps the extrapolation visible instead of silently trusted, which is the same bargain the host made. |
 | 2026-08-10 | **Capture sweeps read frames in *frame-number* order, never lexicographic (`evaluate.capture_frames`); and the exported strips are zero-padded to 5 digits.** | `export-region` padded to 4 digits, so on any capture past 9999 frames `…-1001.png` sorts between `…-10009.png` and `…-10010.png`. Both monotonic evals took `sorted(glob("*.png"))`, so they scored a **shuffled** sequence — which is silently self-concealing: the ordering check's own "big drops are song resets" escape hatch absorbed the jumps, and the adjacent-delta list (the check that exists because a misread leading digit reads *higher*, where ordering can't see it) filled with hundreds of impossible values. Sorting on the trailing integer is the real fix and is robust at any width; the wider pad just keeps a plain `ls` or shell glob honest up to 99999. This retro-invalidated two recorded findings — see the 2026-08-10 (correction) session-log entry. |
 | 2026-08-10 | ~~**Some captured gameplay frames hold the amp's *idle* composite, and nothing spatial can reject them — so the reader gets a temporal filter (`Amp2pTracker`).**~~ **WITHDRAWN same day — the "idle composite" frames were early-song frames mis-ordered by the 4-digit filename sort (row above).** `Amp2pTracker` is kept as an unexercised safety net (it filters **0** frames on both real captures), not as a fix for an observed artefact. Its rise-fast/fall-slow rule is still the right shape if a real single-frame dropout ever appears. | Roughly one frame in 11 of the left capture (525 frames) shows score 0, no multiplier, no streak odometer, no star-power pills, and the amp shifted a pixel or two — mid-song, on strictly consecutive frame epochs with no dropped or duplicated records, so it is real captured content and not a decode artefact. Every spatial gate passes it: the digits are a crisp `0` (distance 347, margin 2999), and the **chrome probe scores it *better* than a real gameplay frame** (SAD 4.1–5.9 vs 4.1–13.5) because `amp2p_<side>_ref.png` is itself a score-0 crop — so raising or lowering TAU cannot separate them, and there is no threshold to tune. What does separate them is time: 523 of the 525 are exactly one frame long, while a play's score never falls. Confirming only *falls* means the value marvin acts on gains no latency, and a real song reset (the strip sits at 0 for many frames) still lands. Filters all 527 left / 424 right occurrences. |
 | 2026-08-10 | **6 digits is now read rather than refused: the container width rules out the measured pitch, so `AMP2P_GRID_6` carries the layouts that physically fit, the ink says a 6th digit is present, and the *bank* picks between candidates. The read is flagged `layout_measured=False`.** | Reversal of the 2026-08-09 "report, don't decode" decision, on a measurement that was not available then. The strip's dark container is **49 px** on both sides (`AMP2P_CONTAINER_W`, block-local 11..60 left / 14..63 right, bright bezel immediately left of it), and six cells at the measured pitch 9 need 52 — so pitch 9 is excluded *by measurement*, and pitch 8 is the widest that fits. That turns the guess from "what does the layout look like" into "which of two layouts", which is small enough to decide per frame. Detection is physical, not heuristic: six digits cannot fit at pitch 9, so a 6-digit strip must ink left of the 5-cell grid, and across **22 400 five-digit frames the leftmost inked column is never left of the grid's own first column**. Between candidates the glyph bank decides, because reading a (6,8) strip through 7 px cells drags a neighbouring column into every glyph. Still not measured, hence the flag and the `layout` field: the first real 6-digit capture confirms or corrects the pitch, and only then does it become an `AMP2P_GRID` row. |
@@ -227,8 +231,11 @@ subsampled path costs <1% CPU at 5–10 Hz.
      read.
   4. **The centre face-off gauge** (the tug-of-war meter, roughly `(305,235)-(405,325)`) — a
      separate ROI and its own region slot, unrelated geometry to the amps.
-  5. **Firmware port** — `export_c` amp bank + a `gp_read_amp2p` + the tracker's fall-confirm, as
-     a separate signed-off phase.
+  5. ✅ **Firmware port — done 2026-08-10** (observer + dashboard, score only): `export-c` amp
+     bank, `game/gameplay_amp2p.{h,c}`, `game_state_t.score_p1/p2`, both dashboard cards fed.
+     C cross-checked against the host on the corpus, the screen corpus and the 6-digit synthetic.
+     The tracker's fall-confirm was deliberately **not** ported (see the decision log). Pending
+     Greg's MPLAB build. Still to come on device: 2p multiplier/streak once host readers exist.
   6. **Noise robustness.** The per-cell range is a 2-sample statistic (min/max), so one hot pixel
      can set it. Not worth fixing on current evidence (the pixel-locked streams read with 205+ of
      margin), but it is the first thing to revisit if a noisier rig ever appears — robust
@@ -306,6 +313,54 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-08-10 (port) — the amp score reader is on marvin: observer + both dashboard cards
+
+The last item on the 2-player score list. Scope agreed with Greg: **observer + dashboard, score
+only** (2p multiplier and streak are fresh host work and were not bundled).
+
+**Most of it was already on device**, which is why this is a small change rather than a second
+port: `gp_present` already returns `GP_SCREEN_in_song_2p` (the presence gate the reader
+requires), `gp_probes[1..2].block` already carries the two 76×78 rects, `game_controller.c`
+already had an `in_song_2p` branch with a *"a different WIP"* placeholder, and the dashboard
+already had a **HUMAN card** beside the ROBOT one — score label, art, "HUMAN vs ROBOT"
+subtitle, all built and only ever set to `"0"`. So no MGS Generate and no design-zip edit.
+
+- **`export-c` now emits the amp bank** (20 templates × 70 B = 1400 B + 20 label bytes) as a
+  *flat* `gp_amp2p_tmpl[N][LEN]` plus `gp_amp2p_tmpl_digit[N]` — the 1p score emitter's
+  `[10][LEN]`-indexed-by-digit shape cannot express 2 variants per digit.
+- **`game/gameplay_amp2p.{h,c}`** — pure, FreeRTOS-free, static scratch, mirroring
+  `read_amp2p_score` step for step. `side` is a `gp_probes[]` index, so the block origin has one
+  definition.
+- **The trap worth recording:** `streak_cell_cov_roi` in `gameplay_score.c` crops the ink bbox in
+  *both* axes, and the amp cell must tighten **rows only** — the cell is monospaced, so
+  horizontal position is what separates the glyphs (`1` is a centred bar). Reusing it verbatim
+  would have collapsed `1` into every other narrow glyph, and done it quietly. The amp reader has
+  its own `amp_cell_cov` with that one difference. Likewise `match_cell` had to take the
+  runner-up gap against a *different digit*: with 2 templates per digit, second-best is usually
+  that digit's own other brightness variant, and using it would report a near-zero margin on
+  every correct read and gate the lot.
+- **Wiring:** `game_state_t` gains `score_p1` / `score_p2` / `score_2p_extrapolated` (the 1p
+  `score` field is untouched and stays −1 during a 2p song); the engine reads both sides on
+  `in_song_2p` and logs `GAME: in_song_2p / p1 N p2 N`; the controller's placeholder now feeds
+  marvin's amp → ROBOT card + `final_score` and the human's → HUMAN card, and the run-start reset
+  clears the human score too so a run never opens on the previous game's total.
+
+**Validation — the C is cross-checked against the host, not just compiled.** Extended the
+existing `test_firmware_classify.py` harness (rather than a second driver + build fixture) with
+an `amp2p` mode: **C value == Python value on all 36 labelled corpus frames both sides, on both
+amps of the 5 `in_song_2p` screen-corpus frames, and on the synthetic 6-digit strips** — where it
+also has to report `layout_measured == 0`. The 6-digit synthetic moved to a `relay_six` fixture
+in `conftest.py` so the host test and the cross-check exercise the identical construction.
+Host suite **130 passed**. Both reference captures still sweep clean (0 violations, 0 false
+reads, peaks 58 806 / 66 098).
+
+All five touched TUs pass `xc32-gcc -mprocessor=SAM9X75D2G -fsyntax-only -std=gnu11 -Wall
+-Wextra` with **0 errors and no new warnings**. (`game_engine.c`'s pre-existing
+`unused variable 'subscribed'` is unchanged at HEAD — `configASSERT` compiles out — and was left
+alone.) **Pending Greg's MPLAB build**, then: a 2-player pro face-off should log
+`GAME: in_song_2p / p1 <n> p2 <n>`, climb both cards, and read nothing through the menus, the
+loading screen or the results spread.
 
 ### 2026-08-10 (correction) — the capture sweeps were reading frames out of order; two findings withdrawn
 

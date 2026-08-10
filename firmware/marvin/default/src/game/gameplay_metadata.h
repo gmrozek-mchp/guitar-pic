@@ -422,6 +422,76 @@ static const gp_probe_t gp_probes[GP_N_PROBES] = {
   {{513,172,589,250}, 76, 78, 1370, gp_probe_2pr_mask, gp_probe_2pr_ref},
 };
 
+/* ── 2-player amp score digits (see gameplay/amp2p.py) ──
+   Two amp scoreboards replace the 1p scoring block. Inside each *registered* block
+   (reused from gp_probes[] above, so the origin has one definition) the score is a
+   fixed grid: equal cells at a constant pitch, right-aligned against a fixed edge,
+   unused leading cells unpowered. So there is no ink segmentation — cell positions
+   come from the grid table and each cell is classified independently.
+   Two details carry the accuracy, both proven on ~30k real frames:
+     * the ink threshold is relative to *each cell*, not the band. The LEDs pulse, so
+       a bright glyph blooms ~1px wider; band-wide, the brightest digit sets the range
+       and a dim 9 thins into a 5.
+     * each digit keeps GP_AMP2P_VARIANTS templates (its bloomed and thin renderings)
+       rather than one average, so the bank is indexed by template, not by digit.
+   The font is not segment-decodable: 1 is a centred bar, 4 and 7 carry diagonals —
+   which is also why a cell's coverage bbox tightens ROWS ONLY. The cell is monospaced,
+   so horizontal position inside it separates the glyphs. */
+#define GP_AMP2P_GLYPH_ROWS 10
+#define GP_AMP2P_GLYPH_COLS 7
+#define GP_AMP2P_LEN 70
+#define GP_AMP2P_NTMPL 20        /* flat bank; gp_amp2p_tmpl_digit[] holds the labels */
+#define GP_AMP2P_VARIANTS 2      /* templates per digit (LED brightness phases) */
+#define GP_AMP2P_BAND_Y0 6      /* digit band rows, block-local */
+#define GP_AMP2P_BAND_H 10
+#define GP_AMP2P_CELL_W 7       /* glyph core; the pitch gap is bloom, kept out */
+#define GP_AMP2P_PITCH 9
+#define GP_AMP2P_MAX_CELLS 5    /* measured digit counts; 6 uses gp_amp2p_grid6 */
+#define GP_AMP2P_CONTAINER_W 49  /* dark strip width; 6*pitch would not fit */
+#define GP_AMP2P_SIDE_LEFT GP_PROBE_2PL   /* side == index into gp_probes[] */
+#define GP_AMP2P_SIDE_RIGHT GP_PROBE_2PR
+#define GP_AMP2P_RIGHT_EDGE_L 60 /* block-local, exclusive */
+#define GP_AMP2P_RIGHT_EDGE_R 63
+#define GP_AMP2P_BAND_MAX_W 63  /* widest right edge = every column the reader touches */
+#define GP_AMP2P_INK_NUM 1      /* ink threshold = NUM/DEN of the CELL luma range */
+#define GP_AMP2P_INK_DEN 2
+#define GP_AMP2P_BLANK_CONTRAST 8960  /* cell luma range below this => unpowered cell */
+#define GP_AMP2P_UNK_DIST 2600     /* best L1 above this => cell unreadable */
+#define GP_AMP2P_UNK_MARGIN 200    /* runner-up gap below this => cell ambiguous */
+#define GP_AMP2P_N_GRID6 2      /* 6-digit candidates that fit the container */
+
+/* 6-digit layouts the container admits, widest cell first. The measured pitch is
+   absent by arithmetic, not by choice: 5*9 + 7 > 49. A read on one of these sets
+   layout_measured = 0, because no capture past 99999 has confirmed the pitch. */
+static const uint8_t gp_amp2p_grid6[GP_AMP2P_N_GRID6][2] = {  /* {cell_w, pitch} */
+  {7,8},
+  {6,8},
+};
+
+static const uint8_t gp_amp2p_tmpl[GP_AMP2P_NTMPL][GP_AMP2P_LEN] = {
+  {255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,0,0,0,255,255,255,0,0,0,0,128,219,255,0,0,0,0,255,255,255,0,0,0,0,255,255,255,0,0,0,0,255,255,255,0,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0},
+  {255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,0,0,0,255,255,255,0,0,0,0,0,255,255,0,0,0,0,255,255,255,0,0,0,0,255,255,255,0,0,0,0,0,255,255,0,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,85},
+  {0,0,255,255,0,0,0,0,255,255,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,0,0,0,0,0,0,64,0,0,0,0,0,0,255,0,0,0},
+  {0,0,255,255,0,0,0,0,255,255,255,28,0,0,0,255,255,255,28,0,0,0,57,0,255,0,0,0,0,57,0,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,0,0,0},
+  {255,255,255,255,255,255,255,85,255,255,255,255,255,255,0,0,0,0,0,255,255,0,0,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255},
+  {255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,0,0,0,0,255,255,0,0,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,255,255,255,255,255,0,255,255,255,255,255,255,0},
+  {255,255,255,255,255,255,0,255,255,255,255,255,255,0,0,0,0,0,0,255,0,0,0,0,0,0,0,0,0,255,255,255,255,255,255,0,255,255,255,255,255,255,0,0,0,0,0,255,0,0,0,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0},
+  {255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,0,0,0,0,36,255,0,0,0,0,0,55,255,0,255,255,255,255,255,255,0,255,255,255,255,255,255,0,0,0,0,0,36,255,0,0,0,0,0,55,255,255,255,255,255,255,255,255,255,255,255,255,255,255,182},
+  {0,0,0,0,255,255,0,0,0,0,0,255,255,0,0,0,139,255,0,70,0,0,0,255,0,0,0,0,0,255,255,0,0,185,0,255,255,0,0,0,255,139,255,255,0,0,0,255,139,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,0,0,0,0,255,0},
+  {0,0,0,0,255,255,0,0,0,0,0,255,255,255,0,0,0,255,0,0,255,0,0,255,0,0,0,255,0,255,255,0,0,0,255,255,255,0,0,0,255,255,255,255,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,0,0,0,0,255,170},
+  {255,255,255,255,255,255,0,255,255,255,255,255,255,0,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,177},
+  {255,255,255,255,255,255,0,255,255,255,255,255,255,0,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,0,0,0,0,255,255,0,0,0,0,0,255,204,255,255,255,255,255,255,102,255,255,255,255,255,255,0},
+  {255,255,255,255,255,0,0,255,255,255,255,255,0,0,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,255,255,255,255,255,219,255,255,255,255,255,255,255,255,0,0,0,0,255,255,255,0,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,36},
+  {255,255,255,255,255,191,0,255,255,255,255,255,0,0,255,0,0,0,0,0,0,255,0,0,0,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,0,0,0,0,255,255,0,0,0,0,64,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255},
+  {255,255,255,255,255,255,0,255,255,255,255,255,255,255,0,0,0,0,191,255,0,0,0,0,0,255,255,0,0,0,0,191,255,0,0,0,0,0,255,0,0,0,0,0,255,255,0,0,0,0,255,255,0,0,0,0,0,255,255,0,0,0,0,0,255,0,0,0,0,0},
+  {255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,0,0,0,0,255,26,0,0,0,0,255,255,0,0,0,0,0,255,51,0,0,0,0,255,0,0,0,0,0,255,255,0,0,0,0,128,255,0,0,0,0,0,255,255,0,0,0,0,0,255,0,0,0,0,0},
+  {0,255,255,255,255,255,0,0,255,255,255,255,255,85,0,255,0,0,0,255,0,255,255,0,0,0,255,85,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,0,0,0,0,255,255,0,0,0,0,0,85,255,255,255,255,255,255,255,255,255,255,255,255,255,85},
+  {0,255,255,255,255,255,0,198,255,255,255,255,255,0,85,255,0,0,0,255,0,255,255,0,0,0,255,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,0,0,0,142,28,255,0,0,0,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,0},
+  {255,255,255,255,255,255,128,255,255,255,255,255,255,255,255,0,0,0,0,255,255,255,0,0,0,0,255,223,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,0,0,0,0,191,128,0,0,0,0,0,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0},
+  {255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,0,0,0,0,255,255,0,0,0,0,32,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,0,0,0,0,0,0,255,0,0,0,0,0,159,255,255,255,255,255,255,255,255,255,255,255,255,255,255,128}
+};
+static const uint8_t gp_amp2p_tmpl_digit[GP_AMP2P_NTMPL] = {0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9};
+
 /* ── P1 READY! badge on guitar_select_2p (see gameplay/ready.py) ──
    Select Guitar advances only when BOTH sides confirm, so "the screen did not change"
    cannot distinguish "my GREEN failed" from "the human has not confirmed yet". P1's red

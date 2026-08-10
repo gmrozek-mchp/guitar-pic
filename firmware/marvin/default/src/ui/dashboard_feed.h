@@ -43,7 +43,8 @@ typedef enum
     DASH_EVT_SELECTION,  /* no payload — consumer reads GameSelection_Get()       */
     DASH_EVT_STATUS,     /* u.text — game-controller status line              */
     DASH_EVT_PLAYTIME,   /* u.play_ms — elapsed play time, scaled to bar fill */
-    DASH_EVT_SCORE,      /* u.score      (future)                             */
+    DASH_EVT_SCORE,      /* u.score — marvin's own (ROBOT card)               */
+    DASH_EVT_HUMAN_SCORE,/* u.score — the opponent's, 2p only (HUMAN card)    */
     DASH_EVT_MULTIPLIER, /* u.mult       (future)                             */
     DASH_EVT_STREAK,     /* u.streak     (future)                             */
     DASH_EVT_VIDEO,      /* u.on — HEO is (not) covering the video card       */
@@ -87,6 +88,9 @@ void DashboardFeed_PostSelection(void);
 void DashboardFeed_PostStatus(const char *text);
 void DashboardFeed_PostPlaytime(uint32_t elapsed_ms);
 void DashboardFeed_PostScore(uint32_t score);
+/* 2-player only: the opponent's amp scoreboard. Sampled telemetry like the rest,
+ * so drop-on-full is correct — a lost sample is superseded by the next read. */
+void DashboardFeed_PostHumanScore(uint32_t score);
 void DashboardFeed_PostMultiplier(uint16_t mult);
 void DashboardFeed_PostStreak(uint16_t streak);
 

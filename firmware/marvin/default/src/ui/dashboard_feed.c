@@ -108,6 +108,12 @@ void DashboardFeed_PostScore(uint32_t score)
     post(&e);
 }
 
+void DashboardFeed_PostHumanScore(uint32_t score)
+{
+    dashboard_evt_t e = { .type = DASH_EVT_HUMAN_SCORE, .u.score = score };
+    post(&e);
+}
+
 void DashboardFeed_PostMultiplier(uint16_t mult)
 {
     dashboard_evt_t e = { .type = DASH_EVT_MULTIPLIER, .u.mult = mult };
@@ -173,6 +179,7 @@ static void dashboard_task(void *param)
         if (s_have[DASH_EVT_STATUS])    { ScreenDashboard_ApplyStatus(s_latest[DASH_EVT_STATUS].u.text); }
         if (s_have[DASH_EVT_PLAYTIME])  { ScreenDashboard_ApplyPlaytime(s_latest[DASH_EVT_PLAYTIME].u.play_ms); }
         if (s_have[DASH_EVT_SCORE])     { ScreenDashboard_ApplyScore(s_latest[DASH_EVT_SCORE].u.score); }
+        if (s_have[DASH_EVT_HUMAN_SCORE]) { ScreenDashboard_ApplyHumanScore(s_latest[DASH_EVT_HUMAN_SCORE].u.score); }
         if (s_have[DASH_EVT_MULTIPLIER]) { ScreenDashboard_ApplyMultiplier(s_latest[DASH_EVT_MULTIPLIER].u.mult); }
         if (s_have[DASH_EVT_STREAK])    { ScreenDashboard_ApplyStreak(s_latest[DASH_EVT_STREAK].u.streak); }
         if (s_have[DASH_EVT_FRET])      { ScreenDashboard_ApplyFret(s_latest[DASH_EVT_FRET].u.fret_mask); }

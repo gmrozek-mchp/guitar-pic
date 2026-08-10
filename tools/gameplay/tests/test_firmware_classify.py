@@ -37,6 +37,7 @@ _DRIVER_C = r"""
 #include "game/gameplay_select.h"
 #include "game/gameplay_score.h"
 #include "game/gameplay_present.h"
+#include "game/gameplay_amp2p.h"
 #include "game/gameplay_metadata.h"
 int main(int argc, char **argv) {
     if (argc < 5) return 2;
@@ -69,6 +70,11 @@ int main(int argc, char **argv) {
         int32_t sad = 0;
         int r = gp_ready_p1_present(buf, w, h, &sad);
         printf("%d %d\n", r, (int)sad);
+    } else if (strcmp(mode, "amp2p") == 0) {
+        gp_amp2p_t a;
+        gp_read_amp2p(buf, w, h, (uint8_t)atoi(argv[5]), &a);
+        printf("%d %d %d %d %d\n", (int)a.value, (int)a.ncells,
+               (int)a.layout_measured, (int)a.layout_w, (int)a.layout_pitch);
     } else if (strcmp(mode, "mult") == 0) {
         printf("%d\n", gp_read_multiplier(buf, w, h));
     } else if (strcmp(mode, "streak") == 0) {
@@ -101,6 +107,7 @@ def driver(tmp_path_factory):
          str(_FW_SRC / "game" / "gameplay_select.c"),
          str(_FW_SRC / "game" / "gameplay_score.c"),
          str(_FW_SRC / "game" / "gameplay_present.c"),
+         str(_FW_SRC / "game" / "gameplay_amp2p.c"),
          "-lm", "-o", str(exe)],
         capture_output=True, text=True,
     )
@@ -280,3 +287,94 @@ def test_c_ready_badge_matches_python(driver, tmp_path):
         c_ready, c_sad = int(out[0]), int(out[1]) / 1000.0
         assert c_ready == int(py_ready), f"{f.name}: C={c_ready} Python={int(py_ready)}"
         assert abs(c_sad - py_sad) < 0.5, f"{f.name}: C sad={c_sad:.2f} Python={py_sad:.2f}"
+
+
+# ─── 2-player amp score reader ────────────────────────────────────────────────
+#
+# The firmware reader must reproduce the host's *values*, not merely be close: the
+# host is what was validated on ~30 000 real frames, so any divergence is a port bug.
+# One trap is checked implicitly by the corpus pass below — the amp cell's coverage
+# bbox tightens rows only, and column-cropping it (as the odometer cells legitimately
+# do) collapses `1` into every other narrow glyph.
+
+_AMP_SIDE = {"left": "1", "right": "2"}   # GP_AMP2P_SIDE_* == index into gp_probes[]
+
+
+def _c_amp2p(driver, image, tmp_path, side):
+    """(value, ncells, layout_measured, cell_w, pitch) from the C reader."""
+    import numpy as np
+
+    full = np.ascontiguousarray(_amp2p._ensure_full_frame(image, side))
+    out = _c_run(driver, full, tmp_path, "amp2p", _AMP_SIDE[side]).split()
+    return tuple(int(v) for v in out)
+
+
+def _amp_skip():
+    stale = _amp2p.mask_origin_mismatch()
+    if stale is not None:
+        return stale
+    from gameplay.corpus import load_amp2p_corpus
+    if not load_amp2p_corpus():
+        return "no 2p amp digit corpus"
+    return None
+
+
+@pytest.mark.skipif(_amp_skip() is not None, reason=_amp_skip() or "")
+def test_c_amp2p_matches_python_on_the_corpus(driver, tmp_path):
+    """gp_read_amp2p == amp2p.read_amp2p_score on every labelled frame, both sides."""
+    from gameplay.corpus import load_amp2p_corpus
+    from gameplay.metadata import amp2p_score_from_filename
+
+    samples = load_amp2p_corpus()
+    bank = _amp2p.build_amp2p_bank(samples)
+    for s in samples:
+        side, value = amp2p_score_from_filename(s.path.name)
+        py = _amp2p.read_amp2p_score(s.image, bank, _amp2p.AmpCalibration(side=side), side)
+        c_val, c_n, c_meas, _cw, _pitch = _c_amp2p(driver, s.image, tmp_path, side)
+        assert c_val == py.value == value, f"{s.path.name}: C={c_val} Python={py.value}"
+        assert c_n == py.n_cells and c_meas == 1
+
+
+@pytest.mark.skipif(_amp_skip() is not None, reason=_amp_skip() or "")
+def test_c_amp2p_matches_python_on_the_screen_corpus(driver, tmp_path):
+    """Same, on the 2p screen corpus — frames the digit bank never trained on."""
+    from gameplay.corpus import corpus_dir, load_amp2p_corpus, load_bgr
+
+    bank = _amp2p.build_amp2p_bank(load_amp2p_corpus())
+    frames = sorted(corpus_dir().glob("in_song_2p__*.png"))
+    assert frames, "no in_song_2p corpus frames"
+    for f in frames:
+        img = load_bgr(f)
+        for side in _amp2p.SIDES:
+            cal = _amp2p.calibrate(side, [img], _amp2p.build_reference(side), search=4)
+            py = _amp2p.read_amp2p_score(img, bank, cal, side)
+            if (cal.dx, cal.dy) != (0, 0):
+                continue   # the C reader has no registration in v0 (see its header)
+            c_val = _c_amp2p(driver, img, tmp_path, side)[0]
+            expect = -1 if py.value is None else py.value
+            assert c_val == expect, f"{f.name} {side}: C={c_val} Python={py.value}"
+
+
+@pytest.mark.skipif(_amp_skip() is not None, reason=_amp_skip() or "")
+def test_c_amp2p_reads_six_digits_and_flags_the_extrapolation(driver, tmp_path, relay_six):
+    """The C side must also read a 6-digit strip *and* report the pitch as a guess.
+
+    Reuses the host's re-lay helper, so the glyphs are real LED renderings at real
+    brightness and only their positions are synthetic — the unmeasured part.
+    """
+    from gameplay.corpus import load_amp2p_corpus
+    from gameplay.metadata import amp2p_score_from_filename
+
+    samples = load_amp2p_corpus()
+    bank = _amp2p.build_amp2p_bank(samples)
+    wide = [s for s in samples if len(str(amp2p_score_from_filename(s.path.name)[1])) == 5]
+    assert wide, "no 5-digit corpus frame to re-lay"
+    for s in wide[:4]:
+        side, value = amp2p_score_from_filename(s.path.name)
+        block, expected = relay_six(s.image, side, value, (7, 8))
+        py = _amp2p.read_amp2p_score(block, bank, _amp2p.AmpCalibration(side=side), side)
+        assert py.value == expected, f"host: {py.value} != {expected}"
+        c_val, c_n, c_meas, c_w, c_pitch = _c_amp2p(driver, block, tmp_path, side)
+        assert c_val == expected, f"{s.path.name} {side}: C={c_val} Python={expected}"
+        assert c_n == 6 and (c_w, c_pitch) == (7, 8)
+        assert c_meas == 0, "an extrapolated layout must not claim to be measured"

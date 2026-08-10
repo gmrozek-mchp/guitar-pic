@@ -577,20 +577,15 @@ def read_amp2p_score(
 
 # ─── temporal filter ──────────────────────────────────────────────────────────
 #
-# Some captured frames hold the amp's *idle* composite — score 0, no multiplier, no
-# streak odometer, no star-power pills, and the amp itself a pixel or two off — in
-# the middle of a song. They are single frames (523 of 525 in the left capture are
-# one frame long; the right capture has none), and every gate upstream passes them:
-# the digits are a crisp `0`, so the match gates see distance 347 with 2999 of
-# margin, and the chrome probe scores them *better* than a real gameplay frame
-# (SAD 4.1-5.9 against 4.1-13.5) because the committed reference is itself a
-# score-0 crop. So neither the glyph matcher nor presence can reject them — only
-# time can.
+# An unexercised safety net, kept for its shape rather than for a defect it fixes:
+# it filters **0** frames on both reference captures. It exists because a play's
+# score never falls, so a rise can be accepted at once — no latency on the value
+# marvin acts on — while a fall has to repeat before it counts. That would suppress
+# an isolated bad frame, and a real song reset still lands trivially (the strip sits
+# at 0 for many frames).
 #
-# The lever is that a play's score never falls. A rise is accepted at once, so
-# tracking adds no latency to the value marvin actually cares about; a fall has to
-# repeat before it counts, which an isolated frame cannot do and a real song reset
-# does trivially (the strip sits at 0 for many frames).
+# It is deliberately NOT ported to firmware; see gameplay_amp2p.c. If a real
+# single-frame dropout ever turns up, this is the right mechanism for it.
 
 AMP2P_FALL_CONFIRM = 3  # consecutive equal reads needed to accept a *decrease*
 

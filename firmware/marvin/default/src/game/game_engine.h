@@ -32,6 +32,12 @@ typedef struct
     uint8_t  multiplier;    /* in-song score multiplier 1..4, or 0 (not in_song) */
     uint16_t streak;        /* in-song note streak (monotonic tracker), 0 = not shown / <~25 */
     int8_t   ready_p1;      /* guitar_select_2p: P1's READY! badge — 1 shown, 0 not, -1 n/a */
+    /* in_song_2p only: the two amp scoreboards, -1 when not read. P1 is marvin's side
+     * (it drives the left highway only), P2 the human's. Separate from `score` above,
+     * which is the 1p scoring block and reads -1 during a 2-player song. */
+    int32_t  score_p1;
+    int32_t  score_p2;
+    uint8_t  score_2p_extrapolated; /* 1 = a 6-digit read on an unmeasured pitch */
 } game_state_t;
 
 /* Brings up the game-state bus queue and the observer task. The observer

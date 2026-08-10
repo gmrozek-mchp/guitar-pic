@@ -1411,6 +1411,15 @@ void ScreenDashboard_ApplyScore(uint32_t score)
     set_dyn(DYN_R_SCORE, tmp);
 }
 
+/* CV-read 2-player opponent score → the HUMAN card's score. Only a 2-player song
+ * feeds this; a 1-player run leaves it at its reset value. */
+void ScreenDashboard_ApplyHumanScore(uint32_t score)
+{
+    char tmp[12];
+    (void)snprintf(tmp, sizeof tmp, "%lu", (unsigned long)score);
+    set_dyn(DYN_H_SCORE, tmp);
+}
+
 /* CV-read GH3 note streak → the ROBOT card's streak value + bar. 0 means the odometer
  * isn't shown yet (streak < ~25) or the run reset; shown as "0" (not blank) so the
  * label repaints — setting an empty string does not clear the prior glyphs. */

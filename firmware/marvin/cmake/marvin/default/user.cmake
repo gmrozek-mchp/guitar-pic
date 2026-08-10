@@ -12,6 +12,7 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/gameplay_present.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/gameplay_select.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/gameplay_score.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/gameplay_amp2p.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/game_selection.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/game_controller.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/game_timing.c"

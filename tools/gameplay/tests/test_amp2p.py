@@ -215,28 +215,6 @@ def test_non_right_aligned_lit_pattern_is_flagged(amp2p_corpus, bank, calib):
     assert r.value is None and r.layout_unknown, f"got {r.value} ({r.reason})"
 
 
-def _relay_six(image, side, value, layout):
-    """Re-lay a labelled 5-digit block as a 6-digit strip at `layout`.
-
-    Returns `(block, expected_value)`. The 6th digit is a copy of the value's own
-    leading glyph, so the cells are real LED renderings at real brightness — only
-    their *positions* are synthetic, which is exactly the unmeasured part. The
-    container is cleared by tiling its own leftmost column, so the panel behind the
-    digits stays real too.
-    """
-    block = image.copy()
-    rows = slice(AMP2P_BAND_Y0, AMP2P_BAND_Y0 + AMP2P_BAND_H)
-    src = amp2p.cell_bounds(side, 5)
-    dst = amp2p.cell_bounds(side, 6, layout)
-    cx0, cx1 = amp2p.container_span(side)
-    block[rows, cx0:cx1] = np.repeat(block[rows, cx0:cx0 + 1], cx1 - cx0, axis=1)
-    w = layout[0]
-    for k, (sx0, sx1) in enumerate([src[0]] + src):
-        glyph = image[rows, sx0:sx0 + min(w, sx1 - sx0)]
-        block[rows, dst[k][0]:dst[k][0] + glyph.shape[1]] = glyph
-    return block, int(str(value)[0] + str(value))
-
-
 def test_the_six_digit_trigger_never_fires_on_a_measured_layout(amp2p_corpus):
     """Nothing inks left of the 5-cell grid until a 6th digit appears.
 
@@ -250,13 +228,13 @@ def test_the_six_digit_trigger_never_fires_on_a_measured_layout(amp2p_corpus):
         assert not amp2p.has_sixth_digit(band, side), s.path.name
 
 
-def test_reads_a_six_digit_strip_and_flags_the_extrapolated_layout(amp2p_corpus, bank, calib):
+def test_reads_a_six_digit_strip_and_flags_the_extrapolated_layout(amp2p_corpus, bank, calib, relay_six):
     """A 6-digit strip at the predicted pitch reads, and says the pitch is a guess."""
     wide = [s for s in amp2p_corpus if len(str(amp2p_score_from_filename(s.path.name)[1])) == 5]
     assert wide, "no 5-digit corpus frame to re-lay"
     for s in wide[:6]:
         side, value = amp2p_score_from_filename(s.path.name)
-        block, expected = _relay_six(s.image, side, value, (7, 8))
+        block, expected = relay_six(s.image, side, value, (7, 8))
         r = amp2p.read_amp2p_score(block, bank, calib[side], side)
         assert r.value == expected, f"{s.path.name}: got {r.value} ({r.reason})"
         assert r.n_cells == 6 and r.layout == (7, 8)

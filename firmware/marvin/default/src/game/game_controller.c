@@ -569,9 +569,18 @@ static void play_until_done(void)
             }
             else if (gs.screen == GP_SCREEN_in_song_2p)
             {
-                /* 2p: only the left-highway note detection runs; the 1p score/
-                 * multiplier/streak scoreboard readers don't apply (2p uses the
-                 * separate amp scoreboards — a different WIP). Stay in the loop. */
+                /* 2p: the two amp scoreboards replace the 1p block, so the score comes
+                 * from those instead. Marvin is P1 (it drives the left highway only),
+                 * so its amp feeds the ROBOT card and `final_score`, and the human's
+                 * feeds the HUMAN card. Multiplier and streak are visible in the amp
+                 * block but have no 2p reader yet, so those rows hold their reset
+                 * values rather than showing a 1p read that doesn't apply here. */
+                if (gs.score_p1 >= 0)
+                {
+                    final_score = (uint32_t)gs.score_p1;
+                    DashboardFeed_PostScore(final_score);
+                }
+                if (gs.score_p2 >= 0) { DashboardFeed_PostHumanScore((uint32_t)gs.score_p2); }
             }
             else if (gs.screen != GP_SCREEN_loading && gs.screen != GP_SCREEN_UNKNOWN)
             {
@@ -719,9 +728,12 @@ static void run(void)
         FretboardLink_UpdateArm();
     }
 
-    /* Clear the ROBOT telemetry the instant a run is requested — score/multiplier/
-     * streak zero out on Play, without waiting to navigate into gameplay. */
+    /* Clear the telemetry the instant a run is requested — score/multiplier/streak
+     * zero out on Play, without waiting to navigate into gameplay. The HUMAN score
+     * clears with them so a 2-player run never opens showing the previous game's
+     * opponent total (only a 2-player song ever writes it). */
     DashboardFeed_PostScore(0u);
+    DashboardFeed_PostHumanScore(0u);
     DashboardFeed_PostMultiplier(1u);
     DashboardFeed_PostStreak(0u);
 

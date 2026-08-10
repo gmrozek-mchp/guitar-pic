@@ -2,6 +2,7 @@
 #include "game/gameplay_classify.h"
 #include "game/gameplay_present.h"
 #include "game/gameplay_select.h"
+#include "game/gameplay_amp2p.h"
 #include "game/gameplay_score.h"
 #include "game/gameplay_metadata.h"
 
@@ -146,6 +147,8 @@ static void game_task(void *param)
         int32_t score = -1;
         uint8_t multiplier = 0;
         uint16_t streak = 0;
+        int32_t score_p1 = -1, score_p2 = -1;
+        uint8_t score_2p_extrap = 0;
         if (screen == GP_SCREEN_in_song)
         {
             gp_score_t sc;
@@ -153,6 +156,25 @@ static void game_task(void *param)
             multiplier = (uint8_t)gp_read_multiplier(buf, w, h);
             gp_streak_raw_t sr;
             if (gp_read_streak(buf, w, h, &sr) == 0) { streak = gp_streak_track(&s_streak, &sr); }
+        }
+        else if (screen == GP_SCREEN_in_song_2p)
+        {
+            /* Two amp scoreboards instead of the 1p block: read each side. The 1p
+             * score/multiplier/streak readers do not apply here and stay at their
+             * sentinels. gp_present has already confirmed the amps are on screen,
+             * which the reader requires (it has no presence notion of its own). */
+            gp_amp2p_t a;
+            if (gp_read_amp2p(buf, w, h, GP_AMP2P_SIDE_LEFT, &a) == 0)
+            {
+                score_p1 = a.value;
+                if (!a.layout_measured) { score_2p_extrap = 1u; }
+            }
+            if (gp_read_amp2p(buf, w, h, GP_AMP2P_SIDE_RIGHT, &a) == 0)
+            {
+                score_p2 = a.value;
+                if (!a.layout_measured) { score_2p_extrap = 1u; }
+            }
+            gp_streak_reset(&s_streak);
         }
         else
         {
@@ -180,6 +202,9 @@ static void game_task(void *param)
         ev.multiplier   = multiplier;
         ev.streak       = streak;
         ev.ready_p1     = ready_p1;
+        ev.score_p1     = score_p1;
+        ev.score_p2     = score_p2;
+        ev.score_2p_extrapolated = score_2p_extrap;
 
         /* Answer the requester first (clear pending before the send so a follow-up
          * Observe that wakes on the response can't have its new request cleared). */
@@ -207,6 +232,12 @@ static void game_task(void *param)
             {
                 LOG_INFO("GAME: %s / score %ld x%u streak%u\r\n",
                          screen_name(screen), (long)score, (unsigned)multiplier, (unsigned)streak);
+            }
+            else if (screen == GP_SCREEN_in_song_2p)  /* "in_song_2p / p1 N p2 N" */
+            {
+                LOG_INFO("GAME: %s / p1 %ld p2 %ld%s\r\n",
+                         screen_name(screen), (long)score_p1, (long)score_p2,
+                         score_2p_extrap ? " (6-digit pitch EXTRAPOLATED)" : "");
             }
             else
             {

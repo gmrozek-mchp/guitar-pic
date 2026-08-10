@@ -1,4 +1,5 @@
 #include "game/gameplay_score.h"
+#include "game/gameplay_cov.h"
 #include "game/gameplay_metadata.h"
 
 #include <stddef.h>
@@ -7,15 +8,6 @@
 
 #define GP_BPP             3
 #define GP_SCORE_MAX_RUNS  16   /* raw runs before filtering (>= any digit count) */
-
-/* Split [0, extent) into `n` spans; edge(i) = round(i*extent/n), half-up, in pure
- * integer (matches score.py _edge). The whole coverage pipeline is integer so it
- * reproduces the host prototype bit-for-bit — float would differ by rounding mode
- * and float32/64, and this core also runs on the FPU-less ARM926. */
-static int gp_edge(int i, int extent, int n)
-{
-    return (2 * i * extent + n) / (2 * n);
-}
 
 /* Digit-band scratch (one mode's band), row-major. */
 static uint8_t  s_ink[GP_SCORE_BAND_MAX_H * GP_SCORE_BAND_MAX_W];  /* 1 = pixel above ink threshold */

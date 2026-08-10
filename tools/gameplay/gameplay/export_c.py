@@ -21,12 +21,28 @@ from __future__ import annotations
 import numpy as np
 
 from .classifier import build_templates
-from .corpus import Sample, load_corpus, load_score_corpus
+from .corpus import Sample, load_amp2p_corpus, load_corpus, load_score_corpus
 from .evaluate import labelled_fps, recommend_thresholds
 from .fingerprint import CANONICAL_H, CANONICAL_W, FingerprintConfig
 from .highlight import build_selection_calibration
 from .corpus import load_streak_corpus
+from .amp2p import build_amp2p_bank
 from .metadata import (
+    AMP2P_BAND_H,
+    AMP2P_BAND_Y0,
+    AMP2P_BLANK_CONTRAST,
+    AMP2P_BLOCK,
+    AMP2P_CONTAINER_W,
+    AMP2P_GLYPH_COLS,
+    AMP2P_GLYPH_ROWS,
+    AMP2P_GRID,
+    AMP2P_GRID_6,
+    AMP2P_INK_DEN,
+    AMP2P_INK_NUM,
+    AMP2P_RIGHT_EDGE,
+    AMP2P_UNK_DIST,
+    AMP2P_UNK_MARGIN,
+    AMP2P_VARIANTS,
     HORIZONTAL,
     MENU_LAYOUTS,
     SCORE_DIGIT_BAND,
@@ -353,6 +369,87 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
         w("  {{%d,%d,%d,%d}, %d, %d, %d, gp_probe_%s_mask, gp_probe_%s_ref},"
           % (x0, y0, x1, y1, x1 - x0, y1 - y0, p.npix, ident.lower(), ident.lower()))
     w("};")
+    w("")
+
+    # ── 2-player amp score digits (fixed grid inside each registered amp block) ──
+    #
+    # The block rect is NOT re-emitted: the reader indexes gp_probes[] above, so the
+    # presence probe and the digit grid can never disagree about where the amp is.
+    # The labelled corpus and the registration masks are both cut against one origin,
+    # so a divergence here is the failure mode worth failing the export over.
+    for side, probe_key in (("left", "2pL"), ("right", "2pR")):
+        if tuple(probes[probe_key].block) != tuple(AMP2P_BLOCK[side]):
+            raise ValueError(
+                f"amp2p {side}: AMP2P_BLOCK {tuple(AMP2P_BLOCK[side])} != presence-probe block "
+                f"{tuple(probes[probe_key].block)}. The digit grid, the corpus crops and the "
+                f"registration mask are all cut against one origin — re-register, don't paper over."
+            )
+    w("/* ── 2-player amp score digits (see gameplay/amp2p.py) ──")
+    w("   Two amp scoreboards replace the 1p scoring block. Inside each *registered* block")
+    w("   (reused from gp_probes[] above, so the origin has one definition) the score is a")
+    w("   fixed grid: equal cells at a constant pitch, right-aligned against a fixed edge,")
+    w("   unused leading cells unpowered. So there is no ink segmentation — cell positions")
+    w("   come from the grid table and each cell is classified independently.")
+    w("   Two details carry the accuracy, both proven on ~30k real frames:")
+    w("     * the ink threshold is relative to *each cell*, not the band. The LEDs pulse, so")
+    w("       a bright glyph blooms ~1px wider; band-wide, the brightest digit sets the range")
+    w("       and a dim 9 thins into a 5.")
+    w("     * each digit keeps GP_AMP2P_VARIANTS templates (its bloomed and thin renderings)")
+    w("       rather than one average, so the bank is indexed by template, not by digit.")
+    w("   The font is not segment-decodable: 1 is a centred bar, 4 and 7 carry diagonals —")
+    w("   which is also why a cell's coverage bbox tightens ROWS ONLY. The cell is monospaced,")
+    w("   so horizontal position inside it separates the glyphs. */")
+    acat = build_amp2p_bank(load_amp2p_corpus())
+    amp_len = AMP2P_GLYPH_ROWS * AMP2P_GLYPH_COLS
+    cell_w, pitch = AMP2P_GRID[max(AMP2P_GRID)]
+    if any((w_, p_) != (cell_w, pitch) for w_, p_ in AMP2P_GRID.values()):
+        raise ValueError(f"amp2p grid is not uniform across digit counts: {AMP2P_GRID}")
+    w("#define GP_AMP2P_GLYPH_ROWS %d" % AMP2P_GLYPH_ROWS)
+    w("#define GP_AMP2P_GLYPH_COLS %d" % AMP2P_GLYPH_COLS)
+    w("#define GP_AMP2P_LEN %d" % amp_len)
+    w("#define GP_AMP2P_NTMPL %d        /* flat bank; gp_amp2p_tmpl_digit[] holds the labels */"
+      % len(acat.templates))
+    w("#define GP_AMP2P_VARIANTS %d      /* templates per digit (LED brightness phases) */"
+      % AMP2P_VARIANTS)
+    w("#define GP_AMP2P_BAND_Y0 %d      /* digit band rows, block-local */" % AMP2P_BAND_Y0)
+    w("#define GP_AMP2P_BAND_H %d" % AMP2P_BAND_H)
+    w("#define GP_AMP2P_CELL_W %d       /* glyph core; the pitch gap is bloom, kept out */" % cell_w)
+    w("#define GP_AMP2P_PITCH %d" % pitch)
+    w("#define GP_AMP2P_MAX_CELLS %d    /* measured digit counts; 6 uses gp_amp2p_grid6 */"
+      % max(AMP2P_GRID))
+    w("#define GP_AMP2P_CONTAINER_W %d  /* dark strip width; 6*pitch would not fit */"
+      % AMP2P_CONTAINER_W)
+    w("#define GP_AMP2P_SIDE_LEFT GP_PROBE_2PL   /* side == index into gp_probes[] */")
+    w("#define GP_AMP2P_SIDE_RIGHT GP_PROBE_2PR")
+    w("#define GP_AMP2P_RIGHT_EDGE_L %d /* block-local, exclusive */" % AMP2P_RIGHT_EDGE["left"])
+    w("#define GP_AMP2P_RIGHT_EDGE_R %d" % AMP2P_RIGHT_EDGE["right"])
+    w("#define GP_AMP2P_BAND_MAX_W %d  /* widest right edge = every column the reader touches */"
+      % max(AMP2P_RIGHT_EDGE.values()))
+    w("#define GP_AMP2P_INK_NUM %d      /* ink threshold = NUM/DEN of the CELL luma range */"
+      % AMP2P_INK_NUM)
+    w("#define GP_AMP2P_INK_DEN %d" % AMP2P_INK_DEN)
+    w("#define GP_AMP2P_BLANK_CONTRAST %d  /* cell luma range below this => unpowered cell */"
+      % AMP2P_BLANK_CONTRAST)
+    w("#define GP_AMP2P_UNK_DIST %d     /* best L1 above this => cell unreadable */" % AMP2P_UNK_DIST)
+    w("#define GP_AMP2P_UNK_MARGIN %d    /* runner-up gap below this => cell ambiguous */"
+      % AMP2P_UNK_MARGIN)
+    w("#define GP_AMP2P_N_GRID6 %d      /* 6-digit candidates that fit the container */"
+      % len(AMP2P_GRID_6))
+    w("")
+    w("/* 6-digit layouts the container admits, widest cell first. The measured pitch is")
+    w("   absent by arithmetic, not by choice: 5*%d + %d > %d. A read on one of these sets"
+      % (pitch, cell_w, AMP2P_CONTAINER_W))
+    w("   layout_measured = 0, because no capture past 99999 has confirmed the pitch. */")
+    w("static const uint8_t gp_amp2p_grid6[GP_AMP2P_N_GRID6][2] = {  /* {cell_w, pitch} */")
+    for cw, pt in AMP2P_GRID_6:
+        w("  {%d,%d}," % (cw, pt))
+    w("};")
+    w("")
+    w("static const uint8_t gp_amp2p_tmpl[GP_AMP2P_NTMPL][GP_AMP2P_LEN] = {")
+    w(_u8_rows(np.stack([t.vec for t in acat.templates])))
+    w("};")
+    w("static const uint8_t gp_amp2p_tmpl_digit[GP_AMP2P_NTMPL] = {%s};"
+      % ",".join(str(int(t.digit)) for t in acat.templates))
     w("")
 
     # ── guitar_select_2p: P1's READY! badge ─────────────────────────────────
