@@ -203,9 +203,17 @@ the Wiimote is seated in the guitar (camera blocked) — use the analog stick th
 | 1 | y | `0..255` → `0..1`, `0` = top edge |
 | 2 | flags | `bit0` `MF_PTR_VISIBLE` (`0` = pointer off / off-screen), `bit1`–`7` reserved |
 
-Console: `fauxmote pointer <x> <y>` / `fauxmote pointer off`.
+Console: `fauxmote pointer <x> <y>` / `fauxmote pointer off` — the raw, uncalibrated probe.
 
 Default when the slice is stale/absent: **off** (pointer off-screen).
+
+**Producer.** marvin's wiimotes/manual-override screen: a touch on its live-video rect maps
+to a position in this slice and latches there. The map needs calibrating, because the Wii
+turns fauxmote's synthesized dots into a cursor using console-side settings marvin cannot
+read — a per-axis affine solved by `fauxmote calib` (two commanded points, the operator
+touches the cursor at each) and persisted in marvin's QSPI settings. See
+`net/fauxmote/fauxmote_pointer.h`. Nothing on the wire changes: fauxmote still receives
+plain 0..255 positions and knows nothing about the calibration.
 
 ### 5.3 `LINK_CMD` (m→f, 1 byte) — Bluetooth link management
 

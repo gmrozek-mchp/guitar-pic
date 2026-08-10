@@ -9,7 +9,7 @@
 #include "definitions.h"
 #include "log.h"
 
-#define SETTINGS_VERSION         3u
+#define SETTINGS_VERSION         4u
 #define SETTINGS_DEFAULT_BL      50u    /* default boot brightness % (no record yet) */
 
 #define SETTINGS_MAGIC           0x4D565354u   /* 'M''V''S''T' */
@@ -44,7 +44,9 @@ static void set_defaults(void)
     s_cache.version       = SETTINGS_VERSION;
     s_cache.backlight_pct = SETTINGS_DEFAULT_BL;
     s_cache.reserved0     = 0u;
+    s_cache.reserved1     = 0u;
     (void)memset(s_cache.boot_stage_ms, 0, sizeof s_cache.boot_stage_ms);   /* uncalibrated */
+    (void)memset(&s_cache.ptr_cal, 0, sizeof s_cache.ptr_cal);              /* valid=0 -> identity */
 }
 
 /* "380,2490,470,570" — the boot profile, for one log line. */
@@ -60,6 +62,11 @@ static const char *boot_profile_str(const settings_t *s)
         if (n >= sizeof buf) { break; }
     }
     return buf;
+}
+
+static const char *ptr_cal_str(const settings_t *s)
+{
+    return s->ptr_cal.valid ? "cal" : "uncal";
 }
 
 /* Bitwise CRC-32 (poly 0xEDB88320). No table; records are tiny and writes rare. */
@@ -140,10 +147,10 @@ void Settings_Load(void)
     }
     else
     {
-        LOG_INFO("SETTINGS: loaded seq=%lu slot=%ld (v%u backlight=%u%% boot=[%s]ms)\r\n",
+        LOG_INFO("SETTINGS: loaded seq=%lu slot=%ld (v%u backlight=%u%% boot=[%s]ms ptr=%s)\r\n",
                  (unsigned long)s_cur_seq, (long)s_cur_slot,
                  (unsigned)s_cache.version, (unsigned)s_cache.backlight_pct,
-                 boot_profile_str(&s_cache));
+                 boot_profile_str(&s_cache), ptr_cal_str(&s_cache));
     }
 }
 
@@ -196,9 +203,10 @@ bool Settings_Save(void)
 
     s_cur_slot = next;
     s_cur_seq  = r->seq;
-    LOG_INFO("SETTINGS: saved seq=%lu slot=%ld (backlight=%u%% boot=[%s]ms)\r\n",
+    LOG_INFO("SETTINGS: saved seq=%lu slot=%ld (backlight=%u%% boot=[%s]ms ptr=%s)\r\n",
              (unsigned long)s_cur_seq, (long)s_cur_slot,
-             (unsigned)s_cache.backlight_pct, boot_profile_str(&s_cache));
+             (unsigned)s_cache.backlight_pct, boot_profile_str(&s_cache),
+             ptr_cal_str(&s_cache));
     return true;
 }
 
@@ -217,6 +225,14 @@ bool Settings_SetBootStages(const uint32_t *stage_ms)
     {
         s_cache.boot_stage_ms[i] = (stage_ms[i] > 0xFFFFu) ? 0xFFFFu : (uint16_t)stage_ms[i];
     }
+    return Settings_Save();
+}
+
+bool Settings_SetPointerCal(const ptr_cal_t *cal)
+{
+    if (cal == NULL) { return false; }
+    if (!s_loaded) { Settings_Load(); }
+    s_cache.ptr_cal = *cal;
     return Settings_Save();
 }
 
@@ -240,9 +256,10 @@ void Settings_Dump(void)
         if (record_valid(r))
         {
             valid++;
-            LOG_INFO("SETTINGS:  slot %2lu: seq=%lu v%u bl=%u%% boot=[%s]ms%s\r\n",
+            LOG_INFO("SETTINGS:  slot %2lu: seq=%lu v%u bl=%u%% boot=[%s]ms ptr=%s%s\r\n",
                      (unsigned long)slot, (unsigned long)r->seq, (unsigned)r->data.version,
                      (unsigned)r->data.backlight_pct, boot_profile_str(&r->data),
+                     ptr_cal_str(&r->data),
                      ((int32_t)slot == s_cur_slot) ? "  <- current" : "");
         }
     }

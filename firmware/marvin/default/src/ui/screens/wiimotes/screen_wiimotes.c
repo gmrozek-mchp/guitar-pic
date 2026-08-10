@@ -32,12 +32,14 @@
 #include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"   /* Marvin_PANEL_WIIMOTES */
 
 #include "net/fauxmote/fauxmote_link.h"
+#include "net/fauxmote/fauxmote_pointer.h"
 #include "net/fauxmote/mf_proto.h"
 
 /* Manual-override screen, built programmatically into the empty MGS layer-4 panel
  * (Marvin_PANEL_WIIMOTES) — the screen_bus.c model. Ports tools' mockup
  * ManualOverrideScreen.tsx with Tailwind units resolved to pixels: live video
- * centered up top, then the guitar-extension and wiimote cards side by side.
+ * centered up top with the link column down its right, then the guitar-extension and
+ * wiimote cards side by side.
  *
  * Text comes from the DESIGN string table (leTableString + stringID_*), not C
  * literals: five of these labels are non-ASCII (the d-pad arrows and the true minus
@@ -80,6 +82,20 @@ static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
 #define VID_FRAME_C4      4u        /* 4-bit grey -> #444444 ~ zinc-700 */
 
 static uint16_t FB_NOCACHE s_frame_fb[VID_W * VID_H];
+
+/* Link column: five action keys stacked down the right of the video row — the mockup's
+ * `w-20` gutter holding 72px `rounded-xl` keys on a gap-3 stack, centered in the same
+ * vertical band as the video. Manage the Wii link rather than drive the controller, so
+ * they sit outside the lock gate's scrim (which spans the card row only). */
+#define LNK_N          5
+#define LNK_W         72
+#define LNK_GAP       12
+#define LNK_R         12                                 /* rounded-xl */
+#define LNK_COL_W     80
+#define LNK_X         (BASE_W - MARGIN - LNK_COL_W + (LNK_COL_W - LNK_W) / 2)  /* 1188 */
+#define LNK_H         (LNK_N * LNK_W + (LNK_N - 1) * LNK_GAP)                  /*  408 */
+#define LNK_Y         (TITLEBAR_H + ((CARD_Y - TITLEBAR_H) - LNK_H) / 2)       /*   84 */
+#define LNK_ICON_GAP   8                                 /* gap-2 icon -> caption */
 
 /* Guitar card interior. */
 #define LBL_H        16
@@ -166,8 +182,8 @@ static bool s_unlocked;
 /* ── widget pool ────────────────────────────────────────────────────────────
  * Static storage, constructed in place — no allocator (see the project's static
  * allocation rule). Sized to the built screen with a little slack. */
-#define WGT_MAX   14u
-#define BTN_MAX   16u
+#define WGT_MAX   16u
+#define BTN_MAX   20u
 #define LBL_MAX    7u
 
 static leWidget        s_wgt[WGT_MAX];
@@ -185,6 +201,10 @@ static leWidget *s_fret[5];
 static leWidget *s_whammy;
 static leWidget *s_tilt;
 static leWidget *s_titlebar;
+
+/* The link column, in LNK order (reconnect, swap, 1+2, unlink, pair). Held so the
+ * actions can be bound to them; none is wired yet. */
+static leButtonWidget *s_link[LNK_N];
 
 /* The gate's three widgets, hidden together when it opens. */
 static leWidget *s_scrim;
@@ -460,6 +480,126 @@ static void build_wiimote_card(void)
                     stringID_WIIMOTE_TILT, &SCHEME_TEXT_ZINC_500, LE_HALIGN_LEFT);
 }
 
+/* ── link column ────────────────────────────────────────────────────────────*/
+
+/* One key in the link column. Bordered, unlike the control keys, so it needs the
+ * pressed-border AA variant: the mockup lightens the border along with the fill. The
+ * caption sits under a 24px icon, which Legato centres as one block for us. */
+static leButtonWidget *add_link_button(unsigned row, uint32_t string_id,
+                                       const leScheme *scheme, const leImage *icon)
+{
+    configASSERT(s_nbtn < BTN_MAX);
+
+    unsigned i = s_nbtn++;
+
+    leButtonWidget *b = &s_btn[i];
+    leButtonWidget_Constructor(b);
+    b->fn->setPosition(b, LNK_X, LNK_Y + (int)row * (LNK_W + LNK_GAP));
+    b->fn->setSize(b, LNK_W, LNK_W);
+    b->fn->setScheme(b, scheme);
+    b->fn->setBackgroundType(b, LE_WIDGET_BACKGROUND_FILL);
+    b->fn->setBorderType(b, LE_WIDGET_BORDER_LINE);
+    b->fn->setCornerRadius(b, LNK_R);
+
+    leTableString_Constructor(&s_btn_cap[i], string_id);
+    b->fn->setString(b, (leString *)&s_btn_cap[i]);
+
+    if (icon != NULL)
+    {
+        b->fn->setImagePosition(b, LE_RELATIVE_POSITION_ABOVE);
+        b->fn->setImageMargin(b, LNK_ICON_GAP);
+        b->fn->setPressedImage(b, (leImage *)icon);
+        b->fn->setReleasedImage(b, (leImage *)icon);
+    }
+
+    ButtonAA_EnablePressedBorder(b);
+
+    Marvin_PANEL_WIIMOTES->fn->addChild(Marvin_PANEL_WIIMOTES, (leWidget *)b);
+    return b;
+}
+
+/* Reconnect / swap / 1+2 / unlink / pair. Inert for now — no callbacks bound. UNLINK and
+ * PAIR carry their own schemes so a press reads red / blue, the mockup's colour for the
+ * destructive and the pairing action; 1+2 is a chord on the wiimote's own keys, so it has
+ * a caption where the others have an icon. */
+static void build_link_column(void)
+{
+    s_link[0] = add_link_button(0u, stringID_WIIMOTE_LINK_RECONNECT,
+                                &SCHEME_BUTTON_LINK, &BUTTON_ICON_RECONNECT);
+    s_link[1] = add_link_button(1u, stringID_WIIMOTE_LINK_SWAP,
+                                &SCHEME_BUTTON_LINK, &BUTTON_ICON_SWAP);
+    s_link[2] = add_link_button(2u, stringID_WIIMOTE_LINK_ONE_TWO,
+                                &SCHEME_BUTTON_LINK, NULL);
+    s_link[3] = add_link_button(3u, stringID_WIIMOTE_LINK_UNLINK,
+                                &SCHEME_BUTTON_LINK_UNLINK, &BUTTON_ICON_UNLINK);
+    s_link[4] = add_link_button(4u, stringID_WIIMOTE_LINK_PAIR,
+                                &SCHEME_BUTTON_LINK_PAIR, &BUTTON_ICON_PAIR);
+}
+
+/* ── video touch -> IR pointer ───────────────────────────────────────────────
+ * An invisible widget over the live-video rect, so a touch on the picture aims the
+ * Wii's IR cursor there. It paints nothing (BACKGROUND_NONE), which is what lets HEO
+ * show through while the widget still picks — the tilt and whammy widgets sit on the
+ * same footing. The touch is reported as a fraction of the picture, because the HEO
+ * scaler maps the detected active source rect onto exactly this rect: no letterbox,
+ * so screen position within it *is* the fraction of the Wii's screen.
+ *
+ * Whether pointing is allowed is decided by fauxmote_pointer's armed flag, which the
+ * lock gate drives — deliberately not by an s_unlocked test here, since the scrim
+ * covers only the card row and never reaches the video. */
+static leWidget *s_video_hit;
+
+static uint8_t frac_of(int32_t v, int32_t origin, int32_t span)
+{
+    int32_t f = ((v - origin) * 255) / (span - 1);
+
+    if (f < 0)   { f = 0; }
+    if (f > 255) { f = 255; }
+    return (uint8_t)f;
+}
+
+static void video_touch(int32_t x, int32_t y, bool press)
+{
+    FauxmotePointer_Touch(frac_of(x, VID_X, VID_W), frac_of(y, VID_Y, VID_H), press);
+}
+
+static void video_touchDown(leWidget *wgt, leWidgetEvent_TouchDown *evt)
+{
+    video_touch(evt->x, evt->y, true);
+    leWidgetEvent_Accept(&evt->event, wgt);
+}
+
+static void video_touchMove(leWidget *wgt, leWidgetEvent_TouchMove *evt)
+{
+    video_touch(evt->x, evt->y, false);
+    leWidgetEvent_Accept(&evt->event, wgt);
+}
+
+/* Release leaves the pointer where it was: latched, so the operator can now reach for
+ * A or HOME on the wiimote card. */
+static void video_touchUp(leWidget *wgt, leWidgetEvent_TouchUp *evt)
+{
+    leWidgetEvent_Accept(&evt->event, wgt);
+}
+
+static leWidgetVTable s_video_vt;
+static leBool         s_video_vt_ready;
+
+static void build_video_touch(void)
+{
+    s_video_hit = next_widget(VID_X, VID_Y, VID_W, VID_H);
+
+    if (!s_video_vt_ready)
+    {
+        s_video_vt = *s_video_hit->fn;
+        s_video_vt.touchDownEvent = video_touchDown;
+        s_video_vt.touchMoveEvent = video_touchMove;
+        s_video_vt.touchUpEvent   = video_touchUp;
+        s_video_vt_ready = LE_TRUE;
+    }
+    s_video_hit->fn = &s_video_vt;
+}
+
 /* ── lock gate ──────────────────────────────────────────────────────────────*/
 
 /* Show/hide the gate's three widgets together. VISIBLE is what the renderer tests AND what
@@ -522,6 +662,7 @@ static void gate_unlocked(void)
     send_guitar();
     send_nav();
     Fauxmote_SendTilt((int16_t)Tilt_Degrees());
+    FauxmotePointer_SetEnabled(true);
 
     link_kick("unlock");
 }
@@ -571,6 +712,8 @@ void ScreenWiimotes_Setup(void)
 
     build_guitar_card();
     build_wiimote_card();
+    build_link_column();
+    build_video_touch();
     build_lock_gate();
 
     /* Start not shown → gate out of picking (see ScreenWiimotes_SetInput). */
@@ -633,6 +776,11 @@ void ScreenWiimotes_SetShown(bool shown)
         send_nav();
         Fauxmote_SetOverride(false);
     }
+
+    /* Disarming hides the latched IR pointer, so the Wii's cursor leaves with the
+     * screen. Unconditional: cheap when already disarmed, and it must not depend on
+     * s_unlocked, which is cleared just below. */
+    if (!shown) { FauxmotePointer_SetEnabled(false); }
 
     s_unlocked = false;
     SlideUnlock_Reset();

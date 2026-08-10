@@ -54,6 +54,15 @@ that is deliberate, not a leak.
 | `BUTTON_FACE_START` | `play.svg` | 14×14 | `#FFFFFF` |
 | `NAV_ICON_BUS` + `_SELECTED` | `network.svg` | 24×24 | `#D4D4D8` / `#FFFFFF` |
 | `BUTTON_ICON_TROPHY` | `trophy.svg` | 20×20 | `#492F03` (see below) |
+| `BUTTON_ICON_RECONNECT` | `refresh-cw.svg` | 24×24 | `#9F9FA9` |
+| `BUTTON_ICON_SWAP` | `arrow-left-right.svg` | 24×24 | `#9F9FA9` |
+| `BUTTON_ICON_UNLINK` | `unlink.svg` | 24×24 | `#9F9FA9` |
+| `BUTTON_ICON_PAIR` | `bluetooth.svg` | 24×24 | `#9F9FA9` |
+
+The last four are the wiimotes screen's link column. `#9F9FA9` is zinc-400, the mockup's
+resting `text-zinc-400` — its `hover:` colours are unreachable, because the classic button skin
+reads one text colour regardless of state, so there is no second render of these to keep in
+step. Stored raw rather than RLE, like `BUTTON_ICON_TROPHY` and for the same reason.
 
 To regenerate a nav pair:
 

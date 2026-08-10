@@ -23,7 +23,7 @@ enum {
     MF_MSG_WIIMOTE  = 0x02,   /* m->f, 4B: menu-nav input */
     MF_MSG_LINK_CMD = 0x03,   /* m->f, 1B: bluetooth link management */
     MF_MSG_ACCEL    = 0x04,   /* m->f, 3B: accelerometer (tilt) */
-    MF_MSG_POINTER  = 0x05,   /* m->f, 3B: IR pointer (planned) */
+    MF_MSG_POINTER  = 0x05,   /* m->f, 3B: IR pointer */
     MF_MSG_STATUS   = 0x81,   /* f->m, 4B: link/connection state */
 };
 

@@ -27,6 +27,7 @@
 #include "net/t1s/t1s_link.h"
 #include <stdlib.h>                      /* strtoul for the fauxmote btn mask */
 #include "net/fauxmote/fauxmote_link.h"
+#include "net/fauxmote/fauxmote_pointer.h"
 #include "net/fauxmote/mf_proto.h"
 #include "storage/storage.h"
 #include "health/health_monitor.h"
@@ -1571,7 +1572,48 @@ static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
         console_printf("fauxmote: pointer %u,%u", (unsigned)x, (unsigned)y);
         return;
     }
-    console_printf("usage: fauxmote [status|pair|stop|reconnect|disconnect|btreset|reboot|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]");
+    if (strcmp(sub, "calib") == 0)
+    {
+        /* Prompts and results go to the log, because the ones that matter are emitted
+         * from the touch handler after this command has already returned. */
+        const char *op = embeddedCliGetToken(args, 2);
+
+        if (op == NULL || strcmp(op, "show") == 0)
+        {
+            FauxmotePointer_CalShow();
+            console_printf("fauxmote calib: see log");
+            return;
+        }
+        if (strcmp(op, "start") == 0)
+        {
+            const char *los = embeddedCliGetToken(args, 3);
+            const char *his = embeddedCliGetToken(args, 4);
+            uint8_t     lo  = (los != NULL) ? (uint8_t)strtoul(los, NULL, 0) : 0u;
+            uint8_t     hi  = (his != NULL) ? (uint8_t)strtoul(his, NULL, 0) : 0u;
+
+            if (!FauxmotePointer_CalStart(lo, hi))
+            {
+                console_printf("fauxmote calib: cannot start (see log)");
+                return;
+            }
+            console_printf("fauxmote calib: touch the Wii cursor on the video, twice (see log)");
+            return;
+        }
+        if (strcmp(op, "save") == 0)
+        {
+            console_printf("fauxmote calib: %s", FauxmotePointer_CalSave() ? "saved" : "not saved (see log)");
+            return;
+        }
+        if (strcmp(op, "abort") == 0)
+        {
+            FauxmotePointer_CalAbort();
+            console_printf("fauxmote calib: aborted");
+            return;
+        }
+        console_printf("usage: fauxmote calib [show|start [ulo uhi]|save|abort]");
+        return;
+    }
+    console_printf("usage: fauxmote [status|pair|stop|reconnect|disconnect|btreset|reboot|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off|calib …]");
 }
 
 static void cmd_play(EmbeddedCli *cli, char *args, void *ctx)
@@ -1825,7 +1867,7 @@ static const CliCommandBinding bindings[] = {
         { "timing", "timing <on|off>: chord/strum scheduler output enable", true, NULL, cmd_timing },
         { "manual", "manual <on|off>: manual-control actuation mode",      true, NULL, cmd_manual },
         { "play",   "play [attach|stop|status]: auto-navigate + CV-play the selected song; 'attach' = play a manually-started game (e.g. 2p)", true, NULL, cmd_play },
-        { "fauxmote","fauxmote [status|pair|stop|reconnect|disconnect|btreset|reboot|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]", true, NULL, cmd_fauxmote },
+        { "fauxmote","fauxmote [status|pair|stop|reconnect|disconnect|btreset|reboot|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off|calib [show|start|save|abort]]", true, NULL, cmd_fauxmote },
         { "guitar", "guitar [on|off]: gate the guitar node's button outputs", true, NULL, cmd_guitar },
         { "lemmy",  "lemmy <neck> <jaw>|center: servo pos; output <on|off>: gate the servos; nod <on|off>|trim <n>|osc <0|1>: nod control", true, NULL, cmd_lemmy },
         { "lightshow","lightshow [on|off]: gate the lightshow node's LED output", true, NULL, cmd_lightshow },

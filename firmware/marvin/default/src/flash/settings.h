@@ -13,12 +13,27 @@
  * rather than stored — see ui/screens/splash/splash_progress.h. */
 #define SETTINGS_BOOT_STAGES  4u
 
+/* Touch-on-video -> IR pointer map for the wiimotes screen, solved by
+ * `fauxmote calib` (net/fauxmote/fauxmote_pointer.h). Per axis, in 0..255 byte
+ * space: u = off + ((gain * f) >> 8), gain in Q8 so 256 is 1:1. A negative gain
+ * is a legitimate result — it means that axis reads inverted on the Wii. */
+typedef struct
+{
+    int16_t x_gain;
+    int16_t x_off;
+    int16_t y_gain;
+    int16_t y_off;
+    uint8_t valid;           /* 0 = uncalibrated; the map falls back to identity */
+} ptr_cal_t;
+
 typedef struct
 {
     uint16_t version;        /* SETTINGS_VERSION of this record's layout */
     uint8_t  backlight_pct;  /* 0..100 */
     uint8_t  reserved0;
     uint16_t boot_stage_ms[SETTINGS_BOOT_STAGES];   /* all zero = not calibrated yet */
+    ptr_cal_t ptr_cal;
+    uint8_t  reserved1;
 } settings_t;
 
 /* Scan the QSPI ring and populate the RAM cache, or fall back to compiled
@@ -39,6 +54,9 @@ bool Settings_SetBacklight(uint8_t pct);
 /* Record the per-stage boot profile the splash progress bar marks itself from, and
  * persist. Each entry saturates at UINT16_MAX. See ui/screens/splash/splash_progress.h. */
 bool Settings_SetBootStages(const uint32_t *stage_ms);
+
+/* Store the solved touch-on-video pointer map and persist. */
+bool Settings_SetPointerCal(const ptr_cal_t *cal);
 
 /* Diagnostics (console `settings`). */
 void Settings_Dump(void);   /* log the ring scan + current record */

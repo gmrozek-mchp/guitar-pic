@@ -77,6 +77,7 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/third_party/qrcodegen/qrcodegen.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/net/t1s/t1s_link.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/net/fauxmote/fauxmote_link.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/net/fauxmote/fauxmote_pointer.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../../../third_party/oa-tc6-lib/libtc6/src/tc6.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../../../third_party/oa-tc6-lib/libtc6/src/tc6-regs.c"
 )
