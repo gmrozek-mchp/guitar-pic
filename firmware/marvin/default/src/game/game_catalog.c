@@ -132,6 +132,20 @@ int16_t GameCatalog_NodTrim(uint8_t setlist, uint8_t index)
     return 0;
 }
 
+const char *GameCatalog_Title(uint8_t setlist, uint8_t index)
+{
+    if (!s_loaded) { (void)GameCatalog_Reload(); }
+
+    for (int i = 0; i < s_count; i++)
+    {
+        if (s_entries[i].setlist == setlist && s_entries[i].index == index)
+        {
+            return s_entries[i].title;
+        }
+    }
+    return NULL;
+}
+
 int  GameCatalog_Count(void)    { return s_count; }
 bool GameCatalog_IsLoaded(void) { return s_loaded; }
 

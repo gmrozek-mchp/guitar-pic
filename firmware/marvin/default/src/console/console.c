@@ -417,33 +417,30 @@ static void cmd_scores(EmbeddedCli *cli, char *args, void *ctx)
 static void cmd_results(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli; (void)ctx;
-    /* Synthetic-row injection for testing the CSV write/read path before the
-     * gameplay engine populates real records. */
+    /* Synthetic-row injection: exercises the CSV write path (and, with `results
+     * top`, the read-back) without needing a real 2-player run to the end. */
     const char *sub = embeddedCliGetToken(args, 1);
     if (sub == NULL || strcmp(sub, "add") != 0)
     {
-        console_printf("usage: results add <main|bonus> <index> <difficulty> <part> <score>");
+        console_printf("usage: results add <main|bonus> <index> <difficulty> <score>");
         return;
     }
     const char *setlist = embeddedCliGetToken(args, 2);
     const char *idx     = embeddedCliGetToken(args, 3);
     const char *diff    = embeddedCliGetToken(args, 4);
-    const char *part    = embeddedCliGetToken(args, 5);
-    const char *score   = embeddedCliGetToken(args, 6);
-    if (setlist == NULL || idx == NULL || diff == NULL || part == NULL || score == NULL)
+    const char *score   = embeddedCliGetToken(args, 5);
+    if (setlist == NULL || idx == NULL || diff == NULL || score == NULL)
     {
-        console_printf("usage: results add <main|bonus> <index> <difficulty> <part> <score>");
+        console_printf("usage: results add <main|bonus> <index> <difficulty> <score>");
         return;
     }
 
     results_record_t rec;
     memset(&rec, 0, sizeof(rec));
-    rec.game       = "gh3-wii";
     rec.setlist    = setlist;
     rec.index      = (uint8_t)parse_u32(idx, 0u);
     rec.song       = "Test, Song";   /* comma exercises the CSV quoting path */
     rec.difficulty = diff;
-    rec.part       = part;
     rec.score      = parse_u32(score, 0u);
 
     console_printf("%s", Results_Append(&rec) ? "added" : "append failed");
@@ -1857,7 +1854,7 @@ static const CliCommandBinding bindings[] = {
         { "time",   "time [set YYYY-MM-DD HH:MM:SS]: read/set the RTC (UTC)",   true, NULL, cmd_time },
         { "player", "player [name]: show/set the current player",              true, NULL, cmd_player },
         { "scores", "scores <main|bonus> <index> [difficulty]: top scores",    true, NULL, cmd_scores },
-        { "results","results add <set> <idx> <diff> <part> <score>: test row", true, NULL, cmd_results },
+        { "results","results add <set> <idx> <diff> <score>: test row", true, NULL, cmd_results },
         { "catalog","catalog <reload|ls|<main|bonus> <index>>: song labels",    true, NULL, cmd_catalog },
         { "art",    "art [ls | <main|bonus> <index>]: album-art cache status",  true, NULL, cmd_art },
         { "detect", "detect cv <on|off>: enable/disable the CV detector",        true, NULL, cmd_detect },

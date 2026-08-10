@@ -12,10 +12,14 @@
  * it parses with comma-splitting + atol into static buffers (no malloc, no JSON
  * tokenizer), which fits FF_FS_MAX_FILES=1 and the static-allocation rule.
  *
+ * This records **human** performance, which is why a row is only ever a
+ * 2-player run: 1P ROBOT is marvin playing alone, and 1P HUMAN is retired. The
+ * `score` is therefore the human's amp scoreboard, not marvin's — marvin's total
+ * lives on the dashboard and in the run log, deliberately unpersisted.
+ *
  * Builds entirely on the SD/FatFs/RTC layer (storage.c); no gameplay dependency,
- * so the write + read + display path is testable now with synthetic rows. The
- * gameplay engine wires in later by filling a record and calling Results_Append
- * once the M9 Phase 3 score readers exist. */
+ * so the write + read + display path is exercisable from the console (`results
+ * add` / `results top`) independently of a real run. */
 
 void Results_Initialize(void);
 
@@ -24,18 +28,17 @@ void Results_Initialize(void);
 void        Results_SetPlayer(const char *name);
 const char *Results_GetPlayer(void);
 
+/* One completed run. Song + score is the whole point; anything marvin cannot read
+ * off the screen is deliberately absent rather than written as a zero column.
+ * `setlist`/`index` are the recognizer's stable song key and what Results_TopN
+ * filters on; `song` is carried too so the CSV reads standalone on a PC. */
 typedef struct
 {
-    const char *game;         /* e.g. "gh3-wii" */
     const char *setlist;      /* "main" | "bonus" */
     uint8_t     index;        /* song ordinal within its setlist */
     const char *song;         /* human title; CSV-quoted on write (may contain ,) */
     const char *difficulty;   /* "easy".."expert" */
-    const char *part;         /* "lead" | "bass" | ... */
-    uint32_t    score;
-    uint16_t    accuracy_x10; /* accuracy percent * 10 (924 => 92.4%) */
-    uint16_t    notes_hit;
-    uint16_t    notes_total;
+    uint32_t    score;        /* the human player's score */
 } results_record_t;
 
 /* Append one completed run as a CSV row: mounts on demand, writes the header if
@@ -52,7 +55,12 @@ typedef struct
 } results_score_t;
 
 /* Fill out[0..max) with the highest scores for a song (filtered by difficulty
- * when non-NULL/non-empty), highest first. Returns the count filled. */
+ * when non-NULL/non-empty), highest first. Returns the count filled.
+ *
+ * Validates the file's header row against the schema this build writes and
+ * returns 0 on a mismatch: the parser reads fixed field indices, so a file from
+ * an older schema would otherwise be silently misparsed into a plausible-looking
+ * but wrong high-score table. A warning names the header it found. */
 int Results_TopN(const char *setlist, uint8_t index, const char *difficulty,
                  results_score_t *out, int max);
 

@@ -52,6 +52,12 @@ bool GameCatalog_LookupSong(const gp_song_t *song, game_catalog_entry_t *out);
  * needs it doesn't put a whole entry on its stack. */
 int16_t GameCatalog_NodTrim(uint8_t setlist, uint8_t index);
 
+/* This song's human title, or NULL on a miss / empty catalog. Returns a pointer
+ * into the cache rather than filling a caller struct, for the same reason
+ * GameCatalog_NodTrim does: a game_catalog_entry_t is ~230 bytes and the callers
+ * that want one field are on small task stacks. Valid until a Reload. */
+const char *GameCatalog_Title(uint8_t setlist, uint8_t index);
+
 /* Force a fresh read from the card (e.g. after a card swap). Returns true if the
  * catalog file was read (even with zero rows); false on mount/open failure. */
 bool GameCatalog_Reload(void);

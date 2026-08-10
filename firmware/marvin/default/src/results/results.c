@@ -15,10 +15,19 @@
 #define RES_REL_FILE  "players/results.csv"
 
 #define RES_HEADER \
-    "player,game,setlist,index,song,difficulty,part,score,accuracy_pct,notes_hit,notes_total,timestamp"
+    "player,setlist,index,song,difficulty,score,timestamp"
 
 #define RES_LINE_MAX  256
-#define RES_FIELDS    12
+#define RES_FIELDS    7
+
+/* Field indices in a row, matching RES_HEADER. */
+#define RES_F_PLAYER      0
+#define RES_F_SETLIST     1
+#define RES_F_INDEX       2
+#define RES_F_SONG        3
+#define RES_F_DIFFICULTY  4
+#define RES_F_SCORE       5
+#define RES_F_TIMESTAMP   6
 
 static char s_player[33] = "HOOMAN";
 
@@ -111,18 +120,13 @@ bool Results_Append(const results_record_t *rec)
     csv_quote(rec->song, song_q, sizeof(song_q));
 
     len = snprintf(line, sizeof(line),
-                   "%s,%s,%s,%u,%s,%s,%s,%lu,%u.%u,%u,%u,%s\n",
+                   "%s,%s,%u,%s,%s,%lu,%s\n",
                    s_player,
-                   (rec->game != NULL) ? rec->game : "",
                    (rec->setlist != NULL) ? rec->setlist : "",
                    (unsigned)rec->index,
                    song_q,
                    (rec->difficulty != NULL) ? rec->difficulty : "",
-                   (rec->part != NULL) ? rec->part : "",
                    (unsigned long)rec->score,
-                   (unsigned)(rec->accuracy_x10 / 10u), (unsigned)(rec->accuracy_x10 % 10u),
-                   (unsigned)rec->notes_hit,
-                   (unsigned)rec->notes_total,
                    ts);
 
     bool ok = false;
@@ -155,18 +159,35 @@ int Results_TopN(const char *setlist, uint8_t index, const char *difficulty,
     while (!SYS_FS_FileEOF(h))
     {
         if (SYS_FS_FileStringGet(h, line, sizeof(line)) != SYS_FS_RES_SUCCESS) { break; }
-        if (first) { first = false; continue; }     /* header row */
+        if (first)
+        {
+            /* Validate the schema before trusting any field index below. A file
+             * written by an older schema has the columns in other positions, so
+             * parsing it would yield a wrong-but-plausible table. */
+            first = false;
+            size_t n = strlen(line);
+            while (n > 0u && (line[n - 1] == '\n' || line[n - 1] == '\r')) { line[--n] = '\0'; }
+            if (strcmp(line, RES_HEADER) != 0)
+            {
+                LOG_WARN("RES: results.csv header mismatch — ignoring the file\r\n");
+                LOG_WARN("RES:   found    '%s'\r\n", line);
+                LOG_WARN("RES:   expected '%s'\r\n", RES_HEADER);
+                (void)SYS_FS_FileClose(h);
+                return 0;
+            }
+            continue;
+        }
         if (line[0] == '\0' || line[0] == '\n' || line[0] == '\r') { continue; }
 
         char *f[RES_FIELDS];
         if (csv_split(line, f, RES_FIELDS) < RES_FIELDS) { continue; }
 
-        if (strcmp(f[2], setlist) != 0) { continue; }
-        if ((unsigned)atoi(f[3]) != (unsigned)index) { continue; }
+        if (strcmp(f[RES_F_SETLIST], setlist) != 0) { continue; }
+        if ((unsigned)atoi(f[RES_F_INDEX]) != (unsigned)index) { continue; }
         if (difficulty != NULL && difficulty[0] != '\0' &&
-            strcmp(f[5], difficulty) != 0) { continue; }
+            strcmp(f[RES_F_DIFFICULTY], difficulty) != 0) { continue; }
 
-        uint32_t score = (uint32_t)strtoul(f[7], NULL, 10);
+        uint32_t score = (uint32_t)strtoul(f[RES_F_SCORE], NULL, 10);
 
         /* Insert into the bounded, score-descending top list. */
         int pos = count;
@@ -179,9 +200,9 @@ int Results_TopN(const char *setlist, uint8_t index, const char *difficulty,
         int last = (count < max) ? count : (max - 1);
         for (int i = last; i > pos; i--) { out[i] = out[i - 1]; }
 
-        strncpy(out[pos].player, f[0], sizeof(out[pos].player) - 1);
+        strncpy(out[pos].player, f[RES_F_PLAYER], sizeof(out[pos].player) - 1);
         out[pos].player[sizeof(out[pos].player) - 1] = '\0';
-        strncpy(out[pos].timestamp, f[11], sizeof(out[pos].timestamp) - 1);
+        strncpy(out[pos].timestamp, f[RES_F_TIMESTAMP], sizeof(out[pos].timestamp) - 1);
         out[pos].timestamp[sizeof(out[pos].timestamp) - 1] = '\0';
         out[pos].score = score;
 

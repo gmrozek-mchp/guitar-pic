@@ -529,9 +529,17 @@ append-only CSV (one row per completed run, with a header row). Keyed to a song 
 `(setlist, index)` the recognizer emits:
 
 ```
-player,game,setlist,index,song,difficulty,part,score,accuracy_pct,notes_hit,notes_total,timestamp
-greg,gh3-wii,main,4,"Slow Ride",hard,lead,123456,92.4,480,520,2026-06-23T23:14:00Z
+player,setlist,index,song,difficulty,score,timestamp
+GREG,main,4,"Slow Ride",hard,123456,2026-08-10T23:14:00Z
 ```
+
+**The row records the *human* player, so only a 2-player run writes one** (decided 2026-08-10).
+1P ROBOT is marvin playing alone and 1P HUMAN is retired, so 2-player face-off is the only mode
+where a human performance exists; `score` is that human's amp scoreboard, and marvin's own total
+stays on the dashboard and in the run log rather than on the card. A run stopped before the song
+ends writes nothing. Song + score is the whole record: peak streak, accuracy, notes hit/total and
+the part are deliberately absent — marvin has no reader for the accuracy figures (they are on the
+GH3 end screens), and a column that is always zero is worse than no column.
 
 **Why CSV (not JSON/YAML or a DB).** Results have two consumers — Marvin reads `results.csv` to show
 high scores on-device, and the card is taken to a PC for deeper analysis. CSV is the only format that
@@ -540,9 +548,13 @@ no JSON tokenizer, stream one line at a time — fits `FF_FS_MAX_FILES=1` and th
 rule); on a PC it's a one-liner in pandas/Excel/awk. JSONL is nicer for nested/evolving schemas but
 costs an on-device tokenizer for no benefit here (results are flat and tabular); YAML has no good
 zero-alloc embedded parser; a DB (SQLite) needs malloc + a FatFs VFS shim — overkill for an
-append-only log. Schema evolution: append columns at the end (the on-device reader touches only the
-columns it needs; pandas keys by header). The `song` title is duplicated alongside `(setlist,index)`
-so the CSV is self-contained for analysis without joining the catalog.
+append-only log. Schema evolution: append columns at the end — `csv_split` stops at the field count
+the reader asks for, so an added column is ignored by an older reader and a shorter legacy row still
+parses; pandas keys by header. Because the on-device reader addresses fields by *index*, it
+validates the file's header against the schema it was built for and returns no scores on a mismatch:
+a re-ordered file would otherwise parse into a plausible-looking but wrong high-score table. The
+`song` title is duplicated alongside `(setlist,index)` so the CSV is self-contained for analysis
+without joining the catalog.
 
 Scope boundary: `results.csv` is the **flat per-run summary** only. Deep per-note / per-section
 telemetry belongs in the recording subsystem (§4.6 `state.bin`), keeping this file trivially

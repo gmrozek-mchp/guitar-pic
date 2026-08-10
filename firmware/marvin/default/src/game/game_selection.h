@@ -35,6 +35,10 @@ typedef struct
     uint8_t mode;       /* game_mode_t */
 } game_selection_t;
 
+/* Lower-case name for a game_difficulty_t, as the results CSV and any other
+ * text consumer wants it ("easy".."expert"); "" for an out-of-range value. */
+const char *GameSelection_DifficultyName(uint8_t difficulty);
+
 /* Commit a selection and notify the observer (if any). */
 void GameSelection_Set(uint8_t setlist, uint8_t index, uint8_t difficulty, uint8_t mode);
 

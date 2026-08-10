@@ -25,3 +25,15 @@ void GameSelection_SetObserver(void (*cb)(const game_selection_t *))
 {
     s_observer = cb;
 }
+
+const char *GameSelection_DifficultyName(uint8_t difficulty)
+{
+    switch ((game_difficulty_t)difficulty)
+    {
+        case GAME_DIFF_EASY:   return "easy";
+        case GAME_DIFF_MEDIUM: return "medium";
+        case GAME_DIFF_HARD:   return "hard";
+        case GAME_DIFF_EXPERT: return "expert";
+        default:               return "";
+    }
+}

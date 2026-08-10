@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -12,7 +13,8 @@
 #include "game_engine.h"
 #include "gameplay_metadata.h"
 #include "game/game_timing.h"
-#include "game/game_catalog.h"        /* per-song nod trim for lemmy */
+#include "game/game_catalog.h"        /* per-song nod trim for lemmy; song title for results */
+#include "results/results.h"          /* persist the human's score at song end */
 #include "actuator/manual_control.h"
 #include "actuator/fretboard_link.h"
 #include "actuator/guitar_cmd.h"
@@ -25,7 +27,12 @@
 #include "net/fauxmote/fauxmote_link.h"   /* pre-flight: ensure the Wii link is up */
 #include "net/fauxmote/mf_proto.h"
 
-#define GC_TASK_STACK_WORDS   768u
+/* 4 KB: the run's terminal path calls Results_Append, whose locals are ~530 bytes
+ * (line/path/dir/song/ts buffers + a SYS_FS_FSTAT) on top of FatFs beneath it, and
+ * it lands on an already-deep call chain. The console task calls the same function
+ * with 1024 words. Actual headroom is observable — the perf log reports task stack
+ * high-water. */
+#define GC_TASK_STACK_WORDS   1024u
 #define GC_TASK_PRIORITY      4u
 
 /* Menu-input masks (guitar fret/strum bits, timing_pipeline.h layout). */
@@ -525,6 +532,56 @@ static bool nav_to_main_menu(void)
  * Stop is requested. Poll via observe() to detect the end — a classify during
  * in_song is cheap (no song-match). The timing pipeline actuates for the whole
  * enabled window; the controller owns that window (enable here, disable on exit). */
+/* Persist the human player's score for a finished 2-player song (spec §4.8.6).
+ *
+ * Only a 2-player run that played to the end produces a row: 1P ROBOT is marvin
+ * playing alone (no human performance to record) and a stopped run has no song
+ * total. `seen` is required as well as a value, so an opponent amp that never
+ * produced a confident read writes nothing rather than a 0. Every skipped case
+ * says which one it was — a missing high score should be diagnosable from the log.
+ */
+static void record_human_result(bool ended_naturally, bool seen, uint32_t score)
+{
+    const game_selection_t *sel = GameSelection_Get();
+
+    if (!ended_naturally)
+    {
+        LOG_INFO("GC: no result row — run did not reach the end of the song\r\n");
+        return;
+    }
+    if (!sel->valid || sel->mode != (uint8_t)GAME_MODE_2P)
+    {
+        LOG_INFO("GC: no result row — not a 2-player run (results record the human)\r\n");
+        return;
+    }
+    if (!seen)
+    {
+        LOG_WARN("GC: no result row — never got a confident read of the human's amp\r\n");
+        return;
+    }
+
+    const char *title = GameCatalog_Title(sel->setlist, sel->index);
+
+    results_record_t rec;
+    memset(&rec, 0, sizeof(rec));
+    rec.setlist    = (sel->setlist == GP_SETLIST_BONUS) ? "bonus" : "main";
+    rec.index      = sel->index;
+    rec.song       = (title != NULL) ? title : "";
+    rec.difficulty = GameSelection_DifficultyName(sel->difficulty);
+    rec.score      = score;
+
+    if (Results_Append(&rec))
+    {
+        LOG_INFO("GC: result saved — %s %s #%u '%s' %s %lu\r\n",
+                 Results_GetPlayer(), rec.setlist, (unsigned)rec.index,
+                 rec.song, rec.difficulty, (unsigned long)rec.score);
+    }
+    else
+    {
+        LOG_WARN("GC: result save FAILED (card missing or write error)\r\n");
+    }
+}
+
 static void play_until_done(void)
 {
     status("PLAYING");
@@ -535,6 +592,11 @@ static void play_until_done(void)
 
     uint32_t final_score = 0u;   /* last CV-read score this run (the song total) */
     uint16_t peak_streak = 0u;   /* longest note streak this run — persists across misses */
+    /* The human's amp total (2p only) — the one value that gets persisted. `seen`
+     * distinguishes "never read the opponent's amp" from "the human scored 0". */
+    uint32_t human_score = 0u;
+    bool     human_seen  = false;
+    bool     ended_naturally = false;   /* song ran out, vs. a stop request */
     int      off_gameplay = 0;              /* consecutive reads of off_screen (GC_END_CONFIRM) */
     uint8_t  off_screen   = GP_SCREEN_UNKNOWN;   /* which off-gameplay screen is accumulating */
 
@@ -580,7 +642,12 @@ static void play_until_done(void)
                     final_score = (uint32_t)gs.score_p1;
                     DashboardFeed_PostScore(final_score);
                 }
-                if (gs.score_p2 >= 0) { DashboardFeed_PostHumanScore((uint32_t)gs.score_p2); }
+                if (gs.score_p2 >= 0)
+                {
+                    human_score = (uint32_t)gs.score_p2;
+                    human_seen  = true;
+                    DashboardFeed_PostHumanScore(human_score);
+                }
             }
             else if (gs.screen != GP_SCREEN_loading && gs.screen != GP_SCREEN_UNKNOWN)
             {
@@ -600,7 +667,7 @@ static void play_until_done(void)
                     off_screen   = gs.screen;
                     off_gameplay = 1;
                 }
-                if (off_gameplay >= GC_END_CONFIRM) { break; }
+                if (off_gameplay >= GC_END_CONFIRM) { ended_naturally = true; break; }
                 LOG_INFO("GC: off-gameplay read %u (%d/%d) — holding\r\n",
                          (unsigned)gs.screen, off_gameplay, GC_END_CONFIRM);
             }
@@ -610,10 +677,9 @@ static void play_until_done(void)
     uint32_t play_ms = (uint32_t)(xTaskGetTickCount() - play_start) * portTICK_PERIOD_MS;
     LOG_INFO("GC: playtime %lu.%03lu s\r\n",
              (unsigned long)(play_ms / 1000u), (unsigned long)(play_ms % 1000u));
-    /* Run result — the values the results writer will persist once the score-file
-     * write path is wired (spec §4.8.6 Results_Append). */
     LOG_INFO("GC: result score %lu, peak streak %u\r\n",
              (unsigned long)final_score, (unsigned)peak_streak);
+    record_human_result(ended_naturally, human_seen, human_score);
 
     /* Leave GH3 on the end screen; just release CV and go idle. The next run's
      * anchor (nav_to_main_menu) QUITs out of the end/pause menus when START is
