@@ -4,6 +4,16 @@ Running log of planning, decisions, open questions, and work-in-progress for mar
 
 ---
 
+**2026-08-11 — the dashboard stops showing a streak on either player card: no reader we trust. NOT YET ON HARDWARE.**
+
+- **Greg's call: the streak counters have no reliable reader, so neither card displays one.** The robot card's number came from `gp_read_streak` (odometer OCR + tracker) and the human card's never had a producer at all — it has shown a permanent `0` since the card was built.
+- **Hidden, not removed.** `build_streak_block` still builds the caption, the value label and the bar on both cards, then sets all three invisible; the CV reader, `game_controller`'s peak-streak tracking and log line, `DashboardFeed_PostStreak` and `DASH_EVT_STREAK` are all untouched. `#define STREAK_SHOWN 0` in `screen_dashboard.c` is the single switch — flip it to 1 and the block comes back with its updates.
+- **`ScreenDashboard_ApplyStreak` returns early on the same flag.** Hiding a widget does not stop `set_dyn`/`Bar_SetPermille` from damaging its rect (`_leWidget_Invalidate` does not test visibility), so without the guard the card would repaint a 230x6 strip and a text box at gameplay rate for pixels nobody can see.
+- **The row's space is left as padding** — 46px between the score value and the section rule, on both cards. Deliberately not reflowed: the section rules stay aligned across the screen, and the robot card's lower block is tuned to end on its 10px foot, so pulling everything up 46px would have meant re-tuning `OPT_H` and the row pitches to refill the card.
+- Files: `ui/screens/dashboard/screen_dashboard.{c,h}`. `screen_dashboard.c` passes its own XC32 v5.10 invocation with `-fsyntax-only -Wall -Wextra` clean. No MCC, no MGS Generate (the `PLAYER_Streak` design string simply goes unused). To verify: both cards show SCORE + multiplier pills with empty space above the rule, and nothing streak-shaped appears during a song.
+
+---
+
 **2026-08-10 (bus load) — CV gameplay put ~1080 frames/s on the bus for a mask that changes a few dozen times a second. Both actuator links now send on change or on their floor, not on every producer signal. NOT YET ON HARDWARE.**
 
 - **Greg's observation, and it reconciles to the digit.** marvin ~1k tx/s, fauxmote 566 rx/s while playing with CV. `timing_pipeline_task` calls `advance()` → `publish_mask()` in **both** branches of its receive — the detector frame *and* the `TP_TICK_MS` (2 ms) timeout — with no change detection. The CV detector publishes once per captured frame at 60 Hz, so each 16.67 ms interval is 1 frame + 8 idle ticks: **60 × 9 = 540 publishes/s**. Each fans out to two transmits (`Fauxmote_SendGuitarMask` → FxTx, `xQueueOverwrite` → FretLink), so 1080 tx/s, and fauxmote counts its own 540 GUITAR frames plus marvin's broadcast heartbeat ≈ 560. Note the tick alone sets a 500/s floor **even with the detector stopped**.

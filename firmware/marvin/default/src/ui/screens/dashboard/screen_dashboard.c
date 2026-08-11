@@ -913,16 +913,27 @@ static void build_score_block(leWidget *card, unsigned score_dyn,
                   (const leFont *)&DejaVuSansMonoBold_24, value_scheme, LE_HALIGN_LEFT);
 }
 
-/* STREAK caption + value + the bar the mockup added (streak / STREAK_FULL). */
+/* STREAK caption + value + the bar the mockup added (streak / STREAK_FULL).
+ *
+ * Built, then hidden on both cards: no streak reader is trusted enough to show a number.
+ * STREAK_SHOWN is the only switch — the widgets and the feed path behind them stay whole,
+ * and the row's space is left as padding above the section rule rather than reflowed. */
+#define STREAK_SHOWN  0
+
 static void build_streak_block(leWidget *card, unsigned streak_dyn, leWidget **bar,
                                uint32_t fill)
 {
-    (void)add_cap(card, COL_X, STREAK_Y, 60, 16, stringID_PLAYER_STREAK,
+    leLabelWidget *cap = add_cap(card, COL_X, STREAK_Y, 60, 16, stringID_PLAYER_STREAK,
             &SCHEME_TEXT_ZINC_500, LE_HALIGN_LEFT);
-    (void)add_dyn(card, streak_dyn, COL_X + 60, STREAK_Y, COL_W - 60, 16,
+    leLabelWidget *val = add_dyn(card, streak_dyn, COL_X + 60, STREAK_Y, COL_W - 60, 16,
                   (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_300,
                   LE_HALIGN_RIGHT);
     *bar = add_bar(card, COL_X, STREAK_BAR_Y, COL_W, BAR_H, BAR_H / 2, fill, fill);
+
+    leBool vis = STREAK_SHOWN ? LE_TRUE : LE_FALSE;
+    cap->fn->setVisible(cap, vis);
+    val->fn->setVisible(val, vis);
+    (*bar)->fn->setVisible(*bar, vis);
 }
 
 static void build_robot_card(leWidget *content)
@@ -1611,6 +1622,10 @@ void ScreenDashboard_ApplyHumanScore(uint32_t score)
  * label repaints — setting an empty string does not clear the prior glyphs. */
 void ScreenDashboard_ApplyStreak(uint16_t streak)
 {
+    /* Hidden block (see build_streak_block): writing the label or the bar would damage the
+     * card region for pixels nobody can see, at gameplay rate. */
+    if (!STREAK_SHOWN) { return; }
+
     /* Bar scale: the mockup's streak/99. A longer streak simply pins the bar full. */
     #define STREAK_FULL  99u
 
