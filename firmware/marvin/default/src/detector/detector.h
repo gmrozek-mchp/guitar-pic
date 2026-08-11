@@ -42,11 +42,21 @@ typedef struct
     uint8_t  reserved[3];
     struct
     {
-        uint8_t  pressed;     /* 0/1 hard call */
+        uint8_t  pressed;     /* 0/1 hard call — is a note under the sensor now */
+        uint8_t  press_count; /* distinct note arrivals at this fret, wraps at 255 */
         uint16_t confidence;  /* 0..65535, detector-defined */
         uint16_t raw_value;   /* detector-defined: ADC sample, pixel mean, etc. */
     } fret[FRET_COUNT];
 } detector_state_t;
+
+/* Producer contract for press_count: increment once per note arrival, including
+ * arrivals while `pressed` is already high — consecutive same-fret notes reach
+ * the sensor inside one continuous press, so a rising edge of `pressed` cannot
+ * see them. The timing pipeline takes a *change* in this counter as the note
+ * trigger and never derives one from `pressed`, so a detector that leaves the
+ * counter alone plays nothing. Any monotonic-per-arrival sequence works; the
+ * pipeline compares for inequality, so wrapping and a reset to 0 are both safe.
+ * `pressed` still owns hold duration and the release edge. */
 
 /* Brings up the detector-state bus queue, the cv_marvin_v1 detector task,
  * and (for now) a stub consumer. All detectors start disabled; the app

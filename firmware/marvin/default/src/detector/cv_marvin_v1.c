@@ -24,12 +24,14 @@
 #define CV_PATCH_RADIUS        2u    /* 5×5 patch */
 
 /* Hold sensor (brightness): rising edge above CV_HOLD_THRESH; releases
- * when it falls below CV_HOLD_THRESH × CV_HOLD_RELEASE_FRAC. Per-color
- * edge thresholds are uniform at 50 by default — separable later if any
- * fret needs its own. Mirrors fret-tuner detect_video.py defaults. */
+ * when it falls below CV_HOLD_THRESH × CV_HOLD_RELEASE_FRAC. The edge
+ * sensor is a bare compare against CV_EDGE_THRESH, uniform across frets —
+ * separable per-fret if one ever needs its own. CV_EDGE_THRESH sits above
+ * the measured inter-fret noise floor and below the weakest gem peak; it is
+ * low enough that a gem's white core cannot split one crossing into two. */
 #define CV_HOLD_THRESH         100.0f
 #define CV_HOLD_RELEASE_FRAC   0.78f
-#define CV_EDGE_THRESH         25.0f
+#define CV_EDGE_THRESH         16.0f
 
 /* SENSING scratch is sized for the largest configured strip so a runtime
  * config swap can't overflow it (1p's 185×32 dominates 2p-left's 166×32). */
@@ -130,8 +132,9 @@ static const color_filter_t s_color_filter[FRET_COUNT] =
     [FRET_ORANGE] = { { 0.0f, 0.3f, 0.7f }, { 1.4f, 0.0f, 0.0f } },
 };
 
-/* Per-fret detector state. Private — not on the bus. press_count is the
- * rising-edge counter the strum scheduler will eventually consume. */
+/* Per-fret detector state. The distances and the edge latch are private; the
+ * running press_count is published on the bus as detector_state_t's per-fret
+ * press_count, where it is the timing pipeline's note trigger. */
 static float    s_hold_dist[FRET_COUNT];
 static float    s_edge_dist[FRET_COUNT];
 static bool     s_pressed[FRET_COUNT];
@@ -266,7 +269,8 @@ static void detect_frame(const Video_FrameInfo *frame,
         if (edge_on && !s_edge_active[i]) { s_press_count[i]++; }
         s_edge_active[i] = edge_on;
 
-        state.fret[i].pressed = s_pressed[i] ? 1u : 0u;
+        state.fret[i].pressed     = s_pressed[i] ? 1u : 0u;
+        state.fret[i].press_count = (uint8_t)s_press_count[i];
 
         /* confidence: edge_dist scaled to 0..65535. ed lives roughly in
          * channel-value units (~0..255) so ×256 fills the range. */
@@ -446,14 +450,16 @@ static void publish_detector_config(const cv_marvin_v1_config_t *geom)
 }
 
 /* Clear per-fret latch/hysteresis state — called on a geometry swap so stale
- * press/edge latches from the old highway don't leak into the new one. */
+ * press/edge latches from the old highway don't leak into the new one.
+ * s_press_count is deliberately left running: it is a sequence, not a latch,
+ * and the pipeline reads any change to it as a note arrival, so zeroing all
+ * five here would land as a five-fret chord on the frame after the swap. */
 static void reset_detector_state(void)
 {
     memset(s_hold_dist,   0, sizeof(s_hold_dist));
     memset(s_edge_dist,   0, sizeof(s_edge_dist));
     memset(s_pressed,     0, sizeof(s_pressed));
     memset(s_edge_active, 0, sizeof(s_edge_active));
-    memset(s_press_count, 0, sizeof(s_press_count));
 }
 
 /* ─── Task ─────────────────────────────────────────────────────────────── */
