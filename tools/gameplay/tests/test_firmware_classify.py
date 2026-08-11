@@ -74,8 +74,8 @@ int main(int argc, char **argv) {
     } else if (strcmp(mode, "amp2p") == 0) {
         gp_amp2p_t a;
         gp_read_amp2p(buf, w, h, (uint8_t)atoi(argv[5]), &a);
-        printf("%d %d %d %d %d\n", (int)a.value, (int)a.ncells,
-               (int)a.layout_measured, (int)a.layout_w, (int)a.layout_pitch);
+        printf("%d %d %d %d\n", (int)a.value, (int)a.ncells,
+               (int)a.layout_w, (int)a.layout_pitch);
     } else if (strcmp(mode, "endprobe") == 0) {
         int16_t con[GP_END_N_BRIGHT];
         uint8_t anchor = 0;
@@ -310,7 +310,7 @@ _AMP_SIDE = {"left": "1", "right": "2"}   # GP_AMP2P_SIDE_* == index into gp_pro
 
 
 def _c_amp2p(driver, image, tmp_path, side):
-    """(value, ncells, layout_measured, cell_w, pitch) from the C reader."""
+    """(value, ncells, cell_w, pitch) from the C reader."""
     import numpy as np
 
     full = np.ascontiguousarray(_amp2p._ensure_full_frame(image, side))
@@ -339,9 +339,10 @@ def test_c_amp2p_matches_python_on_the_corpus(driver, tmp_path):
     for s in samples:
         side, value = amp2p_score_from_filename(s.path.name)
         py = _amp2p.read_amp2p_score(s.image, bank, _amp2p.AmpCalibration(side=side), side)
-        c_val, c_n, c_meas, _cw, _pitch = _c_amp2p(driver, s.image, tmp_path, side)
+        c_val, c_n, cw, pitch = _c_amp2p(driver, s.image, tmp_path, side)
         assert c_val == py.value == value, f"{s.path.name}: C={c_val} Python={py.value}"
-        assert c_n == py.n_cells and c_meas == 1
+        assert c_n == py.n_cells
+        assert (cw, pitch) == py.layout, f"{s.path.name}: C layout ({cw},{pitch}) != {py.layout}"
 
 
 @pytest.mark.skipif(_amp_skip() is not None, reason=_amp_skip() or "")
@@ -365,28 +366,27 @@ def test_c_amp2p_matches_python_on_the_screen_corpus(driver, tmp_path):
 
 
 @pytest.mark.skipif(_amp_skip() is not None, reason=_amp_skip() or "")
-def test_c_amp2p_reads_six_digits_and_flags_the_extrapolation(driver, tmp_path, relay_six):
-    """The C side must also read a 6-digit strip *and* report the pitch as a guess.
+def test_c_amp2p_reads_the_condensed_layout(driver, tmp_path):
+    """The C side must read real 6-digit frames, on the 6-digit layout, exactly.
 
-    Reuses the host's re-lay helper, so the glyphs are real LED renderings at real
-    brightness and only their positions are synthetic — the unmeasured part.
+    The corpus pass above already covers these, but this pins the layout the C reader
+    fell through to — the two sides must agree that the strip re-laid-out, not just on
+    the number.
     """
     from gameplay.corpus import load_amp2p_corpus
-    from gameplay.metadata import amp2p_score_from_filename
+    from gameplay.metadata import AMP2P_GRID, amp2p_score_from_filename
 
     samples = load_amp2p_corpus()
     bank = _amp2p.build_amp2p_bank(samples)
-    wide = [s for s in samples if len(str(amp2p_score_from_filename(s.path.name)[1])) == 5]
-    assert wide, "no 5-digit corpus frame to re-lay"
-    for s in wide[:4]:
+    six = [s for s in samples if len(str(amp2p_score_from_filename(s.path.name)[1])) == 6]
+    assert six, "no 6-digit corpus frame"
+    for s in six[:12]:
         side, value = amp2p_score_from_filename(s.path.name)
-        block, expected = relay_six(s.image, side, value, (7, 8))
-        py = _amp2p.read_amp2p_score(block, bank, _amp2p.AmpCalibration(side=side), side)
-        assert py.value == expected, f"host: {py.value} != {expected}"
-        c_val, c_n, c_meas, c_w, c_pitch = _c_amp2p(driver, block, tmp_path, side)
-        assert c_val == expected, f"{s.path.name} {side}: C={c_val} Python={expected}"
-        assert c_n == 6 and (c_w, c_pitch) == (7, 8)
-        assert c_meas == 0, "an extrapolated layout must not claim to be measured"
+        py = _amp2p.read_amp2p_score(s.image, bank, _amp2p.AmpCalibration(side=side), side)
+        assert py.value == value, f"host: {py.value} != {value}"
+        c_val, c_n, c_w, c_pitch = _c_amp2p(driver, s.image, tmp_path, side)
+        assert c_val == value, f"{s.path.name} {side}: C={c_val} want {value}"
+        assert c_n == 6 and (c_w, c_pitch) == AMP2P_GRID[6]
 
 
 def _c_endprobe(exe: Path, image, tmp: Path) -> tuple[int, int, list[int]]:

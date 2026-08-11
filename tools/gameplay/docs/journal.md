@@ -157,6 +157,15 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-08-11 | **The layout decision is stateless — no latch once 6 digits appear — and each font's templates are contiguous so the matcher scans a range rather than filtering the bank.** | Latching is tempting (a play's score cannot fall back below 100000) and buys nothing: measured over the 19 091 gated frames, **0** frames after the crossing read as the wide layout and **0** before it read as condensed, so the per-frame decision is already right every time. The residue it might seem to address is elsewhere — the 1 104 unreadable frames and 124 violations fail the *glyph match*, not the layout choice. Against that, a latch needs a song-boundary reset (the score restarts at 0) and turns a one-frame error into a rest-of-song error, with star-power flare the likeliest trigger. The monotone argument is already exploited where it belongs: `Amp2pTracker`, on values. Cost of the wide-first ordering, measured: the failed wide attempt is **0.12 us of a 6-digit frame's 6.9 us (1.7%)** because it does no template matching — 81% of the frame is `classify_cells`, which runs once, on the layout that won. Font-contiguous templates then cut the matcher **7.7%** on wide cells (20 of 80 templates, so 60 branch-and-skips removed) and ~0% on condensed (60 of 80 — the skips were already a rounding error next to 60x70 byte ops); end to end 3.52 -> 3.30 us for a 5-digit frame, 7.00 -> 6.92 us for a 6-digit one. Bank order is `(font, digit)` on **both** sides so an exact-L1 tie cannot break differently between host and device. |
+| 2026-08-11 | **6 digits is now MEASURED, not extrapolated: `AMP2P_GRID[6] = (7, 8)`, `layout_measured` is gone, and `AMP2P_GRID_6` / `has_sixth_digit` / `fit_six_layout` are deleted.** The extrapolation was right. | The `web-20260810-092941` capture (a 222 692-point play, 19 497 left-amp region strips) crosses 99999 mid-song. Per-column ink occupancy over its 15 708 six-digit frames lands on **7 px cores at pitch 8, right-aligned at the same edge** — cells at block-local x 13/21/29/37/45/53, gap columns 20/28/36/44/52 inked in 0 of 15 708 frames, and the leading gap column 12 in 3. That is exactly `AMP2P_GRID_6[0]`, so the container-width bound (6·9 = 52 > 49, pitch 8 is the widest that fits) predicted the real layout. (6, 8) is excluded by measurement, not by the matcher: ink reaches the 7th column, so 15 711 of 15 719 frames admit only (7, 8). With both layouts measured the flag has no referent and the candidate machinery has nothing to choose between. |
+| 2026-08-11 | **The layout decision is *grid agreement*, symmetric between the two layouts — not "ink appears left of the 5-cell grid".** `is_six_digit` asks the 6-cell grid the same two questions the wide path asks of its own: all cells powered, ink on-grid. | The ink trigger was a claim about the panel ("nothing else there ever inks") and this capture falsifies it: ~30 five-digit frames around f2081-2095 and f4064-4080 flood container columns 11-15 with star-power flare, tripping it. They were caught downstream by the candidate check, so the cost was an unreadable window rather than a wrong number — but flare one column further would have read as a six-digit score, and that is a bad thing to be one pixel away from. Grid agreement is stronger *and* measured: over 19 091 presence-gated frames, 15 708 satisfy the 6-cell grid and 3 381 the wide one, and **no frame satisfies both**, so the two are mutually exclusive rather than merely ordered. |
+| 2026-08-11 | **The bank is keyed by `(digit, font)` where font is the layout's pitch, with per-font variant counts (`AMP2P_VARIANTS_BY_FONT` = {9: 2, 8: 6}).** The strip re-*renders* at 6 digits, it does not merely re-space. | Measured over 94 248 condensed cells against 16 940 wide ones: the condensed glyph is one row shorter (bbox 9 rows vs 10, top row 1 vs 0) and carries **26% less ink** (28.5 px per cell vs 38.5) because its strokes drop from 2 px to 1-2. Consequence, before the split: a condensed cell scored against the wide templates costs 2703-8585 L1 — every frame past the worst-case 1275 the gates were set against — so **0 of 15 708 six-digit frames produced a value** and the tracked score froze at 99813 for the rest of the song. Ungating it was not the answer: with the gates off the play finished on 882692 against a true 222692 (leading 2s reading as 8), 536 decreases in 19 088 steps. The variant count is per font because the fonts do not pulse alike — the condensed thin phase drops whole stroke pixels, so it needs more phases; 6 is the measured knee (10 and 14 trade 500 fewer unreadable frames for **5x** the violations, 118 -> 615). |
+| 2026-08-11 | **Two constants that read like "the widest layout" are pinned to the *wide reference grid* instead: `AMP2P_REF_CELLS` = 5 drives the ink-threshold span (`grid_span`) and the powered-cell scan.** | Adding an `AMP2P_GRID[6]` row silently moved `max(AMP2P_GRID)` from 5 to 6, and both of those derived from it. The ink threshold, `AMP2P_BLANK_CONTRAST` and the match gates were all *measured* against the 5-cell span, so re-pointing them would have re-tuned the proven 1-5 digit path as a side effect of supporting 6 — the one thing this change was required not to do. A test now pins `grid_span` to the 5-cell grid explicitly so the next layout row cannot repeat it. |
+| 2026-08-11 | **6-digit support is strictly additive at the call site: the wide path runs first and unchanged, and the 6-cell grid is only tried where the code already returned no value.** | Greg's constraint — 1-5 digit reading is working on hardware and must not move. It falls out of the geometry rather than needing care: a 6-digit strip lights all five wide cells but fails their alignment guard, which is precisely the `ink does not sit on the 5-cell grid` branch (all 15 708 six-digit frames take it). So the new code hangs off a branch that previously ended in `layout_unknown`, the common case does strictly less work than the 6-first ordering would, and the wide reads are bit-identical (same geometry, same templates — the wide font's 20 templates are what a corpus of 1-5-digit frames alone produces). |
+| 2026-08-11 | **The firmware coverage fingerprint was thresholding on the *band-wide* ink mask where the host thresholds per cell — fixed to mirror the host (`amp_cell_ink`).** Pre-existing divergence, surfaced by the condensed font. | `amp_cell_cov` read `s_ink` (one mask for the whole band) while `amp2p.cell_cov` calls `ink_mask` on the cell alone; the comment claimed it mirrored the host. The wide font never exposed it — its glyphs are high-contrast enough that the two masks agree — so the C/Python cross-check passed for months. The condensed font's thinner strokes separate them: C reported worst-cell 2907 where the host said 479 on the same frame, gating a read the host accepted. `s_ink` remains correct for the layout guards, which ask where ink is *at all*; only the fingerprint needed the per-cell range. The cross-check now agrees on every corpus frame, both fonts. |
+| 2026-08-11 | **The condensed corpus is labelled by a *structural* decoder (`label_condensed.py`), not by growing a bank from its own reads.** | Bank-growth self-reinforces, and it did: a thin seed bank misread 9 as 8, committed frames carrying that label, trained the next bank on them, and finished the play on 222682 against a true 222692 — a wrong answer that every label-free check (monotone, even awards, settled neighbours) passes, because the error is consistent. A structural decoder has no feedback path: the font is nearly seven-segment, so six stroke features per cell name the digit directly. Two details it needs that a naive window gets wrong — a stem must be lit on *both* rows of its window (the top bar bleeds a pixel into row 2, which gives a 2 a phantom upper-left stem), and the middle must reach the centre columns to count as a bar (a 0's side strokes pass through those rows without one). It decodes both anchors exactly and ~94% of the capture; the residue (thin 9 losing its upper-left stem) is removed by the monotone/settled filters rather than by more tuning. |
+| 2026-08-11 | **Two ground-truth anchors make this capture self-validating, and they are what every claim above is checked against.** | The results-screen snapshot for the session records P1 = **222692**, and the crossing frame is **100213** = 99813 (the last read on the *measured* wide layout) + a 400 award. So the labelling is not a matter of taste: a wrong glyph label shows up as the play ending on the wrong number. That is how the 8-for-9 contamination was caught, and it is the check to re-run on any future corpus change (`eval_capture.py` in the capture dir). Hand transcription alone is not enough — the first seed had 125989 written down as 125899, and it passed both monotonicity and the even-award check. |
 | 2026-08-10 | **The screen fingerprint drops grid cells over per-song / per-run content, and drops them from the *normalization statistics* — not merely from the compare. `fingerprint.EXCLUDED_REGIONS` = the left magazine page, stated on cell boundaries; 24 of 96 cells.** | Forced by a hardware failure, and the mechanism is not the obvious one. A finished 1P run classified UNKNOWN and hung. The frame was `practice_end_menu` on an unseen song, sitting at **0.30x t_abs** — the absolute gate was never the problem. The *margin* gate rejected it: 2872 to `practice_end_menu` vs 3028 to `faceoff_end_menu`, a margin of **156** against t_margin 645. Both corpus end classes were captured over the same Slow Ride cover, so what separates their centroids is mostly the right page, and a changed cover swamps that difference. Excluding the cells from the normalization is the load-bearing half, because the fingerprint standardizes per frame: a bright cover shifts the frame's mean/std and therefore moves **every** cell, not just the ones over the cover. Measured on that frame — zero-after-normalize gives margin 343, excluding from the statistics gives **940**. Cost is one `player_ready_2p` LOO frame (130/137 -> 129/137); slop robustness is unchanged at 99.7%, UNKNOWNs improve 6 -> 5, and impostor leak improves. The region is declared on cell boundaries because an off-boundary rect leaves straddling cells partly over the art, leaking exactly what the mask removes (a test asserts a change confined to the region moves no kept cell). Vector length is unchanged and excluded slots are 0 on both sides, so centroids, the L1 and every exported table keep one shape. |
 | 2026-08-10 | **End of song is detected by a frame-rate probe whose test is a *contrast* — 6 bright patches minus the median of 3 dark anchors — not a brightness level.** Absolute per-patch thresholds were tried first and are not viable. | The probe has to live out on the end screen's sketch collage (the pages themselves can't supply 6 scattered points that clear both end layouts *and* every gameplay-bright zone), and out there the bright patches only reach ~110–160 luma against a gameplay floor near 50. Under the recorded slop envelope that is not separable: 0.85 gain with −20 offset takes a 110-luma patch to 73.5 while a 45-luma gameplay patch rises to 71.75. The search for absolute-threshold points returned **zero** candidates, which is the measurement that settled it rather than a preference. A difference cancels offset exactly and only scales with gain, and the measured contrast (end 86..123 vs gameplay ≤ 8) absorbs ±15% gain with room to spare — 0 wrong across 154 perturbed frames. The anchor is a *median* of three so one anchor landing on something unexpected cannot drag the reference on its own. |
 | 2026-08-10 | **The observer may only ever *veto* actuation, never grant it: it calls `GameTiming_SetEnabled(false)` directly from the frame loop, and the controller is the only thing that switches it back on.** `GP_END_K_HITS` 5 of 6, `GP_END_CONFIRM_FRAMES` 2. | Two constraints pull opposite ways. The stop must not go through the controller's 300 ms poll — that poll *is* the ~1.0–1.35 s of errant actuation this exists to remove — so the observer has to cut the pipeline itself. But "the controller owns the actuation window" is a rule worth keeping, and an observer that could re-enable would own it jointly. Making the veto one-directional satisfies both: cutting is safe from anywhere, and the controller restores the window once its own `gp_classify` read shows the highway is still present. That is also what makes an aggressive 5-of-6 the right threshold — a false positive costs the notes missed in one poll interval and self-clears, while a false negative costs presses that can select RESTART or QUIT on the results menu. The failure modes are not symmetric, so the thresholds should not be either. |
@@ -254,13 +263,29 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 - **2-player amp scoreboard follow-ups** (score digits done 2026-08-09, re-validated on both
   sides 2026-08-10). The reader is built so each remaining gap is *visible* rather than guessed.
-  1. **Confirm the 6-digit pitch.** Still no capture past 99999, but this is no longer a refusal:
-     the container is 49 px so pitch 9 cannot fit six cells, and `AMP2P_GRID_6` holds the two
-     layouts that do — read on the widest that the ink and the bank agree with, flagged
-     `layout_measured=False` and reporting the fitted `layout`. **Closes with:** any capture whose
-     score passes 99999 → check `read-amp2p` prints `layout=(7, 8) EXTRAPOLATED` and the right
-     number, then promote it to an `AMP2P_GRID` row and drop the flag. 5 digits is now *measured*
-     (11 199 / 11 306 frames per side).
+  1. ✅ ~~**Confirm the 6-digit pitch.**~~ **Closed 2026-08-11 by `web-20260810-092941`** — the
+     extrapolated (7, 8) is the real layout, now `AMP2P_GRID[6]`, and the flag is gone. See the
+     2026-08-11 decision-log entries. What the same capture left open:
+     - **Condensed per-frame accuracy is 99.35%, not 100%.** 124 of 19 091 gated frames read a
+       value below their running max, and 1 104 (5.8%) fail the gates and read nothing (held, not
+       wrong). The residue is one confusion family — 8 / 9 / 3, which differ by a single stem in
+       this font — in the extreme bloom phases. The wide path is unaffected (3 383 frames, 0
+       violations). **Closes with:** either a second 6-digit capture to widen the bloom coverage,
+       or a shape feature that separates that family without a template (the stem geometry
+       `label_condensed.py` uses is the obvious candidate, but it is calibrated on this capture
+       alone).
+     - **`Amp2pTracker` now earns its place and is still not on device.** It filters 259 reads and
+       cuts the falls from 124 to **21**, and the tracked score ends exactly on 222692. The
+       2026-08-10 decision not to port it rested on it filtering 0 frames; that is no longer true.
+       **Closes with:** Greg's call on porting it (it is state plus a 3-frame confirm latency on
+       falls only — rises stay instant).
+     - **The right amp is unconfirmed at 6 digits.** This capture streamed region slot 1 only, so
+       there are 0 right-side frames. The sides are known to share the glyph art at 1-5 digits, so
+       the condensed bank is expected to transfer, but it is untested. **Closes with:** a capture
+       past 99999 with slot 2 enabled.
+     - **7 digits (>= 1 000 000) stays a guard, deliberately.** No GH3 song scores that high, so
+       there is nothing to measure and nothing to invent; such a strip fits neither grid and is
+       reported `layout_unknown`.
   2. ✅ ~~**Root-cause the idle-composite frames.**~~ **Withdrawn 2026-08-10 (same day): there is no
      artefact.** The frames were early-song frames spliced into mid-sequence by `export-region`'s
      4-digit filename sort; with `evaluate.capture_frames` the tracker filters **0** frames on both
@@ -354,6 +379,47 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-08-11 — 6-digit amp scores read; the extrapolated pitch was right
+
+Greg brought `web-20260810-092941`: a 2-player play that crosses 99999 and finishes on
+**222692** (the results-screen snapshot is the ground truth), 19 497 left-amp region strips.
+It closed the longest-standing open question here and turned up two bugs.
+
+**The layout extrapolation held.** Measured (7, 8) — `AMP2P_GRID_6[0]` exactly. So the
+container-width argument was sound and 6 digits is now an `AMP2P_GRID` row; `layout_measured`,
+`AMP2P_GRID_6`, `has_sixth_digit` and `fit_six_layout` are all gone, host and firmware.
+
+**But the font changes too, and that was the actual blocker.** The condensed glyph is a
+different rendering, not the same one re-spaced (9 rows vs 10, 26% less ink). Against the wide
+templates every six-digit frame blew the distance gate: **0 of 15 708** read, the score frozen
+at 99813. The bank is now keyed by `(digit, font)` with per-font variant counts. Loosening the
+gates instead would have been much worse than useless — ungated, the play finished on 882692.
+
+**Two bugs, one mine, one pre-existing.** The 6-digit *trigger* ("ink left of the wide grid")
+false-positives on star-power flare, ~30 frames here; replaced with symmetric grid agreement,
+which is measured mutually exclusive over 19 091 frames. And `gameplay_amp2p.c` was building its
+coverage fingerprint from the band-wide ink mask where the host thresholds per cell — a real
+host/firmware divergence the wide font's contrast had been hiding since the port landed.
+
+**Labelling the condensed corpus was the hard part, and bank-growth was the wrong tool.** A
+seed-and-grow loop baked its own 9-as-8 misreads into the corpus and finished the play 10 points
+low — consistent enough that monotonicity, even-award and settled-neighbour checks all passed it.
+Replaced with a structural (near-seven-segment) decoder, which has no feedback path; the corpus is
+now 453 frames labelled from stroke geometry and filtered on the monotone envelope. Worth
+recording that hand transcription is not a safe fallback either: the first seed had 125989 written
+down as **125899**, and both label-free checks passed it. The two anchors are what caught
+everything — `eval_capture.py` in the capture dir re-runs them.
+
+**Where it stands.** Wide path unchanged and still 0 violations. Condensed: 99.35% of gated
+frames clean per-frame, 5.8% gated as unreadable (held, not wrong), tracked score exactly 222692
+end to end. 156 tests pass, C matches Python on both fonts. Residue is the 8/9/3 stem family in
+the bloom extremes — see Open questions. `Amp2pTracker` now filters 259 reads (124 falls -> 21)
+where it used to filter 0, so the decision not to port it needs revisiting.
+
+Bootstrap tooling lives with its data in `tools/marvin-perf/captures/web-20260810-092941/`
+(gitignored): `derive_strips.py`, `label_condensed.py`, `build_corpus6.py`, `clean_corpus6.py`,
+`eval_capture.py`, `stems.py`.
 
 ### 2026-08-10 (hardware) — the end-of-song veto works on device
 

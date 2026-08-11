@@ -37,14 +37,15 @@ from .metadata import (
     AMP2P_CONTAINER_W,
     AMP2P_GLYPH_COLS,
     AMP2P_GLYPH_ROWS,
+    AMP2P_FONTS,
     AMP2P_GRID,
-    AMP2P_GRID_6,
     AMP2P_INK_DEN,
     AMP2P_INK_NUM,
     AMP2P_RIGHT_EDGE,
     AMP2P_UNK_DIST,
+    AMP2P_REF_CELLS,
     AMP2P_UNK_MARGIN,
-    AMP2P_VARIANTS,
+    AMP2P_VARIANTS_BY_FONT,
     HORIZONTAL,
     MENU_LAYOUTS,
     SCORE_DIGIT_BAND,
@@ -430,7 +431,16 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
     w("   fixed grid: equal cells at a constant pitch, right-aligned against a fixed edge,")
     w("   unused leading cells unpowered. So there is no ink segmentation — cell positions")
     w("   come from the grid table and each cell is classified independently.")
-    w("   Two details carry the accuracy, both proven on ~30k real frames:")
+    w("   The strip has TWO measured layouts, and each renders the digits differently:")
+    w("   1-5 digits sit on a 7 px core at pitch 9; past 99999 six cells will not fit the")
+    w("   49 px container, so the strip drops to pitch 8 and re-draws the glyphs one row")
+    w("   shorter with thinner strokes. The bank therefore holds a template set PER FONT")
+    w("   (gp_amp2p_tmpl_font[], the layout's pitch) and a cell is only matched within its")
+    w("   own — a condensed cell scored against the wide templates costs 2703-8585 L1, all")
+    w("   of it past GP_AMP2P_UNK_DIST. Which layout a frame is on comes from grid")
+    w("   agreement, not from where ink starts: over 19 091 gated frames of a 222 692-point")
+    w("   play, 15 708 fit the 6-cell grid and 3 381 the wide one, and none fit both.")
+    w("   Two more details carry the accuracy, both proven on ~30k real frames:")
     w("     * the ink threshold is relative to *each cell*, not the band. The LEDs pulse, so")
     w("       a bright glyph blooms ~1px wider; band-wide, the brightest digit sets the range")
     w("       and a dim 9 thins into a 5.")
@@ -441,22 +451,38 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
     w("   so horizontal position inside it separates the glyphs. */")
     acat = build_amp2p_bank(load_amp2p_corpus())
     amp_len = AMP2P_GLYPH_ROWS * AMP2P_GLYPH_COLS
-    cell_w, pitch = AMP2P_GRID[max(AMP2P_GRID)]
-    if any((w_, p_) != (cell_w, pitch) for w_, p_ in AMP2P_GRID.values()):
-        raise ValueError(f"amp2p grid is not uniform across digit counts: {AMP2P_GRID}")
+    cell_w, pitch = AMP2P_GRID[AMP2P_REF_CELLS]
+    wide_counts = {n: lay for n, lay in AMP2P_GRID.items() if n <= AMP2P_REF_CELLS}
+    if any(lay != (cell_w, pitch) for lay in wide_counts.values()):
+        raise ValueError(f"amp2p wide grid is not uniform across 1-{AMP2P_REF_CELLS} "
+                         f"digits: {wide_counts}")
+    six_w, six_pitch = AMP2P_GRID[6]
+    if six_w != cell_w:
+        raise ValueError(f"the C reader assumes one cell width for both layouts, "
+                         f"got wide {cell_w} and condensed {six_w}")
+    missing = [f for f in AMP2P_FONTS if acat.digits_for_font(f) != set(range(10))]
+    if missing:
+        raise ValueError(f"amp2p bank is missing digits for font(s) {missing}: "
+                         f"{ {f: sorted(acat.digits_for_font(f)) for f in missing} }")
     w("#define GP_AMP2P_GLYPH_ROWS %d" % AMP2P_GLYPH_ROWS)
     w("#define GP_AMP2P_GLYPH_COLS %d" % AMP2P_GLYPH_COLS)
     w("#define GP_AMP2P_LEN %d" % amp_len)
     w("#define GP_AMP2P_NTMPL %d        /* flat bank; gp_amp2p_tmpl_digit[] holds the labels */"
       % len(acat.templates))
-    w("#define GP_AMP2P_VARIANTS %d      /* templates per digit (LED brightness phases) */"
-      % AMP2P_VARIANTS)
+    w("#define GP_AMP2P_VARIANTS %d      /* max templates per digit (brightness phases) */"
+      % max(AMP2P_VARIANTS_BY_FONT.values()))
     w("#define GP_AMP2P_BAND_Y0 %d      /* digit band rows, block-local */" % AMP2P_BAND_Y0)
     w("#define GP_AMP2P_BAND_H %d" % AMP2P_BAND_H)
     w("#define GP_AMP2P_CELL_W %d       /* glyph core; the pitch gap is bloom, kept out */" % cell_w)
     w("#define GP_AMP2P_PITCH %d" % pitch)
-    w("#define GP_AMP2P_MAX_CELLS %d    /* measured digit counts; 6 uses gp_amp2p_grid6 */"
+    w("#define GP_AMP2P_REF_CELLS %d    /* the wide grid: powered-cell scan + ink range */"
+      % AMP2P_REF_CELLS)
+    w("#define GP_AMP2P_MAX_CELLS %d    /* widest measured layout (the 6-digit strip) */"
       % max(AMP2P_GRID))
+    w("#define GP_AMP2P_SIX_PITCH %d    /* the 6-digit layout re-lays-out to this pitch */"
+      % six_pitch)
+    w("#define GP_AMP2P_FONT_WIDE %d    /* font ids are the layout pitch */" % pitch)
+    w("#define GP_AMP2P_FONT_SIX %d" % six_pitch)
     w("#define GP_AMP2P_CONTAINER_W %d  /* dark strip width; 6*pitch would not fit */"
       % AMP2P_CONTAINER_W)
     w("#define GP_AMP2P_SIDE_LEFT GP_PROBE_2PL   /* side == index into gp_probes[] */")
@@ -473,23 +499,37 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
     w("#define GP_AMP2P_UNK_DIST %d     /* best L1 above this => cell unreadable */" % AMP2P_UNK_DIST)
     w("#define GP_AMP2P_UNK_MARGIN %d    /* runner-up gap below this => cell ambiguous */"
       % AMP2P_UNK_MARGIN)
-    w("#define GP_AMP2P_N_GRID6 %d      /* 6-digit candidates that fit the container */"
-      % len(AMP2P_GRID_6))
     w("")
-    w("/* 6-digit layouts the container admits, widest cell first. The measured pitch is")
-    w("   absent by arithmetic, not by choice: 5*%d + %d > %d. A read on one of these sets"
-      % (pitch, cell_w, AMP2P_CONTAINER_W))
-    w("   layout_measured = 0, because no capture past 99999 has confirmed the pitch. */")
-    w("static const uint8_t gp_amp2p_grid6[GP_AMP2P_N_GRID6][2] = {  /* {cell_w, pitch} */")
-    for cw, pt in AMP2P_GRID_6:
-        w("  {%d,%d}," % (cw, pt))
-    w("};")
-    w("")
+    w("/* Why the 6-digit layout has to be its own row rather than more of the same: six")
+    w("   cells at the wide pitch need 5*%d + %d = %d px and the container is %d. */"
+      % (pitch, cell_w, 5 * pitch + cell_w, AMP2P_CONTAINER_W))
     w("static const uint8_t gp_amp2p_tmpl[GP_AMP2P_NTMPL][GP_AMP2P_LEN] = {")
     w(_u8_rows(np.stack([t.vec for t in acat.templates])))
     w("};")
     w("static const uint8_t gp_amp2p_tmpl_digit[GP_AMP2P_NTMPL] = {%s};"
       % ",".join(str(int(t.digit)) for t in acat.templates))
+    # Each font's templates are contiguous (build_amp2p_bank orders by font), so the
+    # matcher takes a range instead of filtering the whole bank on every cell.
+    fonts = [t.font for t in acat.templates]
+    spans = {}
+    for i, f in enumerate(fonts):
+        lo, hi = spans.get(f, (i, i))
+        spans[f] = (min(lo, i), i + 1)
+    for f, (lo, hi) in spans.items():
+        if fonts[lo:hi] != [f] * (hi - lo):
+            raise ValueError(f"amp2p font {f} templates are not contiguous in the bank "
+                             f"({lo}..{hi}); build_amp2p_bank must order by font")
+    order = sorted(spans)
+    w("/* Where each font's templates live in the bank. A cell is matched only against")
+    w("   its own layout's font, and they are contiguous, so the matcher scans a range")
+    w("   rather than testing every template's font. Font ids are the layout pitch. */")
+    w("#define GP_AMP2P_N_FONTS %d" % len(order))
+    w("static const uint8_t gp_amp2p_font_id[GP_AMP2P_N_FONTS] = {%s};"
+      % ",".join(str(int(f)) for f in order))
+    w("static const uint16_t gp_amp2p_font_start[GP_AMP2P_N_FONTS] = {%s};"
+      % ",".join(str(spans[f][0]) for f in order))
+    w("static const uint16_t gp_amp2p_font_count[GP_AMP2P_N_FONTS] = {%s};"
+      % ",".join(str(spans[f][1] - spans[f][0]) for f in order))
     w("")
 
     # ── guitar_select_2p: P1's READY! badge ─────────────────────────────────

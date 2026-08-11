@@ -37,7 +37,6 @@ typedef struct
      * which is the 1p scoring block and reads -1 during a 2-player song. */
     int32_t  score_p1;
     int32_t  score_p2;
-    uint8_t  score_2p_extrapolated; /* 1 = a 6-digit read on an unmeasured pitch */
 } game_state_t;
 
 /* Brings up the game-state bus queue and the observer task. The observer

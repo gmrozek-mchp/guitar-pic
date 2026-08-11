@@ -282,52 +282,66 @@ AMP2P_BAND_H = 10
 AMP2P_RIGHT_EDGE: dict[str, int] = {"left": 60, "right": 63}
 
 # Per digit count: (cell_w, pitch). Cells grow leftward from AMP2P_RIGHT_EDGE.
-# The cell is the glyph *core* (7 px) — the 2 px between cores are gap, and must
-# stay out: they carry the glyph's bloom, which tracks the LED's brightness phase
-# rather than its shape, and including them lets a dim 9 out-match a bright 9.
-# Counts 1-5 are measured on both sides: per-column ink occupancy lands on 7-px
-# cores at pitch 9 with clean 2-px gaps, and the pitch and right edge do not move
-# across the 3->4 or 4->5 crossings. 6+ is not here on purpose — see AMP2P_GRID_6.
+# The cell is the glyph *core* (7 px) — the px between cores are gap, and must stay
+# out: they carry the glyph's bloom, which tracks the LED's brightness phase rather
+# than its shape, and including them lets a dim 9 out-match a bright 9.
+#
+# Both layouts are measured from per-column ink occupancy. 1-5 digits sit on 7-px
+# cores at pitch 9 with clean 2-px gaps (both sides; the pitch and right edge do not
+# move across the 3->4 or 4->5 crossings). At 6 digits the strip re-lays-out to pitch
+# 8 — 6*9 would need 52 px and the container is 49 — keeping the 7-px core and giving
+# up one gap column. The right edge is unchanged, so only the pitch differs.
 AMP2P_GRID: dict[int, tuple[int, int]] = {
     1: (7, 9),
     2: (7, 9),
     3: (7, 9),
     4: (7, 9),
     5: (7, 9),
+    6: (7, 8),
 }
+
+# The digit count whose grid is the *reference*: the widest layout at the wide pitch.
+# Two things key off it rather than off max(AMP2P_GRID) — the ink threshold's
+# reference span and the powered-cell scan for 1-5 digits — because both were
+# measured against this grid and neither means "the widest layout that exists".
+AMP2P_REF_CELLS = 5
 
 # Interior width of the strip's dark container, measured on both sides: it runs
 # from AMP2P_RIGHT_EDGE - 49 to AMP2P_RIGHT_EDGE (block-local 11..60 left,
-# 14..63 right), with the amp's bright bezel immediately left of it. This is the
-# measurement that constrains the unseen 6-digit layout: six cells at the measured
-# pitch 9 need 52 px, so they cannot fit — the strip must re-lay-out tighter, which
-# is what Greg reports seeing once the score passes 99999.
+# 14..63 right), with the amp's bright bezel immediately left of it. This is what
+# explains the 6-digit re-layout (6 cells at pitch 9 do not fit) and what bounds
+# anything wider: 7 digits have no measured layout and are reported, not decoded.
+# Unreachable in practice — no GH3 song scores 1 000 000 — so it stays a guard.
 AMP2P_CONTAINER_W = 49
 
-# Candidate 6-digit layouts as (cell_w, pitch), right-aligned like AMP2P_GRID.
-# **Extrapolated, not measured** — no capture has passed 99999 yet. They are the
-# layouts that fit AMP2P_CONTAINER_W (5*pitch + w <= 49), so pitch 9 is absent by
-# measurement and pitch 8 is the widest that fits. A frame read on one of these
-# reports `layout_measured=False` plus the fitted layout, so the first real 6-digit
-# capture confirms or corrects the pitch instead of a number quietly depending on
-# it. Tighter than pitch 8 is deliberately not offered: a strip that compressed
-# that far would not trip the 6-digit ink trigger, and is flagged instead of read.
-AMP2P_GRID_6: tuple[tuple[int, int], ...] = ((7, 8), (6, 8))
-
-# Canonical glyph grid. 10x7 is the cell's native size at the measured pitch, so
-# no resampling happens there; `covcore.cov_grid` still resizes into it, which is
-# what would give a narrower re-laid-out cell a chance of matching the same bank.
+# Canonical glyph grid. 10x7 is the cell's native width at either pitch, so columns
+# are never resampled. Rows are: the wide font fills all 10 band rows, the condensed
+# font 8-9 of them, and `covcore.cov_grid` resamples a cell's row bbox into 10.
 AMP2P_GLYPH_ROWS = 10
 AMP2P_GLYPH_COLS = 7
+
+# The strip uses a *different glyph rendering* per layout, not just a different pitch:
+# measured over 94 248 condensed cells against 16 940 wide ones, the condensed font is
+# one row shorter (bbox 9 rows vs 10, top row 1 vs 0) and carries 26% less ink
+# (28.5 px per cell vs 38.5) because its strokes are thinner. Matching a condensed
+# cell against wide templates costs 2703-8585 L1, all of it above AMP2P_UNK_DIST — so
+# the bank is keyed by (digit, font) and a cell is only ever matched within its own
+# font. The key is the layout's pitch, which is the physical cause of the re-render.
+AMP2P_FONTS: tuple[int, ...] = tuple(sorted({pitch for _w, pitch in AMP2P_GRID.values()}))
 AMP2P_INK_NUM = 1            # relative ink threshold within a *cell* = num/den of the
 AMP2P_INK_DEN = 2            # min..max luma range (1/2 = midpoint; gain/offset robust)
-# Templates per digit. The LEDs pulse, so each glyph has a bloomed and a thin
-# rendering; splitting each digit's exemplars into this many variants keeps both
-# instead of averaging them together. Measured over the reference capture: 1
-# variant reads the same values but with worst-case distance 1844 and 1st-percentile
-# margin 389; 2 variants give 1275 / 648; 3 and 4 add templates without moving
-# either. So 2 buys the headroom the gates below are set against.
-AMP2P_VARIANTS = 2
+# Templates per digit, per font. The LEDs pulse, so each glyph has several renderings;
+# splitting a digit's exemplars into this many variants keeps them instead of averaging
+# them together. The count is per font because the two fonts do not pulse alike: the
+# wide font's strokes are 2 px and bloom to 3, giving two phases, while the condensed
+# font's are 1-2 px and its thin phase drops whole stroke pixels, so it needs more.
+#
+# Wide (pitch 9), measured over the reference capture: 1 variant reads the same values
+# but with worst-case distance 1844 and 1st-percentile margin 389; 2 variants give
+# 1275 / 648; 3 and 4 add templates without moving either. Condensed (pitch 8):
+# see the sweep in docs/journal.md.
+AMP2P_VARIANTS_BY_FONT: dict[int, int] = {9: 2, 8: 6}
+AMP2P_VARIANTS = AMP2P_VARIANTS_BY_FONT[9]   # the wide font's count, unchanged
 # A cell's luma range below this => unpowered (a leading blank). Measured: blank
 # cells span ~17 counts of dark-panel gradient, a lit cell 100-140, so the gate
 # sits well clear of both. In raw luma units (B*29+G*150+R*77, no /256).

@@ -5,8 +5,9 @@ covers both sides (one gameplay capture each), and the strongest test remains
 cross-source: the bank must read the *screen* corpus — different frames, different
 capture path — exactly. The rest pins the geometry, the parse rules, and the
 invariances the design claims: registration absorbs positional slop, the per-cell
-relative ink threshold absorbs analog gain/offset, and the 6-digit relayout is read
-on an extrapolated layout that is flagged as such rather than trusted.
+relative ink threshold absorbs analog gain/offset, and the two layouts (1-5 digits at
+pitch 9, 6 digits at pitch 8) are told apart by grid agreement and read against their
+own font's templates.
 """
 
 from __future__ import annotations
@@ -20,8 +21,9 @@ from gameplay.metadata import (
     AMP2P_BAND_Y0,
     AMP2P_BLOCK,
     AMP2P_CONTAINER_W,
+    AMP2P_FONTS,
     AMP2P_GRID,
-    AMP2P_GRID_6,
+    AMP2P_REF_CELLS,
     AMP2P_RIGHT_EDGE,
     amp2p_score_from_filename,
 )
@@ -75,13 +77,51 @@ def _snapshots(corpus):
 # ─── bank + geometry ───────────────────────────────────────────────────────────
 
 
-def test_bank_covers_every_digit(bank):
-    assert set(bank.digits) == set(range(10))
+def test_bank_covers_every_digit_in_every_font(bank):
+    """A font with a missing digit cannot read a score that contains it."""
+    assert set(bank.fonts) == set(AMP2P_FONTS)
+    for font in AMP2P_FONTS:
+        assert bank.digits_for_font(font) == set(range(10)), f"font {font}"
 
 
 def test_bank_keeps_brightness_variants(bank):
     """More templates than digits — the pulse variants are not averaged away."""
-    assert len(bank.templates) > 10
+    for font in AMP2P_FONTS:
+        assert len(bank.for_font(font)) > 10, f"font {font}"
+
+
+def test_a_cell_read_against_the_wrong_font_fails_the_gate(amp2p_corpus, bank):
+    """Why the bank is keyed by font: the other font's templates cannot read this cell.
+
+    Every cell reads in its own font and scores worse in the other one, and for a
+    *condensed* frame the worst cell against the wide bank clears AMP2P_UNK_DIST — which
+    is why 6-digit frames read as nothing at all before the bank was split (worst-cell
+    L1 2703-8585 over the reference capture).
+
+    The claim is per frame, not per cell, and only in that direction. Some individual
+    glyphs are near-identical across the fonts — a `1` is a bare centred bar either way
+    and scores ~950 against the wrong bank — so a per-cell assertion would be false, and
+    a wide cell against the condensed bank is merely worse rather than unreadable.
+    """
+    from gameplay.metadata import AMP2P_UNK_DIST
+    for s in amp2p_corpus:
+        side, value = amp2p_score_from_filename(s.path.name)
+        n = len(str(value))
+        mine = AMP2P_GRID[n][1]
+        theirs = 8 if mine == 9 else 9
+        band = amp2p._band_luma(s.image, side)
+        worst_own = worst_alien = 0.0
+        for span in amp2p.cell_bounds(side, n):
+            cov = amp2p.cell_cov(band, span)
+            _d, own, _m = amp2p.match_cell(bank, cov, mine)
+            _d, alien, _m = amp2p.match_cell(bank, cov, theirs)
+            assert alien > own, f"{s.path.name}: other font {alien:.0f} <= own {own:.0f}"
+            worst_own, worst_alien = max(worst_own, own), max(worst_alien, alien)
+        assert worst_own <= AMP2P_UNK_DIST, f"{s.path.name}: own font {worst_own:.0f}"
+        if n == 6:
+            assert worst_alien > AMP2P_UNK_DIST, (
+                f"{s.path.name}: the wide bank could read this condensed frame "
+                f"(worst cell {worst_alien:.0f})")
 
 
 def test_cell_bounds_are_right_aligned_and_pitched():
@@ -95,37 +135,40 @@ def test_cell_bounds_are_right_aligned_and_pitched():
 
 
 def test_cells_stay_inside_the_block():
-    """Even at the widest grid, no cell runs off the block or into the band edge."""
+    """At either layout, no cell runs off the block or into the band edge."""
     for side in amp2p.SIDES:
         x0, y0, x1, y1 = AMP2P_BLOCK[side]
-        spans = amp2p.cell_bounds(side, max(AMP2P_GRID))
-        assert spans[0][0] >= 0 and spans[-1][1] <= x1 - x0
+        for n in AMP2P_GRID:
+            spans = amp2p.cell_bounds(side, n)
+            assert spans[0][0] >= 0 and spans[-1][1] <= x1 - x0
         assert AMP2P_BAND_Y0 + AMP2P_BAND_H <= y1 - y0
 
 
-def test_no_grid_entry_beyond_the_measured_layout():
-    """6 digits re-lays-out the strip; the measured table must not pretend to know it."""
-    assert max(AMP2P_GRID) == 5
-    with pytest.raises(KeyError):
-        amp2p.cell_bounds("right", 6)
-
-
-def test_six_digit_candidates_are_the_ones_that_physically_fit():
-    """The container width, not taste, is what excludes the measured pitch at 6 digits."""
-    assert AMP2P_GRID_6, "no 6-digit candidate layouts"
-    for w, pitch in AMP2P_GRID_6:
-        assert 5 * pitch + w <= AMP2P_CONTAINER_W
-        assert w < pitch, "cells must leave a gap"
-    # The measured 5-digit layout is exactly what does not fit.
-    w9, p9 = AMP2P_GRID[5]
+def test_both_layouts_fit_the_container_and_the_wide_one_could_not_stretch():
+    """The container width is *why* 6 digits re-lay-out, not a matter of taste."""
+    for n, (w, pitch) in sorted(AMP2P_GRID.items()):
+        assert (n - 1) * pitch + w <= AMP2P_CONTAINER_W, f"{n} digits overflow the strip"
+    # Six cells at the wide pitch is exactly what does not fit — hence pitch 8 at 6.
+    w9, p9 = AMP2P_GRID[AMP2P_REF_CELLS]
     assert 5 * p9 + w9 > AMP2P_CONTAINER_W
+    assert AMP2P_GRID[6][1] < p9
     for side in amp2p.SIDES:
         cx0, cx1 = amp2p.container_span(side)
         assert cx1 == AMP2P_RIGHT_EDGE[side] and cx1 - cx0 == AMP2P_CONTAINER_W
         assert cx0 >= 0
-        # Every candidate's leftmost cell stays inside the container.
-        for lay in AMP2P_GRID_6:
-            assert amp2p.cell_bounds(side, 6, lay)[0][0] >= cx0
+        assert amp2p.cell_bounds(side, 6)[0][0] >= cx0
+
+
+def test_the_wide_grid_is_the_ink_threshold_reference():
+    """grid_span must stay the 5-cell wide grid even though a wider layout exists.
+
+    The ink threshold, the blank gate and their measured values are all set against
+    these columns; pinning it to max(AMP2P_GRID) would silently re-tune the 1-5 digit
+    path when the 6-digit row was added.
+    """
+    for side in amp2p.SIDES:
+        assert amp2p.grid_span(side) == (
+            amp2p.cell_bounds(side, AMP2P_REF_CELLS)[0][0], AMP2P_RIGHT_EDGE[side])
 
 
 def test_filename_parser():
@@ -208,55 +251,46 @@ def test_non_right_aligned_lit_pattern_is_flagged(amp2p_corpus, bank, calib):
     # the leftmost cell of the widest grid leaves cell 1 blank — a hole no
     # right-aligned value can produce.
     img = s.image.copy()
-    spans = amp2p.cell_bounds(side, max(AMP2P_GRID))
+    spans = amp2p.cell_bounds(side, AMP2P_REF_CELLS)
     rows = slice(AMP2P_BAND_Y0, AMP2P_BAND_Y0 + AMP2P_BAND_H)
     img[rows, spans[0][0]:spans[0][1]] = img[rows, spans[3][0]:spans[3][1]]
     r = amp2p.read_amp2p_score(img, bank, calib[side], side)
     assert r.value is None and r.layout_unknown, f"got {r.value} ({r.reason})"
 
 
-def test_the_six_digit_trigger_never_fires_on_a_measured_layout(amp2p_corpus):
-    """Nothing inks left of the 5-cell grid until a 6th digit appears.
+def test_the_two_grids_are_mutually_exclusive(amp2p_corpus):
+    """No frame may satisfy both layouts — that disjointness *is* the layout decision.
 
-    The trigger is a physical claim about the panel, so it is worth pinning on every
-    labelled frame; it also holds across the two 15k-frame captures the corpus was
-    cut from (22 400 five-digit frames, zero hits).
+    Holds on every labelled frame here, and over the 19 091 presence-gated frames of
+    the reference 222 692-point play (15 708 condensed, 3 381 wide, none both).
     """
     for s in amp2p_corpus:
-        side, _value = amp2p_score_from_filename(s.path.name)
-        band = amp2p._band_luma(s.image, side)
-        assert not amp2p.has_sixth_digit(band, side), s.path.name
-
-
-def test_reads_a_six_digit_strip_and_flags_the_extrapolated_layout(amp2p_corpus, bank, calib, relay_six):
-    """A 6-digit strip at the predicted pitch reads, and says the pitch is a guess."""
-    wide = [s for s in amp2p_corpus if len(str(amp2p_score_from_filename(s.path.name)[1])) == 5]
-    assert wide, "no 5-digit corpus frame to re-lay"
-    for s in wide[:6]:
         side, value = amp2p_score_from_filename(s.path.name)
-        block, expected = relay_six(s.image, side, value, (7, 8))
-        r = amp2p.read_amp2p_score(block, bank, calib[side], side)
-        assert r.value == expected, f"{s.path.name}: got {r.value} ({r.reason})"
-        assert r.n_cells == 6 and r.layout == (7, 8)
-        assert not r.layout_measured, "an extrapolated layout must not claim to be measured"
-        assert not r.layout_unknown
+        band = amp2p._band_luma(s.image, side)
+        six = amp2p.is_six_digit(band, side)
+        n, aligned = amp2p._powered_cells(band, side)
+        wide = aligned and n > 0 and (
+            n < AMP2P_REF_CELLS
+            or amp2p._grid_aligned(band, side, AMP2P_REF_CELLS, amp2p.AMP2P_WIDE_LAYOUT))
+        assert six == (len(str(value)) == 6), s.path.name
+        assert not (six and wide), f"{s.path.name} satisfies both grids"
 
 
-def test_a_measured_read_reports_its_layout_as_measured(amp2p_corpus, bank, calib):
+def test_a_read_reports_the_layout_it_used(amp2p_corpus, bank, calib):
     for s in amp2p_corpus:
         side, value = amp2p_score_from_filename(s.path.name)
         r = amp2p.read_amp2p_score(s.image, bank, calib[side], side)
-        assert r.layout_measured and r.layout == AMP2P_GRID[len(str(value))]
+        assert r.layout == AMP2P_GRID[len(str(value))]
 
 
-def test_a_six_digit_strip_on_no_candidate_layout_is_flagged(amp2p_corpus, bank, calib):
-    """Ink left of the grid that fits no candidate must not be forced onto one."""
+def test_a_strip_on_neither_grid_is_flagged(amp2p_corpus, bank, calib):
+    """Ink that sits on no measured layout must not be forced onto one."""
     s = next(x for x in amp2p_corpus if len(str(amp2p_score_from_filename(x.path.name)[1])) == 5)
     side, _value = amp2p_score_from_filename(s.path.name)
     block = s.image.copy()
     rows = slice(AMP2P_BAND_Y0, AMP2P_BAND_Y0 + AMP2P_BAND_H)
-    # Smear the widest cell across the whole container: ink everywhere, so no
-    # candidate's gaps can be clean.
+    # Smear the widest cell across the whole container: ink everywhere, so neither
+    # layout's gap columns can be clean.
     cx0, cx1 = amp2p.container_span(side)
     x0, x1 = amp2p.cell_bounds(side, 5)[-1]
     block[rows, cx0:cx1] = np.tile(block[rows, x0:x1], (1, -(-(cx1 - cx0) // (x1 - x0)), 1))[
@@ -270,7 +304,7 @@ def test_alien_glyphs_are_gated_not_guessed(bank, calib):
     """Noise in every cell must fail the match gates rather than yield a number."""
     rng = np.random.default_rng(0)
     img = np.zeros((*amp2p.block_size("right"), 3), dtype=np.uint8)
-    for x0, x1 in amp2p.cell_bounds("right", max(AMP2P_GRID)):
+    for x0, x1 in amp2p.cell_bounds("right", AMP2P_REF_CELLS):
         patch = rng.integers(0, 256, size=(AMP2P_BAND_H, x1 - x0, 3), dtype=np.uint8)
         img[AMP2P_BAND_Y0:AMP2P_BAND_Y0 + AMP2P_BAND_H, x0:x1] = patch
     r = amp2p.read_amp2p_score(img, bank, calib["right"], "right")

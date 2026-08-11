@@ -148,7 +148,7 @@ def cmd_amp2p(args: argparse.Namespace) -> int:
     calib = amp2p.calibrate(args.side, [image], ref, search=args.search)
     r = amp2p.read_amp2p_score(image, bank, calib, args.side)
     shown = r.value if r.value is not None else f"none ({r.reason})"
-    layout = f" layout={r.layout}{'' if r.layout_measured else ' EXTRAPOLATED'}" if r.layout else ""
+    layout = f" layout={r.layout}" if r.layout else ""
     print(f"amp2p {args.side}: {shown}\t(digits={_digit_str(r.digits)} cells={r.n_cells} "
           f"dist={r.dist:.0f} margin={r.margin:.0f} reg=({calib.dx},{calib.dy})"
           f"{layout}{' LAYOUT-UNKNOWN' if r.layout_unknown else ''})")
@@ -167,8 +167,8 @@ def cmd_amp2p_monotonic(args: argparse.Namespace) -> int:
         f"on screen, {res.n_present} gated in; {res.n_resets} song reset(s), "
         f"{res.n_violations} violations ({res.clean_frac:.2%} clean), "
         f"{res.n_false_reads} false reads, {res.n_unreadable} unreadable, "
-        f"{res.n_layout_unknown} layout-unknown, {res.n_extrapolated} on an "
-        f"extrapolated 6-digit layout; {res.first}..{res.last}, peak {res.max_value}; "
+        f"{res.n_layout_unknown} layout-unknown; {res.first}..{res.last}, "
+        f"peak {res.max_value}; "
         f"cell-count hist {res.digit_hist}; {res.n_idle_composite} idle-composite "
         f"frames filtered (tracked {res.tracked_value}); worst dist {res.worst_dist:.0f}, "
         f"min margin {res.min_margin:.0f}"

@@ -192,7 +192,6 @@ static void game_task(void *param)
         uint8_t multiplier = 0;
         uint16_t streak = 0;
         int32_t score_p1 = -1, score_p2 = -1;
-        uint8_t score_2p_extrap = 0;
         if (screen == GP_SCREEN_in_song)
         {
             gp_score_t sc;
@@ -211,12 +210,10 @@ static void game_task(void *param)
             if (gp_read_amp2p(buf, w, h, GP_AMP2P_SIDE_LEFT, &a) == 0)
             {
                 score_p1 = a.value;
-                if (!a.layout_measured) { score_2p_extrap = 1u; }
             }
             if (gp_read_amp2p(buf, w, h, GP_AMP2P_SIDE_RIGHT, &a) == 0)
             {
                 score_p2 = a.value;
-                if (!a.layout_measured) { score_2p_extrap = 1u; }
             }
             gp_streak_reset(&s_streak);
         }
@@ -248,7 +245,6 @@ static void game_task(void *param)
         ev.ready_p1     = ready_p1;
         ev.score_p1     = score_p1;
         ev.score_p2     = score_p2;
-        ev.score_2p_extrapolated = score_2p_extrap;
 
         /* Answer the requester first (clear pending before the send so a follow-up
          * Observe that wakes on the response can't have its new request cleared). */
@@ -279,9 +275,8 @@ static void game_task(void *param)
             }
             else if (screen == GP_SCREEN_in_song_2p)  /* "in_song_2p / p1 N p2 N" */
             {
-                LOG_INFO("GAME: %s / p1 %ld p2 %ld%s\r\n",
-                         screen_name(screen), (long)score_p1, (long)score_p2,
-                         score_2p_extrap ? " (6-digit pitch EXTRAPOLATED)" : "");
+                LOG_INFO("GAME: %s / p1 %ld p2 %ld\r\n",
+                         screen_name(screen), (long)score_p1, (long)score_p2);
             }
             else
             {

@@ -591,7 +591,7 @@ class Amp2pMonotonicResult:
     n_frames: int
     n_violations: int           # reads that decreased vs the running max, within a play
     n_unreadable: int           # value is None (gated, misaligned, or off-grid)
-    n_layout_unknown: int       # no layout, measured or candidate, describes the strip
+    n_layout_unknown: int       # the strip sits on neither measured grid
     digit_hist: dict[int, int]  # powered-cell count → frame count
     first: int
     last: int
@@ -603,7 +603,6 @@ class Amp2pMonotonicResult:
     n_absent: int = 0           # frames the chrome probe says hold no amp at all
     n_false_reads: int = 0      # a value read where the amp is absent — must be 0
     n_resets: int = 0           # score restarts (song boundaries) seen in the capture
-    n_extrapolated: int = 0     # reads on a 6-digit candidate layout
     max_value: int = -1         # highest value read (`last` is only the final frame)
     n_idle_composite: int = 0   # reads Amp2pTracker dropped as unconfirmed falls
     tracked_value: int | None = None  # the tracked score at the end of the capture
@@ -665,7 +664,7 @@ def amp2p_score_monotonic_eval(
     PLAY_RESET_DROP = 1000  # a bigger fall is a new song, not a misread digit
     tracker = amp2p.Amp2pTracker(side=side)
     prev_max = -1
-    viol = unread = unknown = absent = false_reads = extrapolated = resets = 0
+    viol = unread = unknown = absent = false_reads = resets = 0
     hist: dict[int, int] = defaultdict(int)
     first = last = max_value = -1
     worst_dist = 0.0
@@ -691,8 +690,6 @@ def amp2p_score_monotonic_eval(
             if len(unreadable) < 20:
                 unreadable.append((f.name, r.reason))
             continue
-        if not r.layout_measured:
-            extrapolated += 1
         worst_dist = max(worst_dist, r.dist)
         min_margin = min(min_margin, r.margin)
         if prev_max >= 0 and r.value != last:
@@ -721,7 +718,7 @@ def amp2p_score_monotonic_eval(
         min_margin=0.0 if min_margin == float("inf") else min_margin,
         deltas=sorted(deltas), violations=violations, unreadable=unreadable,
         n_absent=absent, n_false_reads=false_reads, n_resets=resets,
-        n_extrapolated=extrapolated, max_value=max_value,
+        max_value=max_value,
         n_idle_composite=tracker.n_rejected, tracked_value=tracker.value,
     )
 
