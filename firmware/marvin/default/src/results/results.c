@@ -1,5 +1,6 @@
 #include "results.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,6 +39,20 @@ static results_affil_t s_affil      = RESULTS_AFFIL_EMPLOYEE;
 static void build_path(char *buf, size_t n, const char *rel)
 {
     (void)snprintf(buf, n, "%s/%s", Storage_MountPoint(), rel);
+}
+
+/* Two rows belong to the same person. ASCII case-folded: the on-screen keyboard only
+ * produces uppercase, but a row from the console or hand-edited on a PC need not be, and
+ * one person spelled two ways would hold two slots on a board. */
+static bool same_player(const char *a, const char *b)
+{
+    for (size_t i = 0;; i++)
+    {
+        int ca = tolower((unsigned char)a[i]);
+        int cb = tolower((unsigned char)b[i]);
+        if (ca != cb)   { return false; }
+        if (ca == '\0') { return true;  }
+    }
 }
 
 static void iso8601_utc(char *buf, size_t n)
@@ -214,6 +229,25 @@ int Results_TopN(const char *setlist, uint8_t index, const char *difficulty,
             strcmp(f[RES_F_AFFILIATION], affiliation) != 0) { continue; }
 
         uint32_t score = (uint32_t)strtoul(f[RES_F_SCORE], NULL, 10);
+
+        /* One slot per player, holding their best run. A visitor who plays the same song
+         * five times would otherwise fill the whole board and hide everyone else.
+         *
+         * A row that beats the player's slot vacates it and then re-inserts below, so the
+         * list stays score-ordered; a row that does not is dropped. Dropping the loser is
+         * safe against the bound: a duplicate never consumes a slot, so an evicted player's
+         * best is always at or below the list minimum and can never come back. */
+        int dup = -1;
+        for (int i = 0; i < count; i++)
+        {
+            if (same_player(out[i].player, f[RES_F_PLAYER])) { dup = i; break; }
+        }
+        if (dup >= 0)
+        {
+            if (score <= out[dup].score) { continue; }
+            for (int i = dup; i < count - 1; i++) { out[i] = out[i + 1]; }
+            count--;
+        }
 
         /* Insert into the bounded, score-descending top list. */
         int pos = count;

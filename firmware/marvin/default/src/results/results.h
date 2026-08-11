@@ -81,6 +81,9 @@ typedef struct
  * affiliation when each is non-NULL/non-empty), highest first. Returns the count filled.
  * `affiliation` takes a Results_AffiliationName() spelling; NULL ranks everyone together.
  *
+ * One row per player: only a player's best run is ranked, so a visitor who plays a song
+ * five times takes one slot rather than the whole board. Names match case-insensitively.
+ *
  * Validates the file's header row against the schema this build writes and
  * returns 0 on a mismatch: the parser reads fixed field indices, so a file from
  * an older schema would otherwise be silently misparsed into a plausible-looking

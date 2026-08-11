@@ -561,8 +561,10 @@ Scope boundary: `results.csv` is the **flat per-run summary** only. Deep per-not
 telemetry belongs in the recording subsystem (§4.6 `state.bin`), keeping this file trivially
 parseable on-device.
 
-On-device high scores: scan the file, filter by `(setlist, index[, difficulty])`, keep a fixed
-top-N array in static memory. A full scan per display is fine at expected scale (hundreds–thousands
+On-device high scores: scan the file, filter by `(setlist, index[, difficulty][, affiliation])`, keep a fixed
+top-N array in static memory. Ranking is **one slot per player**, holding that player's best run
+(names matched case-insensitively) — a visitor who plays a song five times takes one row rather than
+the whole board. A full scan per display is fine at expected scale (hundreds–thousands
 of rows ≈ tens–hundreds of KB); if it ever grows large, cap the log or maintain a small separate
 high-score cache.
 
