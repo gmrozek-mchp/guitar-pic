@@ -1202,10 +1202,16 @@ the fan onto the neck.
 | P2 edge (y=311) | 440 | 469 | 497 | 506 | 534 |
 
 **Open / next:**
-- **Lead-time caveat.** Same y=311 as 1P was Greg's choice. Because the 2P highways are shorter, y=311
-  is proportionally higher up the (shorter) neck than on 1P, so the *time* a gem takes from sense row
-  to strike may differ from 1P. May need to drop the row after watching real 2P note-scroll; revisit
-  against 0201–0203 + the web 2P capture.
+- ~~**Lead-time caveat.**~~ **Resolved 2026-08-10 — it did differ, by 1.565×, and the row dropped to
+  y=337.** Confirmed exactly as suspected: Greg's rig-tuned 2P leads came out a flat 1.565× the 1P
+  leads at the shared row (650/500/400/320 vs 420/315/250/210 — ratios 1.548/1.587/1.600/1.524).
+  The constancy across tiers is the tell that it is a depth scale, not scroll speed. Solved on *this*
+  fan: perspective gives `z = z_ring/t`, so travel time ∝ `z_ring·(1/t − 1)`, and matching 1P's
+  travel needs `t = 0.7399` → **y = 337.4**. Locked at y=337 (t=0.7384, pitch 32.3): hold x
+  158/191/223/255/287, edge ±0.347·pitch (0.32 on the outer two). Cross-checked against gems at the
+  new row in 0200/0201/0203 — centroids within 0.5–2.7 px of the derived lane centres. Firmware
+  `CV_MARVIN_CFG_2P_LEFT` updated and `s_lead_ms[2P_LEFT]` re-seeded to 1P's column; see the marvin
+  journal, same date. Still unmeasured: the predicted leads themselves, pending `cvdiff 2pl`.
 - **Firmware wiring (design, not yet done).** `cv_marvin_v1.c` has a single hard-coded
   `s_sensor_coords[FRET_COUNT]` and one detector state set. 2P needs a second coord set (P2) + doubled
   per-fret state + a 1P/2P mode the detector currently has no notion of. Plan this before editing the

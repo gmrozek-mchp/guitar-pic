@@ -24,9 +24,10 @@ typedef struct { uint16_t hx, hy, ex, ey; } cv_sensor_xy_t;
  * header. */
 #define CV_DIFF_COUNT   4u
 
-/* Which lead row a geometry config reads. One row per highway: the sensor and
- * strike rows happen to match across 1p and 2p-left today, but the leads are
- * calibrated independently and nothing may assume they agree. */
+/* Which lead row a geometry config reads. One row per highway: the two rows
+ * hold equal leads today only because each highway's sensor row was placed to
+ * make them agree — they are calibrated independently and nothing may assume
+ * they stay equal. */
 typedef enum
 {
     CV_LEAD_SLOT_1P = 0,

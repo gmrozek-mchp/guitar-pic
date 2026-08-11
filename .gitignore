@@ -11,3 +11,7 @@ tools/gh3-cover-art/data/*
 # QR tiles dumped by verify.py --png: regenerable from the NODE table's URLs, for
 # eyeballing only. The verification itself needs no stored artifact.
 tools/qr-verify/data/
+
+# Sample-point overlays from render_cv_points.py: regenerable from the corpus
+# frame plus cv_marvin_v1.c, for eyeballing calibration only.
+tools/gameplay/data/cv_points/

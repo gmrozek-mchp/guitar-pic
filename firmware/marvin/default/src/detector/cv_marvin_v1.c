@@ -32,25 +32,28 @@
 #define CV_EDGE_THRESH         25.0f
 
 /* SENSING scratch is sized for the largest configured strip so a runtime
- * config swap can't overflow it (1p's 185×32 dominates 2p-left's 155×32). */
+ * config swap can't overflow it (1p's 185×32 dominates 2p-left's 166×32). */
 #define CV_SENSING_MAX_W       185u
 #define CV_SENSING_MAX_H       32u
 
 /* Per-highway geometry, selectable at runtime via CvMarvinV1_SetConfig.
  * (hx,hy) = brightness sensor, (ex,ey) = color-filtered edge sensor. 1p coords
- * derive from fret-tuner detect_video.py defaults via the Elgato HDMI capture;
- * 2p-left calibrated 2026-07-14 (tools/gameplay/docs/journal.md). SENSING spans
- * the sensor row (rings painted here); STRIKE spans the strum zone below. */
+ * derive from fret-tuner detect_video.py defaults via the Elgato HDMI capture.
+ * 2p-left sits lower than 1p (row 337 vs 311) because its highway is farther
+ * from the camera: at a matched row the same screen distance is more note
+ * travel time, so the lower row is what makes both leads agree — see the fan
+ * construction in tools/gameplay/docs/journal.md. SENSING spans the sensor row
+ * (rings painted here); STRIKE spans the strum zone below. */
 const cv_marvin_v1_config_t CV_MARVIN_CFG_1P =
 {
     .name = "1p",
     .sensor =
     {
-        [FRET_GREEN]  = { 280, 311, 293, 311 },
-        [FRET_RED]    = { 317, 311, 330, 311 },
+        [FRET_GREEN]  = { 280, 311, 268, 311 },
+        [FRET_RED]    = { 317, 311, 304, 311 },
         [FRET_YELLOW] = { 355, 311, 368, 311 },
-        [FRET_BLUE]   = { 393, 311, 380, 311 },
-        [FRET_ORANGE] = { 430, 311, 417, 311 },
+        [FRET_BLUE]   = { 393, 311, 406, 311 },
+        [FRET_ORANGE] = { 430, 311, 442, 311 },
     },
     .sensing_x = 265u, .sensing_y = 300u, .sensing_w = 185u, .sensing_h = 32u,
     .strike_x  = 212u, .strike_y  = 395u, .strike_w  = 290u, .strike_h  = 32u,
@@ -64,13 +67,13 @@ const cv_marvin_v1_config_t CV_MARVIN_CFG_2P_LEFT =
     .name = "2p-left",
     .sensor =
     {
-        [FRET_GREEN]  = { 166, 311, 176, 311 },
-        [FRET_RED]    = { 195, 311, 204, 311 },
-        [FRET_YELLOW] = { 223, 311, 233, 311 },
-        [FRET_BLUE]   = { 251, 311, 242, 311 },
-        [FRET_ORANGE] = { 279, 311, 269, 311 },
+        [FRET_GREEN]  = { 158, 337, 148, 337 },
+        [FRET_RED]    = { 191, 337, 180, 337 },
+        [FRET_YELLOW] = { 223, 337, 234, 337 },
+        [FRET_BLUE]   = { 255, 337, 266, 337 },
+        [FRET_ORANGE] = { 287, 337, 297, 337 },
     },
-    .sensing_x = 150u, .sensing_y = 300u, .sensing_w = 155u, .sensing_h = 32u,
+    .sensing_x = 140u, .sensing_y = 326u, .sensing_w = 166u, .sensing_h = 32u,
     .strike_x  = 120u, .strike_y  = 395u, .strike_w  = 205u, .strike_h  = 34u,
     .sensing_kind = PERF_STRIP_SENSING_2P,
     .strike_kind  = PERF_STRIP_STRIKE_2P,
@@ -89,13 +92,17 @@ static const cv_marvin_v1_config_t *volatile s_pending_cfg = NULL;
  * *derived*, not measured — taking scroll speed as linear in difficulty index,
  * the lead is its harmonic interpolation/extrapolation from those two points
  * (1/420 and 1/250 give ≈313 and ≈208, rounded so they don't read as
- * measurements). Both highways seed identically because that is the best guess
- * today, not because they are required to agree. */
+ * measurements).
+ *
+ * The two highways hold the same numbers because 2p-left's sensor row was
+ * placed to make them agree, not because the slots are required to match —
+ * the row is the calibration knob, this table is where a rig disagreement
+ * gets recorded. The 2p column is a geometric prediction, not yet measured. */
 static uint16_t s_lead_ms[CV_LEAD_SLOT_COUNT][CV_DIFF_COUNT] =
 {
     /*                       easy  medium  hard  expert */
     [CV_LEAD_SLOT_1P]      = { 420u, 315u, 250u, 210u },
-    [CV_LEAD_SLOT_2P_LEFT] = { 650u, 500u, 400u, 320u },
+    [CV_LEAD_SLOT_2P_LEFT] = { 390u, 290u, 210u, 150u },
 };
 
 /* Active difficulty (a CV_DIFF_COUNT-range index matching game_difficulty_t).
