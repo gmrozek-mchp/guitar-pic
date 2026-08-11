@@ -23,14 +23,7 @@
  * that strike-line time base (spec §4.4). */
 #define TP_FRET_EARLY_MS       50u   /* press the fret this early vs the strum */
 #define TP_STRUM_PULSE_MS      40u   /* strum-bit assert width on the wire */
-/* Press-aggregation window, in detector frames rather than milliseconds. The
- * frets of a chord reach the sensor row on the same frame or one apart; a
- * hammer-on's second note is two or more frames behind. Those two populations
- * do not overlap in frames but do in time — frame timestamps jitter (8.5 to
- * 22 ms against a 16.68 ms nominal), so a two-frame hammer-on can measure
- * tighter than a one-frame chord. frame_epoch does not jitter, so counting
- * frames is what separates them. */
-#define TP_CHORD_WINDOW_FRAMES 1u
+#define TP_CHORD_WINDOW_MS     30u   /* press-aggregation window */
 
 #define TP_FIFO_CAP            32u
 
@@ -62,9 +55,6 @@ static pending_strum_t s_strum_q[TP_FIFO_CAP];
 static uint8_t         s_strum_head, s_strum_tail, s_strum_count;
 
 static bool     s_chord_open;
-/* Frames since the open chord's first arrival — the commit trigger. */
-static uint8_t  s_chord_age_frames;
-/* Wall-clock open time, kept only to report chord_age_ms on the TIMING record. */
 static uint32_t s_chord_start_ms;
 static uint8_t  s_chord_mask;
 
@@ -74,11 +64,6 @@ static uint32_t s_strum_release_at_ms;
 static bool     s_strum_direction;        /* toggles down/up each strum */
 
 static uint8_t  s_prev_pressed_mask;
-static uint8_t  s_prev_press_count[FRET_COUNT];
-/* False until a record has been seen since the window opened, so the first
- * frame adopts the detector's running counters instead of reading the
- * difference against them as a chord's worth of arrivals. */
-static bool     s_press_count_synced;
 static uint32_t s_release_at_ms[FRET_COUNT];
 static uint8_t  s_release_pending_mask;
 
@@ -197,16 +182,8 @@ static void publish_mask(uint8_t mask, uint8_t teacher_mask)
 }
 
 /* Edge derivation:
- *   - presses_mask: the detector's per-fret press_count changed
- *   - releases_mask: falling edge of pressed
- *
- * A note arrival is the counter moving, not `pressed` rising: consecutive
- * same-fret notes cross the sensor inside one continuous press, so a rising
- * edge of `pressed` sees only the first of them. It also means a press with no
- * note behind it — a bright bar sliding under the sensor when the screen shakes
- * — never triggers, because nothing incremented the counter. Any change counts
- * as one arrival, so a counter that jumped by more than one (a bus record the
- * consumer never received) still plays a note rather than none. */
+ *   - presses_mask: rising edge of pressed
+ *   - releases_mask: falling edge of pressed */
 static void derive_edges(const detector_state_t *state,
                          uint8_t *presses_mask, uint8_t *releases_mask,
                          uint8_t *pressed_mask)
@@ -220,19 +197,12 @@ static void derive_edges(const detector_state_t *state,
         bool pressed = state->fret[i].pressed != 0u;
         if (pressed) { cm |= s_fret_bit[i]; }
 
-        uint8_t count = state->fret[i].press_count;
-        if (s_press_count_synced && (count != s_prev_press_count[i]))
-        {
-            pm |= s_fret_bit[i];
-        }
-        s_prev_press_count[i] = count;
-
         bool was_pressed = (s_prev_pressed_mask & s_fret_bit[i]) != 0u;
+        if (pressed && !was_pressed) { pm |= s_fret_bit[i]; }
         if (!pressed && was_pressed) { rm |= s_fret_bit[i]; }
     }
 
-    s_press_count_synced = true;
-    s_prev_pressed_mask  = cm;
+    s_prev_pressed_mask = cm;
     *presses_mask  = pm;
     *releases_mask = rm;
     *pressed_mask  = cm;
@@ -333,7 +303,7 @@ static uint8_t process_releases(uint8_t live_pressed_mask, uint32_t fire_now)
 
 static void advance(uint8_t live_pressed_mask)
 {
-    if (s_chord_open && (s_chord_age_frames >= TP_CHORD_WINDOW_FRAMES))
+    if (s_chord_open && (int32_t)(s_now_ms - s_chord_start_ms) >= (int32_t)TP_CHORD_WINDOW_MS)
     {
         chord_commit();
     }
@@ -435,15 +405,6 @@ static void process_frame(const detector_state_t *state)
     s_now_ms = (uint32_t)(state->timestamp_us / 1000ull);
     s_strike_at_ms = state->strike_at_ms;
 
-    /* Age an already-open chord before this frame's arrivals are folded in, so
-     * the frame that opened it reads as age 0 and the next one as age 1. The
-     * age advances only here, never on a between-frame tick, which is what
-     * makes the window a frame count rather than an elapsed time. */
-    if (s_chord_open && (s_chord_age_frames < UINT8_MAX))
-    {
-        s_chord_age_frames++;
-    }
-
     uint8_t presses, releases, pressed_mask;
     derive_edges(state, &presses, &releases, &pressed_mask);
 
@@ -451,10 +412,9 @@ static void process_frame(const detector_state_t *state)
     {
         if (!s_chord_open)
         {
-            s_chord_open       = true;
-            s_chord_age_frames = 0u;
-            s_chord_start_ms   = s_now_ms;
-            s_chord_mask       = 0u;
+            s_chord_open     = true;
+            s_chord_start_ms = s_now_ms;
+            s_chord_mask     = 0u;
         }
         s_chord_mask |= presses;
     }
@@ -533,18 +493,6 @@ void GameTiming_SetEnabled(bool enabled)
      * unknown here — force the next publish through rather than eliding it as
      * an unchanged mask. */
     s_pub_valid = false;
-
-    /* The detector counts arrivals whether or not the window is open, so the
-     * counters have moved since we last looked. Re-adopt them on the next
-     * record instead of playing the accumulated difference. */
-    s_press_count_synced = false;
-
-    /* Drop a part-aggregated chord. It only commits on the next frame now that
-     * the window is a frame count, so leaving one open across the edge would
-     * play arrivals from the far side of it. */
-    s_chord_open       = false;
-    s_chord_age_frames = 0u;
-    s_chord_mask       = 0u;
 
     /* The gameplay window opening/closing is what gates the fretboard: it may
      * drive the game only inside a song, never during menu nav or manual
