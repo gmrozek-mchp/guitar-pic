@@ -5,6 +5,7 @@
 #include "game/gameplay_amp2p.h"
 #include "game/gameplay_score.h"
 #include "game/gameplay_endprobe.h"
+#include "game/gameplay_endlayout.h"
 #include "game/gameplay_metadata.h"
 #include "game/game_timing.h"
 
@@ -231,6 +232,18 @@ static void game_task(void *param)
             ready_p1 = (int8_t)gp_ready_p1_present(buf, w, h, NULL);
         }
 
+        /* An unnamed screen is the case the end-layout namer exists for: a new
+         * magazine makes gp_classify reject a real end screen, and the navigator
+         * then has no branch to take. Read it only here — it is ~1.2k luma reads,
+         * but more to the point it is not a screen classifier, so running it on a
+         * frame gp_classify already named would invite acting on it out of
+         * context. */
+        uint8_t end_layout = GP_END_LAY_UNCERTAIN;
+        if (screen == GP_SCREEN_UNKNOWN)
+        {
+            end_layout = (uint8_t)gp_end_layout(buf, w, h, NULL);
+        }
+
         game_state_t ev;
         memset(&ev, 0, sizeof(ev));
         ev.frame_epoch  = frame.frame_count;
@@ -243,6 +256,7 @@ static void game_task(void *param)
         ev.multiplier   = multiplier;
         ev.streak       = streak;
         ev.ready_p1     = ready_p1;
+        ev.end_layout   = end_layout;
         ev.score_p1     = score_p1;
         ev.score_p2     = score_p2;
 

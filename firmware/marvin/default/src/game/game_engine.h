@@ -32,6 +32,13 @@ typedef struct
     uint8_t  multiplier;    /* in-song score multiplier 1..4, or 0 (not in_song) */
     uint16_t streak;        /* in-song note streak (monotonic tracker), 0 = not shown / <~25 */
     int8_t   ready_p1;      /* guitar_select_2p: P1's READY! badge — 1 shown, 0 not, -1 n/a */
+    /* Which end screen this looks like, by *layout* rather than by fingerprint:
+     * GP_END_LAY_PRACTICE / _FACEOFF / _UNCERTAIN. Read whenever `screen` is
+     * UNKNOWN, because that is the case the fingerprint cannot name once the
+     * magazine changes. Only meaningful when an end screen is actually up — see
+     * game/gameplay_endlayout.h's precondition; the controller supplies that
+     * context, not this struct. */
+    uint8_t  end_layout;
     /* in_song_2p only: the two amp scoreboards, -1 when not read. P1 is marvin's side
      * (it drives the left highway only), P2 the human's. Separate from `score` above,
      * which is the 1p scoring block and reads -1 during a 2-player song. */

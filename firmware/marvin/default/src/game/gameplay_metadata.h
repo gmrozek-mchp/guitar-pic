@@ -592,38 +592,66 @@ static const gp_probe_t gp_ready_p1 =
   {{145,265,262,305}, 117, 40, 4680, gp_ready_p1_mask, gp_ready_p1_ref};
 
 /* ── end-of-song probe (see gameplay/endprobe.py) ──
-   Runs on EVERY frame, unlike everything above: 9 lattice patches, 225 luma
-   samples total, all integer. Its only job is to cut actuation the instant the
-   results screen appears — gp_classify still owns the verdict on whether the run
-   ended. Bright patches sit on the right-hand sketch collage and notes column,
-   dark anchors on the left collage; both are page furniture common to
-   practice_end_menu and faceoff_end_menu, and no results field can reach them.
-   The test is a CONTRAST against the median anchor, not a level: out on the
-   collage the bright patches only reach ~110-160 luma, and an absolute threshold
-   does not survive the feed's gain/offset slop (0.85 gain with -20 offset closes
-   the margin). A difference cancels offset exactly and only scales with gain. */
-#define GP_END_N_BRIGHT 6
-#define GP_END_N_ANCHOR 3    /* odd: the reducer is a median */
-#define GP_END_K_HITS 5      /* of GP_END_N_BRIGHT; leaves one patch free */
+   Runs on EVERY frame, unlike everything above: 1427 box-mean luma reads, all
+   integer. Its only job is to cut actuation the instant a results-screen-shaped
+   frame appears — it does NOT name the screen (most menus fire it too), and
+   gp_classify still owns the verdict on whether the run ended.
+   Bright boxes sit on the right page's top margin, the only part of the magazine
+   that is white in BOTH end layouts: faceoff has 3 menu items, practice 5 plus an
+   OUT OF box, so everything lower is menu text in one of them. Dark boxes sit in
+   the black of the SELECT / UP-DOWN hint bar — a UI overlay composited after the
+   scene's colour grade, so it reads 2..5 on every end frame while the page white
+   itself is graded per song (88 on one magazine against 167 on another). The bar
+   is also the fret-button row during play, so it goes bright mid-song and drives
+   the contrast further negative exactly when a false veto would cost most.
+   The test is a CONTRAST against the median dark box, not a level, so the feed's
+   offset cancels exactly and only gain scales. Boxes rather than point lattices:
+   the hint-bar glyphs are the most stable thing on screen but their strokes are
+   ~3 px, and point samples on them collapse under the +/-2 px capture offset. */
+#define GP_END_N_BRIGHT 2
+#define GP_END_N_DARK 3      /* odd: the reducer is a median */
+#define GP_END_K_HITS 1      /* of GP_END_N_BRIGHT; a false veto self-clears */
 #define GP_END_CONFIRM_FRAMES 2  /* ~33 ms at 60 fps */
+#define GP_END_PIXEL_READS 1427
 
-typedef struct { uint16_t x, y; uint8_t n, stride; } gp_end_patch_t;
+typedef struct { uint16_t x0, y0, x1, y1; uint16_t pixels; } gp_end_box_t;
 
-static const gp_end_patch_t gp_end_bright[GP_END_N_BRIGHT] = {
-  {669,56,5,2},
-  {634,216,5,2},
-  {637,121,5,2},
-  {582,143,5,2},
-  {599,26,5,2},
-  {703,117,5,2},
+static const gp_end_box_t gp_end_bright[GP_END_N_BRIGHT] = {
+  {369,65,398,78,377},
+  {398,65,428,78,390},
 };
-static const gp_end_patch_t gp_end_anchor[GP_END_N_ANCHOR] = {
-  {47,392,5,4},
-  {44,66,5,4},
-  {91,175,5,4},
+static const gp_end_box_t gp_end_dark[GP_END_N_DARK] = {
+  {248,418,258,440,220},
+  {334,418,344,440,220},
+  {468,418,478,440,220},
 };
-/* Per-patch contrast threshold, midway between the worst end-screen contrast and
-   the best gameplay contrast on the corpus (measured: end 86..123, gameplay <= 8). */
-static const uint8_t gp_end_thresh[GP_END_N_BRIGHT] = {54,54,55,56,47,45};
+/* Per-box contrast threshold, midway between the worst end-screen contrast and
+   the best gameplay contrast on the corpus (measured: end 140..164, gameplay <= -9). */
+static const uint8_t gp_end_thresh[GP_END_N_BRIGHT] = {33,37};
+
+/* ── end-layout namer (see gameplay/endlayout.py) ──
+   Which end screen is this? The fingerprint cannot answer any more: the collage,
+   the cover art and the right page's decoration column are all per-song, and a
+   new magazine put a real faceoff_end_menu 5192 from song_select without
+   faceoff_end_menu in its top four. Masking does not recover it (best margin 369
+   against t_margin 115) and adding the frame to the corpus drops that class's LOO
+   from 3/3 to 0/4. So this reads *layout* instead, which is what differs:
+   practice has 5 menu items and an OUT OF box, faceoff has 3 and two stat
+   columns. GP_END_LAY_A sits inside the practice-only OUT OF box, GP_END_LAY_B
+   inside the faceoff-only player-1 streak block, and the test is their
+   difference so the page's per-song grading cancels.
+   Measured: practice -103..-103, faceoff 60..91.
+   PRECONDITION: only meaningful once an end screen is known to be up. A-B is not
+   a screen classifier — speed_select reads +145, multiplayer_menu +45 — and
+   gp_end_probe does not close that gap (it fires on most menus by design). The
+   controller is the caller with the missing context: it chose the mode and only
+   asks in the window just after a run it started. */
+#define GP_END_LAY_PRACTICE 0
+#define GP_END_LAY_FACEOFF 1
+#define GP_END_LAY_UNCERTAIN 2
+#define GP_END_LAY_T_PRACTICE (-60)
+#define GP_END_LAY_T_FACEOFF (10)
+static const gp_end_box_t gp_end_lay_a = {426,80,462,96,576};
+static const gp_end_box_t gp_end_lay_b = {390,230,426,246,576};
 
 #endif /* MARVIN_GAMEPLAY_METADATA_H */

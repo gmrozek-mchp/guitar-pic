@@ -157,6 +157,12 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-08-11 | **The collage the magazine sits on is per-song, not page furniture — which retires the assumption the 2026-08-10 end probe was built on and breaks two readers at once.** | `snapshot-2416`: a 2P run ended on *The Flaming Pick* over dark red comic art, where all 8 corpus end frames are *Backwater Rocker* over bright sketch paper. The probe scored **1/6** (its bright patches read 26..65 where the corpus reads 130..152) and the fingerprint put the frame **5192 from `song_select`** without `faceoff_end_menu` in its top four. Greg had instructed us to assume the surround was constant and open question 1 recorded that we could not check it; one frame of a second magazine was enough to answer it. Also learned: the page white itself is graded per song (88 against 167), so nothing on the magazine supports an absolute level. |
+| 2026-08-11 | **The end probe is now box means, not point lattices: 2 bright boxes on the right page's top margin against the median of 3 dark boxes inside the SELECT / UP-DOWN hint bar. K = 1 of 2, thresholds 33/37, 1427 luma reads per frame (was 225).** | The top margin is the only part of the magazine that is white in *both* end layouts — faceoff has 3 menu items, practice 5 plus an OUT OF box, so everything below y≈90 is menu text in one of them and results fields below that. The hint bar is the dark reference because it is a **UI overlay composited after the scene's colour grade**: it reads 2..5 on every end frame measured while the page white swings 88..167. Boxes rather than points because the bar's glyphs — the most stable thing on the screen, the UP/DOWN word box varies **1.2 luma** across all 10 end frames — have ~3 px strokes, and point samples on them collapse under the ±2 px capture offset (**1 of 6** patches surviving at +2,+2). A box mean barely moves. Measured END 65..189 / 69..188 against gameplay −61..1 / −61..5, with END over value slop + ±2 px and gameplay over the full envelope including ±6 px shake at 1.15 gain. |
+| 2026-08-11 | **Rejected: the hint-bar glyph boxes as the *bright* signal, despite being the most song-stable pair measured.** `UP/DOWN word − black right of SELECT` gives a 3.2 luma spread across all 10 end frames (71.1..74.3, including the dark magazine) and still fails. | The bar sits on the **fret-button row**. Under the asymmetric criteria that matter — end side value slop + ±2 px, gameplay side the full ±6 px shake — that pair scores END worst 52 against gameplay best 60: **gap −8**. The same measurement is why the bar is an excellent *dark* reference: it goes bright mid-song, driving the contrast further negative exactly when a false veto would cost most. Stability across songs and quietness during gameplay are different requirements, and only the hybrid (page band bright, pill black dark) satisfies both — gap 52. |
+| 2026-08-11 | **The probe fires on most menus, by design, and that is now the documented contract rather than a bug.** Its old "end screens only" test is replaced by "every end screen fires, no gameplay frame fires". | What it keys on is "a bright page above a dark hint bar", which most menus also satisfy — measured, not assumed. It is only ever consulted inside the actuation window, where a menu appearing is a correct veto, and naming the screen has moved to `endlayout`. Asserting the leak keeps it visible: the day the probe gets more specific, the test says so. |
+| 2026-08-11 | **End-screen naming leaves the fingerprint entirely and moves to `endlayout.py`, which reads page *layout*: `A(426,80-462,96) − B(390,230-426,246)`, practice −111..−94, faceoff +44..+120.** | Nine cell-aligned exclusion sets were measured and **none** get the new frame accepted; the best (decoration column + right collage) reaches margin **369** against `t_margin` 600 and costs 4 LOO frames. Adding the frame to the corpus is worse, not better: `faceoff_end_menu` LOO goes **3/3 → 0/4** and slop robustness 99.7% → 95.4%, because the centroid lands between two magazines and is close to neither. This is the `character_select_2p` failure again — a whole-frame centroid is the wrong model for a screen most of whose area is per-song content. A sits inside the practice-only OUT OF box, B inside the faceoff-only player-1 streak block, and their difference cancels the page's grading. |
+| 2026-08-11 | **`endlayout` carries a precondition instead of a gate: it is only meaningful once an end screen is known to be up, and the *controller* supplies that context because it chose the mode.** | A−B is not a screen classifier and cannot be made into one: measured on the corpus, `speed_select` reads **+145..+163**, `multiplayer_menu` +45, `training_menu` +43, `part_select` −87. `endprobe` does not close the gap either (it fires on most menus). Rather than bolt on a third discriminator, the missing information is already held by the caller — the controller chose 1P practice or 2P faceoff, and only asks in the window just after a run it started. The leak is pinned by a test so the precondition cannot be forgotten silently. |
 | 2026-08-11 | **The layout decision is stateless — no latch once 6 digits appear — and each font's templates are contiguous so the matcher scans a range rather than filtering the bank.** | Latching is tempting (a play's score cannot fall back below 100000) and buys nothing: measured over the 19 091 gated frames, **0** frames after the crossing read as the wide layout and **0** before it read as condensed, so the per-frame decision is already right every time. The residue it might seem to address is elsewhere — the 1 104 unreadable frames and 124 violations fail the *glyph match*, not the layout choice. Against that, a latch needs a song-boundary reset (the score restarts at 0) and turns a one-frame error into a rest-of-song error, with star-power flare the likeliest trigger. The monotone argument is already exploited where it belongs: `Amp2pTracker`, on values. Cost of the wide-first ordering, measured: the failed wide attempt is **0.12 us of a 6-digit frame's 6.9 us (1.7%)** because it does no template matching — 81% of the frame is `classify_cells`, which runs once, on the layout that won. Font-contiguous templates then cut the matcher **7.7%** on wide cells (20 of 80 templates, so 60 branch-and-skips removed) and ~0% on condensed (60 of 80 — the skips were already a rounding error next to 60x70 byte ops); end to end 3.52 -> 3.30 us for a 5-digit frame, 7.00 -> 6.92 us for a 6-digit one. Bank order is `(font, digit)` on **both** sides so an exact-L1 tie cannot break differently between host and device. |
 | 2026-08-11 | **6 digits is now MEASURED, not extrapolated: `AMP2P_GRID[6] = (7, 8)`, `layout_measured` is gone, and `AMP2P_GRID_6` / `has_sixth_digit` / `fit_six_layout` are deleted.** The extrapolation was right. | The `web-20260810-092941` capture (a 222 692-point play, 19 497 left-amp region strips) crosses 99999 mid-song. Per-column ink occupancy over its 15 708 six-digit frames lands on **7 px cores at pitch 8, right-aligned at the same edge** — cells at block-local x 13/21/29/37/45/53, gap columns 20/28/36/44/52 inked in 0 of 15 708 frames, and the leading gap column 12 in 3. That is exactly `AMP2P_GRID_6[0]`, so the container-width bound (6·9 = 52 > 49, pitch 8 is the widest that fits) predicted the real layout. (6, 8) is excluded by measurement, not by the matcher: ink reaches the 7th column, so 15 711 of 15 719 frames admit only (7, 8). With both layouts measured the flag has no referent and the candidate machinery has nothing to choose between. |
 | 2026-08-11 | **The layout decision is *grid agreement*, symmetric between the two layouts — not "ink appears left of the 5-cell grid".** `is_six_digit` asks the 6-cell grid the same two questions the wide path asks of its own: all cells powered, ink on-grid. | The ink trigger was a claim about the panel ("nothing else there ever inks") and this capture falsifies it: ~30 five-digit frames around f2081-2095 and f4064-4080 flood container columns 11-15 with star-power flare, tripping it. They were caught downstream by the candidate check, so the cost was an unreadable window rather than a wrong number — but flare one column further would have read as a six-digit score, and that is a bad thing to be one pixel away from. Grid agreement is stronger *and* measured: over 19 091 presence-gated frames, 15 708 satisfy the 6-cell grid and 3 381 the wide one, and **no frame satisfies both**, so the two are mutually exclusive rather than merely ordered. |
@@ -224,9 +230,14 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Open questions
 
-- **End-of-song probe follow-ups** (landed 2026-08-10; confirmed on hardware the same day — a
-  finished 1P run is now named and the veto cuts actuation, so the follow-ups below are about
-  *coverage*, not whether it works).
+- **End-of-song probe follow-ups** (rebuilt 2026-08-11 on box means after a second magazine
+  broke the 2026-08-10 point table — see the decision log. Host-side complete and
+  cross-checked; **not yet run on hardware**).
+  -1. ✅ ~~**Is the surround actually constant across songs?**~~ **Answered 2026-08-11: no.**
+     One frame of a second magazine (`faceoff_end_menu__one_metallica.png`) settled it. The whole
+     bright-patch table is gone as a result. Both regions the probe now uses were chosen *because*
+     they survive a magazine change: the right page's top margin is furniture in both layouts, and
+     the hint bar is a UI overlay the scene grade cannot reach.
   0. ✅ ~~**What screen does a 1P ROBOT run actually end on?**~~ **Resolved 2026-08-10:** it is
      `practice_end_menu` on a different song, rejected by the *margin* gate because the per-song
      magazine cover is a large bright region and the fingerprint normalizes per frame. Fixed by
@@ -243,12 +254,21 @@ subsampled path costs <1% CPU at 5–10 Hz.
      with the value — this is exactly the error Greg caught by eye on the discarded point. The
      rectangles in `endprobe.SELECTION_EXCLUSIONS` are drawn by rule (and a test asserts all 225
      samples clear them). **Closes with:** the snapshots in (1).
-  3. **False positives against real gameplay are unmeasured.** The evidence is 6 static frames plus
-     the slop envelope; nothing shows star power, a bright camera cut, or the 2P performer crossing
-     a patch. **Closes with:** a region-stream capture over the patch area through a full song —
-     the 6 bright patches fit one slot at `--rect 570,16,140,210` (29 400 px is over the 21 666
-     single-strip cap, so split into two passes or trim to the four right-most). Any frame reaching
-     5 of 6 contrast thresholds mid-song is a real finding.
+  3. **False positives against real gameplay are still unmeasured, and the boxes moved.** Now
+     tested over the *full* envelope (±6 px shake at 1.15 gain, not just ±2), which the old table
+     never was — gameplay contrast tops out at +1/+5 against thresholds 33/37. What 6 static frames
+     still cannot show: star power, a bright camera cut, or a venue whose backdrop is light behind
+     the band at `369,65-428,78`. Note the dark boxes sit *on the fret-button row* on purpose, so
+     they go bright mid-song and push the contrast negative — the exposure is the bright side only.
+     **Closes with:** a region-stream capture over `--rect 366,60,96,24` (the band) plus
+     `--rect 246,414,232,28` (the bar) through a full song. Any frame clearing 33 on either bright
+     box mid-song is a real finding.
+  7. **Does the *selection* reader work on an unseen magazine?** New hazard, opened by the fix.
+     `nav_to_main_menu` now names the end screen by layout and then calls `select_and_confirm`,
+     which reads the menu highlight through per-cell baselines learned from the corpus — i.e. from
+     one magazine. Naming the screen correctly and then misreading which item is highlighted would
+     press the wrong menu item, which on `practice_end_menu` is how a strum picks RESTART.
+     **Closes with:** the same capture as (3), or simply watching the `GC:` log on the next 2P run.
   4. **The transition shape is unknown.** Whether GH3 fades or cuts to the results page decides if
      a *dimmer* threshold would fire a few frames earlier still. Same capture as (3) answers it.
   5. **The point-selection sweep is not committed.** It was an ad-hoc morphology script (needs
@@ -379,6 +399,48 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-08-11 — a second magazine broke the end probe, and moved naming out of the fingerprint
+
+Greg: *"we have a problem... just got a new end screen on 2 player mode. this throws stuff off. I
+think we need to depend on the 'white' areas around the top of the right page."* He was right about
+where to look, and the reason turned out to be bigger than the probe: **the collage is per-song.**
+`snapshot-2416` is `faceoff_end_menu` on *The Flaming Pick* (dark red comic art) where every corpus
+end frame is *Backwater Rocker* (bright sketch paper). Probe 1/6; fingerprint 5192 from
+`song_select`. That retired open question 1 by counter-example.
+
+Three candidate designs were measured before one held, and the two that failed are worth keeping:
+
+1. **Points on the page band.** Greg's suggestion, and the right region — but I first proposed
+   boxes B and C at the *top right* of the page, which sit in the per-magazine decoration column
+   (doodled letters on one magazine, a flame on the other). C was 1 px from the "T". Their numbers
+   looked fine (min 84..97 across 10 frames) precisely because 8 of those 10 frames are the same
+   magazine. Withdrawn on the drawing, not on the numbers.
+2. **Points on the hint-bar glyphs.** Greg's follow-up — *"the select and up/down areas might be
+   perfect... are these effectively identical between all end screens?"* Yes, remarkably: the
+   `UP/DOWN` word box varies **1.2 luma** across all ten end frames, because the bar is a UI overlay
+   composited after the per-song colour grade. But the strokes are ~3 px, so point lattices on them
+   collapse under the ±2 px capture offset (1 of 6 at +2,+2), and as a *bright* signal the bar
+   fails outright — it is the fret-button row, so under gameplay shake the best pill pair scores
+   END 52 against gameplay 60. Gap −8.
+3. **The hybrid that shipped.** Page band bright, pill black dark. Gap 52. Both regions are Greg's;
+   only the pairing is different, and it works because the two requirements are different —
+   the band is quiet during gameplay, the bar is stable across songs *and* inverts during play.
+
+The naming half could not be rescued at all. Nine exclusion sets measured, best margin 369 against
+`t_margin` 600; adding the frame to the corpus drops `faceoff_end_menu` LOO from 3/3 to **0/4**.
+So `endlayout.py` reads layout instead (practice's OUT OF box against faceoff's player-1 streak
+block, gap 138), with an explicit precondition because A−B is not a screen classifier —
+`speed_select` reads +145. The controller supplies the missing context, since it chose the mode.
+
+Wired: `game_state_t.end_layout`, read by the observer only when `gp_classify` returns UNKNOWN, and
+consumed by `nav_to_main_menu` — which is exactly where the hang was (an unnamed screen fell to
+`default: RED`, which the face-off results screen ignores, until the exit budget drained).
+
+168 tests pass, C↔Python byte-identical on both new units. **Nothing committed:** a parallel agent
+was mid-refactor of the amp2p 6-digit font bank, and `gameplay_metadata.h` is one generated
+artifact, so regenerating it pulled their tables into my diff. Greg's call was to let amp2p land
+first. Not yet on hardware.
 
 ### 2026-08-11 — 6-digit amp scores read; the extrapolated pitch was right
 

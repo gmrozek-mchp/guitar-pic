@@ -39,6 +39,7 @@ _DRIVER_C = r"""
 #include "game/gameplay_present.h"
 #include "game/gameplay_amp2p.h"
 #include "game/gameplay_endprobe.h"
+#include "game/gameplay_endlayout.h"
 #include "game/gameplay_metadata.h"
 int main(int argc, char **argv) {
     if (argc < 5) return 2;
@@ -83,6 +84,10 @@ int main(int argc, char **argv) {
         printf("%d %d", hits, (int)anchor);
         for (int k = 0; k < GP_END_N_BRIGHT; k++) printf(" %d", (int)con[k]);
         printf("\n");
+    } else if (strcmp(mode, "endlayout") == 0) {
+        int16_t con = 0;
+        int lay = gp_end_layout(buf, w, h, &con);
+        printf("%d %d\n", lay, (int)con);
     } else if (strcmp(mode, "mult") == 0) {
         printf("%d\n", gp_read_multiplier(buf, w, h));
     } else if (strcmp(mode, "streak") == 0) {
@@ -117,6 +122,7 @@ def driver(tmp_path_factory):
          str(_FW_SRC / "game" / "gameplay_present.c"),
          str(_FW_SRC / "game" / "gameplay_amp2p.c"),
          str(_FW_SRC / "game" / "gameplay_endprobe.c"),
+         str(_FW_SRC / "game" / "gameplay_endlayout.c"),
          "-lm", "-o", str(exe)],
         capture_output=True, text=True,
     )
@@ -410,12 +416,20 @@ def test_c_endprobe_matches_python(corpus, driver, tmp_path):
             continue
         py = ep.read(s.image)
         c_hits, c_anchor, c_con = _c_endprobe(driver, s.image, tmp_path)
-        assert c_anchor == py.anchor, f"{s.path.name}: anchor C={c_anchor} Py={py.anchor}"
+        assert c_anchor == py.anchor, f"{s.path.name}: dark C={c_anchor} Py={py.anchor}"
         assert c_con == list(py.contrast), f"{s.path.name}: contrast C={c_con} Py={py.contrast}"
         assert c_hits == py.hits, f"{s.path.name}: hits C={c_hits} Py={py.hits}"
 
 
-def test_c_endprobe_fires_on_end_screens_only(corpus, driver, tmp_path):
+def test_c_endprobe_fires_on_every_end_screen_and_no_gameplay_frame(corpus, driver, tmp_path):
+    """The two directions that matter on device.
+
+    Not "end screens only": the probe keys on a bright page above a dark hint bar,
+    which most menus also satisfy, and it is only consulted inside the actuation
+    window where a menu appearing is a correct veto. Naming the screen is
+    endlayout's job. What must hold is that no *gameplay* frame vetoes and no end
+    screen is missed.
+    """
     from gameplay import endprobe as ep
 
     fired, missed = [], []
@@ -423,12 +437,11 @@ def test_c_endprobe_fires_on_end_screens_only(corpus, driver, tmp_path):
         if s.image.shape[:2] != (CANONICAL_H, CANONICAL_W):
             continue
         hits = _c_endprobe(driver, s.image, tmp_path)[0]
-        is_end_screen = s.screen_id in ("practice_end_menu", "faceoff_end_menu")
-        if hits >= ep.K_HITS and not is_end_screen:
+        if hits >= ep.K_HITS and s.screen_id in ("in_song", "in_song_2p"):
             fired.append(s.path.name)
-        if hits < ep.K_HITS and is_end_screen:
+        if hits < ep.K_HITS and s.screen_id in ("practice_end_menu", "faceoff_end_menu"):
             missed.append(s.path.name)
-    assert not fired, f"C probe fired off an end screen: {fired}"
+    assert not fired, f"C probe vetoed on a gameplay frame: {fired}"
     assert not missed, f"C probe missed an end screen: {missed}"
 
 
@@ -443,3 +456,36 @@ def test_c_endprobe_rejects_a_non_canonical_frame(driver, tmp_path):
         capture_output=True, text=True, check=True,
     )
     assert int(out.stdout.split()[0]) == -1
+
+
+def _c_endlayout(exe: Path, image, tmp: Path) -> tuple[int, int]:
+    lay, con = (int(v) for v in _c_run(exe, image, tmp, "endlayout").split())
+    return lay, con
+
+
+def test_c_endlayout_matches_python(corpus, driver, tmp_path):
+    """The namer decides which way nav_to_main_menu exits the end screen, so a
+    divergence is a wrong button press, not a wrong log line. Compares the raw
+    contrast as well as the verdict to pin the shared integer rounding."""
+    from gameplay import endlayout as el
+
+    names = {el.PRACTICE: 0, el.FACEOFF: 1, el.UNCERTAIN: 2}
+    for s in corpus:
+        if s.image.shape[:2] != (CANONICAL_H, CANONICAL_W):
+            continue
+        py = el.name(s.image)
+        c_lay, c_con = _c_endlayout(driver, s.image, tmp_path)
+        assert c_con == py.contrast, f"{s.path.name}: contrast C={c_con} Py={py.contrast}"
+        assert c_lay == names[py.name], f"{s.path.name}: verdict C={c_lay} Py={py.name}"
+
+
+def test_c_endlayout_names_both_end_screens(corpus, driver, tmp_path):
+    from gameplay import endlayout as el
+
+    want = {el.PRACTICE: 0, el.FACEOFF: 1}
+    for s in corpus:
+        if s.screen_id not in want or s.image.shape[:2] != (CANONICAL_H, CANONICAL_W):
+            continue
+        c_lay, c_con = _c_endlayout(driver, s.image, tmp_path)
+        assert c_lay == want[s.screen_id], \
+            f"{s.path.name}: C named {c_lay} (want {want[s.screen_id]}), contrast {c_con}"

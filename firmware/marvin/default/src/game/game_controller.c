@@ -506,10 +506,33 @@ static bool nav_to_main_menu(void)
 {
     for (int i = 0; i < GC_MAX_EXIT_ITERS; i++)
     {
-        uint8_t sc; int16_t sel;
-        if (!observe(&sc, &sel)) { vTaskDelay(pdMS_TO_TICKS(GC_SETTLE_MS)); continue; }
+        game_state_t gs;
+        if (!GameEngine_Observe(&gs, GC_OBS_TIMEOUT_MS))
+        {
+            vTaskDelay(pdMS_TO_TICKS(GC_SETTLE_MS));
+            continue;
+        }
+        uint8_t sc = gs.screen;
         if (sc == GP_SCREEN_main_menu) { return true; }
         if (s_stop_req) { return false; }
+
+        /* An unnamed screen here is usually a real end screen the fingerprint could
+         * not name, because the magazine and collage are per-song: a 2P run on an
+         * unseen magazine landed 5192 from song_select. Without a substitute the
+         * switch below falls to RED, which the face-off results screen ignores, and
+         * the exit budget drains. gp_end_layout reads page layout instead, and this
+         * is the window its precondition requires (a run we started just ended). */
+        if (sc == GP_SCREEN_UNKNOWN)
+        {
+            if (gs.end_layout == GP_END_LAY_PRACTICE)     { sc = GP_SCREEN_practice_end_menu; }
+            else if (gs.end_layout == GP_END_LAY_FACEOFF) { sc = GP_SCREEN_faceoff_end_menu; }
+            if (sc != GP_SCREEN_UNKNOWN)
+            {
+                LOG_INFO("GC: unnamed screen read as %s by layout\r\n",
+                         (sc == GP_SCREEN_practice_end_menu) ? "practice_end_menu"
+                                                             : "faceoff_end_menu");
+            }
+        }
 
         switch (sc)
         {
@@ -523,7 +546,10 @@ static bool nav_to_main_menu(void)
             case GP_SCREEN_pause_menu:        (void)select_and_confirm(sc, 6); break;  /* QUIT → quit_confirm */
             default:                          send_input(GC_RED);              break;  /* back up one level */
         }
-        (void)wait_screen_change(sc, GC_STEP_TIMEOUT_MS);
+        /* Wait on what the classifier actually reported, not the substitute: if we
+         * came in on an unnamed frame, the thing that changes is it ceasing to be
+         * unnamed. */
+        (void)wait_screen_change(gs.screen, GC_STEP_TIMEOUT_MS);
     }
     uint8_t sc; int16_t sel;
     return observe(&sc, &sel) && sc == GP_SCREEN_main_menu;

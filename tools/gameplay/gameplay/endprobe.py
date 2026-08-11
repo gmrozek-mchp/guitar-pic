@@ -6,37 +6,44 @@ the observer only runs it on request and the controller polls it at 300 ms with 
 3-sample confirm. That is ~1.0-1.35 s of actuation after a song ends, and the
 notes still being strummed land on the results screen's menu.
 
-This probe is the cheap counterpart, sized to run on *every* frame: 9 fixed
-patches, 25 luma samples each (225 reads/frame), integer throughout. It answers
-only one question -- "has the results screen appeared" -- and it is used as a
-fast veto on actuation, not as the verdict on whether the run ended (gp_classify
-still owns that).
+This probe is the cheap counterpart, sized to run on *every* frame: 2 bright
+boxes and 3 dark boxes, ~1400 integer luma reads, no scratch. It answers only one
+question -- "has a results-screen-shaped frame appeared" -- and it is used as a
+fast veto on actuation. It does not name the screen: `endlayout.py` does that,
+because the probe fires on most menus too (see below).
 
-Geometry. Both end screens (practice_end_menu, faceoff_end_menu) are a magazine
-spread over a sketch collage. The collage's *right* side is light and its *left*
-side is dark, and that split is page furniture: it is identical across both end
-layouts and no results field can move onto it. So the 6 bright patches sit on the
-right collage/notes column and the 3 dark anchors on the left. Excluded by rule
-rather than by measurement: the left magazine page (cover art and the song/artist
-text vary per song), every results field, and every region where gameplay puts
-bright moving content (both note highways, the scoreboards, the centre performer)
--- the 6 corpus gameplay frames cannot show a note passing under a patch, star
-power, or the performer walking past, so those areas are refused outright.
+Geometry. Both end layouts (practice_end_menu, faceoff_end_menu) are a magazine
+spread over a collage, and *the collage is per-song*: Slow Ride gets bright sketch
+paper, One gets dark red comic art. So is the left page (cover art), and so is
+the decoration column down the right of the right page (doodled letters on one
+magazine, a flame on another). What survives across magazines is the right page's
+own furniture. The only part of it that is white in *both* layouts is the top
+margin above the menu block -- faceoff has 3 menu items, practice has 5 plus an
+"N OUT OF M" box, so everything below y~90 is menu text in one layout or the
+other, and below that are results fields.
 
-Decision is a *contrast*, not a level: `bright_i - median(anchors) >= THRESH[i]`,
-counted, and the screen is called at K of 6. The analog feed carries gain/offset
-slop (present.py), and out on the collage the bright patches only reach ~110-160
-luma, so an absolute threshold does not survive it -- 0.85 gain with -20 offset
-collapses the margin to nothing. A difference cancels offset exactly and only
-scales with gain, which the measured margin (65-90 luma of separation) absorbs.
+The dark reference is the black interior of the SELECT / UP-DOWN hint bar, which
+is a UI overlay composited after the scene's colour grade -- it reads 2..5 on
+every end frame measured, where the page white itself is graded per song (88 on
+one magazine against 167 on another). It is also the fret-button row during play,
+so it goes *bright* mid-song and drives the contrast further negative exactly
+when a false positive would cost the most.
 
-Not shake-tolerant on purpose, on the end side. Missing a note shakes the frame,
-which is why present.py's probes need positional headroom and why the controller
-confirms 3 times -- but the shake happens during *gameplay*, and the end screen
-is static. A shake cannot make dark content bright; it can only drag something
-bright onto a patch, so the conservative max-over-shift bound belongs on the
-gameplay side alone. The end side carries a +/-2 px allowance for a static
-per-rig capture offset, nothing more.
+Decision is a contrast, `bright_i - median(dark) >= THRESH[i]`, counted, and the
+screen is called at K of 2. A difference cancels the analog feed's offset exactly
+and only scales with gain.
+
+Boxes, not point lattices. The glyphs inside the hint bar are the most stable
+thing on the screen (the UP/DOWN word box varies 1.2 luma across every end frame
+we have), but their strokes are ~3 px wide, so point samples on them collapse
+under the +/-2 px static capture offset -- 1 of 6 patches surviving at +2,+2. A
+box mean barely moves when shifted, which is what makes the same regions usable.
+
+Asymmetric positional tolerance, as before: the end side carries +/-2 px for a
+static per-rig capture offset, the gameplay side the full +/-6 px envelope. The
+shake comes from missing a note, so it only happens during gameplay; the results
+screen is static. Applied symmetrically, the pairing this module is built on
+fails outright.
 """
 
 from __future__ import annotations
@@ -52,49 +59,69 @@ CANON_W, CANON_H = 720, 480
 
 
 @dataclass(frozen=True)
-class Patch:
-    """An n x n lattice of single-pixel samples at `stride` px spacing, centred (x, y).
+class Box:
+    """A dense rectangle of luma samples, [x0, x1) x [y0, y1).
 
-    A lattice rather than a solid block so a wide footprint stays cheap: 25 samples
-    cover a 9x9 (stride 2) or 17x17 (stride 4) extent. The firmware samples exactly
-    these coordinates, so the host must model the lattice, not a box mean.
+    Dense rather than a sampled lattice: the regions are small and the whole
+    point is that a *mean over an area* survives a shift that moves individual
+    samples off a glyph stroke or a page edge.
     """
 
-    x: int
-    y: int
-    n: int
-    stride: int
+    x0: int
+    y0: int
+    x1: int
+    y1: int
 
     @property
-    def half(self) -> int:
-        return ((self.n - 1) // 2) * self.stride
+    def pixels(self) -> int:
+        return (self.x1 - self.x0) * (self.y1 - self.y0)
 
 
-# Regions the point search refuses, as (x0, y0, x1, y1). Kept here because they are
-# the provenance of the tables below: re-picking points without them silently
-# reintroduces the failures they encode. Every one is a *rule*, not a measurement --
-# the corpus has 6 static gameplay frames and 8 end frames from two plays of one
-# song, so it cannot show a note passing under a patch, star power, the 2-player
-# performer walking past, or a results field moving with its value.
+# Regions refused for *bright* boxes, as (x0, y0, x1, y1). These are the
+# provenance of the table below -- re-picking boxes without them reintroduces the
+# failures they encode. Each is a rule about what varies for reasons unrelated to
+# which screen this is, not a measurement.
+#
+# Note what is deliberately absent: the blanket "where gameplay puts bright
+# moving content" refusal the point-lattice version carried. The bright boxes are
+# justified by measured gameplay contrast instead (see the PLAY column in the
+# journal's table). What that measurement cannot cover is star power, a bright
+# camera cut, or a venue whose backdrop is light behind the band -- 6 static
+# gameplay frames cannot show any of them.
 SELECTION_EXCLUSIONS: dict[str, tuple[tuple[int, int, int, int], ...]] = {
     # Black letterbox bars: clipped, so they track neither gain nor offset.
     "letterbox": ((0, 0, 720, 10), (0, 468, 720, 480)),
-    # Left magazine page: album art and the song/artist text change per song.
+    # The collage the magazine sits on: per-song, and it is most of the frame.
+    "per_song_collage": ((0, 0, 720, 36), (0, 36, 110, 480), (620, 36, 720, 480),
+                         (0, 444, 720, 480)),
+    # Left magazine page: cover art and the song/artist text change per song.
     "per_song_art": ((110, 36, 358, 418),),
+    # Decoration column down the right page: doodled letters on Backwater Rocker,
+    # a flame on Flaming Pick.
+    "per_magazine_decoration": ((528, 52, 616, 410),),
     # Results fields, both layouts -- these move with the score/streak/notes-hit.
-    "results_practice": ((366, 60, 532, 224), (390, 240, 472, 312), (524, 58, 602, 104)),
+    "results_practice": ((366, 80, 532, 224), (390, 240, 472, 312), (524, 58, 602, 104)),
     "results_faceoff": ((366, 80, 516, 366),),
-    # Where 1-player gameplay puts bright moving content: the note highway, the
-    # scoring block, the section-name text.
-    "gameplay_1p": ((180, 185, 520, 470), (108, 300, 216, 420), (280, 110, 440, 165)),
-    # Same for 2 players: both highways, both amp scoreboards, the centre performer.
-    "gameplay_2p": ((80, 235, 625, 470), (117, 166, 205, 256), (507, 166, 595, 256),
-                    (225, 0, 475, 305)),
 }
+
+# Where dark boxes are allowed: the interiors of the two hint-bar pills. Scoped
+# separately because the rules above are about the *magazine*, and the bar is a
+# UI overlay on top of it -- the one thing on this screen the collage cannot
+# reach. Glyph rects are the ink a dark box must clear.
+HINT_BAR_PILLS: tuple[tuple[int, int, int, int], ...] = (
+    (246, 414, 344, 442),
+    (352, 414, 478, 442),
+)
+HINT_BAR_GLYPHS: tuple[tuple[int, int, int, int], ...] = (
+    (258, 420, 272, 438),   # green button icon
+    (276, 424, 332, 437),   # "SELECT"
+    (364, 425, 392, 435),   # dash icon
+    (396, 424, 466, 437),   # "UP/DOWN"
+)
 
 
 def excluded(x: int, y: int) -> str | None:
-    """The exclusion zone containing (x, y), or None. Used by the point-set tests."""
+    """The bright-box exclusion zone containing (x, y), or None."""
     for name, rects in SELECTION_EXCLUSIONS.items():
         for x0, y0, x1, y1 in rects:
             if x0 <= x < x1 and y0 <= y < y1:
@@ -102,66 +129,64 @@ def excluded(x: int, y: int) -> str | None:
     return None
 
 
-# Bright patches: right-hand collage + the notes column of the right page.
-BRIGHT: tuple[Patch, ...] = (
-    Patch(669, 56, 5, 2),
-    Patch(634, 216, 5, 2),
-    Patch(637, 121, 5, 2),
-    Patch(582, 143, 5, 2),
-    Patch(599, 26, 5, 2),
-    Patch(703, 117, 5, 2),
+def _inside(b: Box, rect: tuple[int, int, int, int]) -> bool:
+    x0, y0, x1, y1 = rect
+    return b.x0 >= x0 and b.y0 >= y0 and b.x1 <= x1 and b.y1 <= y1
+
+
+def _overlaps(b: Box, rect: tuple[int, int, int, int]) -> bool:
+    x0, y0, x1, y1 = rect
+    return b.x0 < x1 and x0 < b.x1 and b.y0 < y1 and y0 < b.y1
+
+
+# Bright boxes: the right page's top margin, above the menu block. Split in two
+# so one being stepped on does not lose the call. The band's right end reaches
+# something bright during play (gameplay contrast up to 47 against these two's 5)
+# and is left out.
+BRIGHT: tuple[Box, ...] = (
+    Box(369, 65, 398, 78),
+    Box(398, 65, 428, 78),
 )
 
-# Dark anchors: left collage. Wider stride (17x17 extent) because their job is to
-# report the frame's dark level, not to resolve any feature.
-ANCHORS: tuple[Patch, ...] = (
-    Patch(47, 392, 5, 4),
-    Patch(44, 66, 5, 4),
-    Patch(91, 175, 5, 4),
+# Dark reference: black interior of the two hint-bar pills, clear of the glyphs.
+# Median of three so one box landing on something unexpected cannot drag it.
+DARK: tuple[Box, ...] = (
+    Box(248, 418, 258, 440),   # left of the green button icon
+    Box(334, 418, 344, 440),   # right of "SELECT"
+    Box(468, 418, 478, 440),   # right of "UP/DOWN"
 )
 
-# Per-patch contrast threshold, midway between the worst end-screen contrast and
-# the best gameplay contrast measured on the corpus (see `calibrate`). Regenerate
-# with `gameplay endprobe-calibrate` if the point table changes.
-THRESH: tuple[int, ...] = (54, 54, 55, 56, 47, 45)
+# Per-box contrast threshold, midway between the worst end-screen contrast and
+# the best gameplay contrast (see `calibrate`). Regenerate if the boxes change.
+THRESH: tuple[int, ...] = (33, 37)
 
-# How many of the 6 must clear their threshold. 5 leaves one patch free to be
-# stepped on (a stray bright object, a dead pixel run) without losing the call.
-K_HITS = 5
+# How many of the bright boxes must clear their threshold. 1 of 2 is deliberate:
+# a false positive costs the notes missed in one controller poll and self-clears,
+# a false negative costs presses that can select RESTART or QUIT.
+K_HITS = 1
 
 # Consecutive frames required before acting. Two frames (~33 ms) costs nothing
 # against the 300 ms poll it replaces and rejects a single-frame decode artefact.
 CONFIRM_FRAMES = 2
 
 
-def patch_mean(image: np.ndarray, p: Patch) -> int:
-    """Integer mean luma over the patch's lattice samples (floor, as the C does)."""
-    c = (p.n - 1) // 2
-    offs = [(i - c) * p.stride for i in range(p.n)]
-    total = 0
-    for dy in offs:
-        row = image[p.y + dy]
-        for dx in offs:
-            b, g, r = row[p.x + dx]
-            total += (LUMA_B * int(b) + LUMA_G * int(g) + LUMA_R * int(r)) >> 8
-    return total // (p.n * p.n)
+def box_mean(image: np.ndarray, b: Box) -> int:
+    """Integer mean luma over the box (floor, as the C does)."""
+    px = image[b.y0:b.y1, b.x0:b.x1].astype(np.int32)
+    lum = (LUMA_B * px[:, :, 0] + LUMA_G * px[:, :, 1] + LUMA_R * px[:, :, 2]) >> 8
+    return int(lum.sum()) // b.pixels
 
 
 def anchor_level(image: np.ndarray) -> int:
-    """The frame's dark reference: median of the three anchor patches.
-
-    Median rather than min/max so one anchor landing on something unexpected
-    (a light-coloured object drifting into the left of frame) cannot drag the
-    reference on its own.
-    """
-    vals = sorted(patch_mean(image, a) for a in ANCHORS)
+    """The frame's dark reference: median of the three hint-bar boxes."""
+    vals = sorted(box_mean(image, d) for d in DARK)
     return vals[len(vals) // 2]
 
 
 def contrasts(image: np.ndarray) -> list[int]:
-    """Per-bright-patch contrast against the anchor level."""
+    """Per-bright-box contrast against the anchor level."""
     a = anchor_level(image)
-    return [patch_mean(image, p) - a for p in BRIGHT]
+    return [box_mean(image, b) - a for b in BRIGHT]
 
 
 @dataclass(frozen=True)
@@ -180,9 +205,14 @@ def read(image: np.ndarray) -> EndProbe:
     if image.shape[0] != CANON_H or image.shape[1] != CANON_W:
         raise ValueError(f"expected {CANON_W}x{CANON_H}, got {image.shape[1]}x{image.shape[0]}")
     a = anchor_level(image)
-    con = tuple(patch_mean(image, p) - a for p in BRIGHT)
+    con = tuple(box_mean(image, b) - a for b in BRIGHT)
     hits = sum(1 for c, t in zip(con, THRESH, strict=True) if c >= t)
     return EndProbe(hits=hits, contrast=con, anchor=a)
+
+
+def pixel_reads() -> int:
+    """Luma reads per frame — the on-device cost driver."""
+    return sum(b.pixels for b in BRIGHT) + sum(d.pixels for d in DARK)
 
 
 class EndProbeTracker:
@@ -190,9 +220,7 @@ class EndProbeTracker:
 
     Rising edge only latches after the confirm count; the fall is immediate, so a
     false veto releases actuation again on the next clean frame rather than
-    ending a run. That asymmetry is what makes an aggressive K safe: a false
-    positive costs a fraction of a second of missed notes, a false negative costs
-    errant presses on the results menu.
+    ending a run.
     """
 
     def __init__(self) -> None:

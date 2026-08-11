@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import endlayout
 from . import endprobe
 from .classifier import build_templates
 from .corpus import Sample, load_amp2p_corpus, load_corpus, load_score_corpus
@@ -121,7 +122,7 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
     for _i, _t in enumerate(endprobe.THRESH):
         if not (_play_c[:, _i].max() < _t < _end_c[:, _i].min()):
             raise ValueError(
-                f"endprobe patch {_i}: threshold {_t} does not separate "
+                f"endprobe box {_i}: threshold {_t} does not separate "
                 f"gameplay (max {_play_c[:, _i].max()}) from end (min {_end_c[:, _i].min()})"
             )
     _end_lo, _end_hi, _play_hi = int(_end_c.min()), int(_end_c.max()), int(_play_c.max())
@@ -555,40 +556,88 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
 
     # ── end-of-song probe (frame-rate actuation veto) ───────────────────────
     w("/* ── end-of-song probe (see gameplay/endprobe.py) ──")
-    w("   Runs on EVERY frame, unlike everything above: 9 lattice patches, %d luma"
-      % (len(endprobe.BRIGHT) * endprobe.BRIGHT[0].n ** 2
-         + len(endprobe.ANCHORS) * endprobe.ANCHORS[0].n ** 2))
-    w("   samples total, all integer. Its only job is to cut actuation the instant the")
-    w("   results screen appears — gp_classify still owns the verdict on whether the run")
-    w("   ended. Bright patches sit on the right-hand sketch collage and notes column,")
-    w("   dark anchors on the left collage; both are page furniture common to")
-    w("   practice_end_menu and faceoff_end_menu, and no results field can reach them.")
-    w("   The test is a CONTRAST against the median anchor, not a level: out on the")
-    w("   collage the bright patches only reach ~110-160 luma, and an absolute threshold")
-    w("   does not survive the feed's gain/offset slop (0.85 gain with -20 offset closes")
-    w("   the margin). A difference cancels offset exactly and only scales with gain. */")
+    w("   Runs on EVERY frame, unlike everything above: %d box-mean luma reads, all"
+      % endprobe.pixel_reads())
+    w("   integer. Its only job is to cut actuation the instant a results-screen-shaped")
+    w("   frame appears — it does NOT name the screen (most menus fire it too), and")
+    w("   gp_classify still owns the verdict on whether the run ended.")
+    w("   Bright boxes sit on the right page's top margin, the only part of the magazine")
+    w("   that is white in BOTH end layouts: faceoff has 3 menu items, practice 5 plus an")
+    w("   OUT OF box, so everything lower is menu text in one of them. Dark boxes sit in")
+    w("   the black of the SELECT / UP-DOWN hint bar — a UI overlay composited after the")
+    w("   scene's colour grade, so it reads 2..5 on every end frame while the page white")
+    w("   itself is graded per song (88 on one magazine against 167 on another). The bar")
+    w("   is also the fret-button row during play, so it goes bright mid-song and drives")
+    w("   the contrast further negative exactly when a false veto would cost most.")
+    w("   The test is a CONTRAST against the median dark box, not a level, so the feed's")
+    w("   offset cancels exactly and only gain scales. Boxes rather than point lattices:")
+    w("   the hint-bar glyphs are the most stable thing on screen but their strokes are")
+    w("   ~3 px, and point samples on them collapse under the +/-2 px capture offset. */")
     w("#define GP_END_N_BRIGHT %d" % len(endprobe.BRIGHT))
-    w("#define GP_END_N_ANCHOR %d    /* odd: the reducer is a median */" % len(endprobe.ANCHORS))
-    w("#define GP_END_K_HITS %d      /* of GP_END_N_BRIGHT; leaves one patch free */"
+    w("#define GP_END_N_DARK %d      /* odd: the reducer is a median */" % len(endprobe.DARK))
+    w("#define GP_END_K_HITS %d      /* of GP_END_N_BRIGHT; a false veto self-clears */"
       % endprobe.K_HITS)
     w("#define GP_END_CONFIRM_FRAMES %d  /* ~%d ms at 60 fps */"
       % (endprobe.CONFIRM_FRAMES, round(endprobe.CONFIRM_FRAMES * 1000 / 60)))
+    w("#define GP_END_PIXEL_READS %d" % endprobe.pixel_reads())
     w("")
-    w("typedef struct { uint16_t x, y; uint8_t n, stride; } gp_end_patch_t;")
+    w("typedef struct { uint16_t x0, y0, x1, y1; uint16_t pixels; } gp_end_box_t;")
     w("")
-    w("static const gp_end_patch_t gp_end_bright[GP_END_N_BRIGHT] = {")
-    for p in endprobe.BRIGHT:
-        w("  {%d,%d,%d,%d}," % (p.x, p.y, p.n, p.stride))
+    w("static const gp_end_box_t gp_end_bright[GP_END_N_BRIGHT] = {")
+    for b in endprobe.BRIGHT:
+        w("  {%d,%d,%d,%d,%d}," % (b.x0, b.y0, b.x1, b.y1, b.pixels))
     w("};")
-    w("static const gp_end_patch_t gp_end_anchor[GP_END_N_ANCHOR] = {")
-    for p in endprobe.ANCHORS:
-        w("  {%d,%d,%d,%d}," % (p.x, p.y, p.n, p.stride))
+    w("static const gp_end_box_t gp_end_dark[GP_END_N_DARK] = {")
+    for b in endprobe.DARK:
+        w("  {%d,%d,%d,%d,%d}," % (b.x0, b.y0, b.x1, b.y1, b.pixels))
     w("};")
-    w("/* Per-patch contrast threshold, midway between the worst end-screen contrast and")
+    w("/* Per-box contrast threshold, midway between the worst end-screen contrast and")
     w("   the best gameplay contrast on the corpus (measured: end %d..%d, gameplay <= %d). */"
       % (_end_lo, _end_hi, _play_hi))
     w("static const uint8_t gp_end_thresh[GP_END_N_BRIGHT] = {%s};"
       % ",".join(str(int(t)) for t in endprobe.THRESH))
+    w("")
+
+    # ── end-layout namer (which end screen, since the fingerprint can't) ────
+    _prac = [endlayout.contrast(s.image) for s in _canon
+             if s.screen_id == endlayout.PRACTICE]
+    _face = [endlayout.contrast(s.image) for s in _canon
+             if s.screen_id == endlayout.FACEOFF]
+    if not _prac or not _face:
+        raise ValueError("endlayout export needs both end-screen classes in the corpus")
+    if not (max(_prac) < endlayout.T_PRACTICE and min(_face) > endlayout.T_FACEOFF):
+        raise ValueError(
+            f"endlayout dead band does not separate the corpus: practice <= {max(_prac)}, "
+            f"faceoff >= {min(_face)}, band ({endlayout.T_PRACTICE}, {endlayout.T_FACEOFF})"
+        )
+    w("/* ── end-layout namer (see gameplay/endlayout.py) ──")
+    w("   Which end screen is this? The fingerprint cannot answer any more: the collage,")
+    w("   the cover art and the right page's decoration column are all per-song, and a")
+    w("   new magazine put a real faceoff_end_menu 5192 from song_select without")
+    w("   faceoff_end_menu in its top four. Masking does not recover it (best margin 369")
+    w("   against t_margin %d) and adding the frame to the corpus drops that class's LOO"
+      % rec.rec_t_margin)
+    w("   from 3/3 to 0/4. So this reads *layout* instead, which is what differs:")
+    w("   practice has 5 menu items and an OUT OF box, faceoff has 3 and two stat")
+    w("   columns. GP_END_LAY_A sits inside the practice-only OUT OF box, GP_END_LAY_B")
+    w("   inside the faceoff-only player-1 streak block, and the test is their")
+    w("   difference so the page's per-song grading cancels.")
+    w("   Measured: practice %d..%d, faceoff %d..%d."
+      % (min(_prac), max(_prac), min(_face), max(_face)))
+    w("   PRECONDITION: only meaningful once an end screen is known to be up. A-B is not")
+    w("   a screen classifier — speed_select reads +145, multiplayer_menu +45 — and")
+    w("   gp_end_probe does not close that gap (it fires on most menus by design). The")
+    w("   controller is the caller with the missing context: it chose the mode and only")
+    w("   asks in the window just after a run it started. */")
+    w("#define GP_END_LAY_PRACTICE 0")
+    w("#define GP_END_LAY_FACEOFF 1")
+    w("#define GP_END_LAY_UNCERTAIN 2")
+    w("#define GP_END_LAY_T_PRACTICE (%d)" % endlayout.T_PRACTICE)
+    w("#define GP_END_LAY_T_FACEOFF (%d)" % endlayout.T_FACEOFF)
+    w("static const gp_end_box_t gp_end_lay_a = {%d,%d,%d,%d,%d};"
+      % (endlayout.A.x0, endlayout.A.y0, endlayout.A.x1, endlayout.A.y1, endlayout.A.pixels))
+    w("static const gp_end_box_t gp_end_lay_b = {%d,%d,%d,%d,%d};"
+      % (endlayout.B.x0, endlayout.B.y0, endlayout.B.x1, endlayout.B.y1, endlayout.B.pixels))
     w("")
 
     w("#endif /* MARVIN_GAMEPLAY_METADATA_H */")
