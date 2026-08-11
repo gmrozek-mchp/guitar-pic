@@ -157,6 +157,7 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-08-11 | **The frame-rate end-of-song veto is DISABLED on hardware (`GC_END_PROBE_ARMED 0`); the code and its exported tables stay. Open question 3 is answered: false positives on real 2-player gameplay are real and repeatable.** | The probe fired over and over mid-song at 2/1 and 1/1 hits, with the classifier reading `in_song_2p` (screen 5) on the very next observe — so both bright boxes cleared 33/37 against the pill black while the highway was plainly still up. Six static gameplay frames plus a synthetic slop envelope measured gameplay contrast at +1/+5; the real feed reaches past 37 at certain moments. That is a measurement gap, not a logic error, and no threshold tuning is justified without the capture that shows *what* is bright at `369,65-428,78` mid-song. The utilization hit that made Greg pull it is second-order and worth recording: a firing probe makes `GameEngine_WaitEndOfSong` return immediately, so `play_until_done` loses its `GC_PLAY_POLL_MS` rate limit and runs `gp_classify` (soft-float) flat out. The veto's own 1427 reads/frame were never the problem. |
 | 2026-08-11 | **The collage the magazine sits on is per-song, not page furniture — which retires the assumption the 2026-08-10 end probe was built on and breaks two readers at once.** | `snapshot-2416`: a 2P run ended on *The Flaming Pick* over dark red comic art, where all 8 corpus end frames are *Backwater Rocker* over bright sketch paper. The probe scored **1/6** (its bright patches read 26..65 where the corpus reads 130..152) and the fingerprint put the frame **5192 from `song_select`** without `faceoff_end_menu` in its top four. Greg had instructed us to assume the surround was constant and open question 1 recorded that we could not check it; one frame of a second magazine was enough to answer it. Also learned: the page white itself is graded per song (88 against 167), so nothing on the magazine supports an absolute level. |
 | 2026-08-11 | **The end probe is now box means, not point lattices: 2 bright boxes on the right page's top margin against the median of 3 dark boxes inside the SELECT / UP-DOWN hint bar. K = 1 of 2, thresholds 33/37, 1427 luma reads per frame (was 225).** | The top margin is the only part of the magazine that is white in *both* end layouts — faceoff has 3 menu items, practice 5 plus an OUT OF box, so everything below y≈90 is menu text in one of them and results fields below that. The hint bar is the dark reference because it is a **UI overlay composited after the scene's colour grade**: it reads 2..5 on every end frame measured while the page white swings 88..167. Boxes rather than points because the bar's glyphs — the most stable thing on the screen, the UP/DOWN word box varies **1.2 luma** across all 10 end frames — have ~3 px strokes, and point samples on them collapse under the ±2 px capture offset (**1 of 6** patches surviving at +2,+2). A box mean barely moves. Measured END 65..189 / 69..188 against gameplay −61..1 / −61..5, with END over value slop + ±2 px and gameplay over the full envelope including ±6 px shake at 1.15 gain. |
 | 2026-08-11 | **Rejected: the hint-bar glyph boxes as the *bright* signal, despite being the most song-stable pair measured.** `UP/DOWN word − black right of SELECT` gives a 3.2 luma spread across all 10 end frames (71.1..74.3, including the dark magazine) and still fails. | The bar sits on the **fret-button row**. Under the asymmetric criteria that matter — end side value slop + ±2 px, gameplay side the full ±6 px shake — that pair scores END worst 52 against gameplay best 60: **gap −8**. The same measurement is why the bar is an excellent *dark* reference: it goes bright mid-song, driving the contrast further negative exactly when a false veto would cost most. Stability across songs and quietness during gameplay are different requirements, and only the hybrid (page band bright, pill black dark) satisfies both — gap 52. |
@@ -254,7 +255,11 @@ subsampled path costs <1% CPU at 5–10 Hz.
      with the value — this is exactly the error Greg caught by eye on the discarded point. The
      rectangles in `endprobe.SELECTION_EXCLUSIONS` are drawn by rule (and a test asserts all 225
      samples clear them). **Closes with:** the snapshots in (1).
-  3. **False positives against real gameplay are still unmeasured, and the boxes moved.** Now
+  3. ❗ **ANSWERED 2026-08-11, badly: false positives on real 2-player gameplay are real and
+     repeatable, and the veto is disabled because of it** (`GC_END_PROBE_ARMED 0`). The probe fired
+     repeatedly mid-song at 2/1 and 1/1 hits with `in_song_2p` on the next observe. Everything below
+     was the *pre-hardware* state of this question and is what still needs doing to re-enable — the
+     capture is now the blocker, not a nice-to-have. Now
      tested over the *full* envelope (±6 px shake at 1.15 gain, not just ±2), which the old table
      never was — gameplay contrast tops out at +1/+5 against thresholds 33/37. What 6 static frames
      still cannot show: star power, a bright camera cut, or a venue whose backdrop is light behind
@@ -399,6 +404,35 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-08-11 (hardware) — the veto fires mid-song, so it is off; the namer stays
+
+Greg, on the first real run: *"getting false triggers resulting in high processor utilization and
+affecting gameplay... I think we just need to disable the quick dropout mechanism for now."* The log
+is unambiguous — `probe fired (2/1 hits)` / `false alarm (screen 5) — resuming`, over and over, with
+screen 5 being `in_song_2p`. Both bright boxes cleared their thresholds while the highway was up.
+
+So open question 3 is answered against us. The synthetic evidence said gameplay contrast tops out at
++1/+5 against thresholds 33/37; the real feed clears 37 at certain repeatable moments. 6 static
+gameplay frames were never going to show that, which is exactly what the question said — the mistake
+was shipping the veto enabled while it was still open, not the measurement itself.
+
+The utilization symptom is worth remembering because it is not the obvious one: the probe's 1427
+reads/frame are trivial. What hurt is that a firing probe makes `GameEngine_WaitEndOfSong` return
+immediately, so `play_until_done` loses its 300 ms rate limit and spins on `gp_classify` soft-float.
+A cheap veto can still be expensive through the loop it unblocks.
+
+Backed out with one constant (`GC_END_PROBE_ARMED 0`) rather than by deleting anything: with the
+watch unarmed, `game_task` skips the probe entirely, `WaitEndOfSong` degrades to the ordinary 300 ms
+poll, and end-of-song returns to the `GC_END_CONFIRM 3` path it used before the probe existed.
+
+The one thing that could not simply revert is why the probe was written in the first place: with
+`EndOfSongSeen()` never firing, an end screen the fingerprint cannot name sits at UNKNOWN, which the
+play loop *holds* rather than counts, so the run would hang until STOP again. `gp_end_layout` now
+covers that inside `play_until_done` too, fed through the ordinary off-gameplay path so it needs
+`GC_END_CONFIRM` identical reads — deliberately not treated as decisive, because it leaks on
+gameplay frames as well (`in_song_2p` reaches +32 against a +10 gate). So the slow path is back, but
+it is no longer defeated by a new magazine.
 
 ### 2026-08-11 — a second magazine broke the end probe, and moved naming out of the fingerprint
 

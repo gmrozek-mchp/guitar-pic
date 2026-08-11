@@ -99,6 +99,17 @@
  * a single such sample used to end the run mid-song. At GC_PLAY_POLL_MS this still
  * exits well under a second after a real song end. */
 #define GC_END_CONFIRM      3
+/* Whether the frame-rate end-of-song probe arms for the actuation window. Disabled:
+ * on hardware it fires repeatedly at certain moments of real gameplay, and the cost
+ * is not the probe's own reads — a firing probe makes GameEngine_WaitEndOfSong
+ * return immediately, so the play loop below loses its GC_PLAY_POLL_MS rate limit
+ * and runs gp_classify flat out, which is the utilization hit that affected play.
+ * The code and its exported tables stay; what is missing is evidence, not logic (6
+ * static gameplay frames cannot show whatever is bright behind the band mid-song).
+ * See tools/gameplay/docs/journal.md open question 3 for the capture that closes it.
+ * With this at 0 the end of a song is detected by the poll below, as it was before
+ * the probe existed. */
+#define GC_END_PROBE_ARMED  0
 /* How long to wait for P1's READY! badge after confirming on guitar_select_2p. This is
  * marvin's own on-screen acknowledgement, so it is a short UI-animation wait, not a
  * human one — if it does not appear the GREEN did not register and the step retries. */
@@ -618,7 +629,7 @@ static void play_until_done(void)
 {
     status("PLAYING");
     GameTiming_SetEnabled(true);   /* controller owns the actuation window */
-    GameEngine_ArmEndWatch(true);  /* frame-rate end-of-song veto for that window */
+    GameEngine_ArmEndWatch(GC_END_PROBE_ARMED);  /* frame-rate veto — off, see the define */
     set_performing(true);          /* lemmy + lightshow live for the song, nod per song */
     TickType_t play_start = xTaskGetTickCount();
     DashboardFeed_PostPlaytime(0u);    /* reset the dashboard playtime bar (run reset the rest) */
@@ -652,6 +663,24 @@ static void play_until_done(void)
         game_state_t gs;
         if (GameEngine_Observe(&gs, GC_OBS_TIMEOUT_MS))
         {
+            /* With the frame-rate probe disarmed, GameEngine_EndOfSongSeen() never
+             * fires, and an end screen the fingerprint cannot name would sit at
+             * UNKNOWN — which is *held* below, not counted — so the run would stay
+             * open until STOP. That is the hang the probe was covering, and
+             * gp_end_layout covers it instead: it reads page layout, so a new
+             * magazine does not defeat it.
+             *
+             * Fed through the ordinary off-gameplay path rather than treated as
+             * decisive, because it leaks on gameplay frames too (in_song_2p reaches
+             * +32 against a +10 gate). Requiring GC_END_CONFIRM identical reads is
+             * exactly the shake defence that already exists for that. */
+            uint8_t sc = gs.screen;
+            if (sc == GP_SCREEN_UNKNOWN)
+            {
+                if (gs.end_layout == GP_END_LAY_PRACTICE)     { sc = GP_SCREEN_practice_end_menu; }
+                else if (gs.end_layout == GP_END_LAY_FACEOFF) { sc = GP_SCREEN_faceoff_end_menu; }
+            }
+
             /* Any positive gameplay read clears the end-of-song evidence. `loading`
              * and UNKNOWN neither confirm nor deny (UNKNOWN is the shake case), so
              * they hold the count rather than resetting or advancing it — unless the
@@ -672,7 +701,7 @@ static void play_until_done(void)
                     LOG_WARN("GC: end-of-song probe was a false alarm (screen %u) — resuming\r\n",
                              (unsigned)gs.screen);
                     GameTiming_SetEnabled(true);
-                    GameEngine_ArmEndWatch(true);
+                    GameEngine_ArmEndWatch(GC_END_PROBE_ARMED);
                 }
             }
 
@@ -722,7 +751,7 @@ static void play_until_done(void)
                 ended_naturally = true;
                 break;
             }
-            else if (gs.screen != GP_SCREEN_loading && gs.screen != GP_SCREEN_UNKNOWN)
+            else if (sc != GP_SCREEN_loading && sc != GP_SCREEN_UNKNOWN)
             {
                 /* Decisive off-gameplay read. Require the *same* screen to persist,
                  * not merely N off-gameplay reads: a real ending lands on the end/pause
@@ -731,20 +760,21 @@ static void play_until_done(void)
                  * frame. Keying on stability rides through a shake without slowing a
                  * genuine song end. Logged while holding, so a run that does end early
                  * says which screen the classifier thought it saw. */
-                if (gs.screen == off_screen)
+                if (sc == off_screen)
                 {
                     off_gameplay++;
                 }
                 else
                 {
-                    off_screen   = gs.screen;
+                    off_screen   = sc;
                     off_gameplay = 1;
                 }
                 /* Reached only when the probe has *not* fired (that case returns
                  * above), so this is still the full shake defence it was built as. */
                 if (off_gameplay >= GC_END_CONFIRM) { ended_naturally = true; break; }
-                LOG_INFO("GC: off-gameplay read %u (%d/%d) — holding\r\n",
-                         (unsigned)gs.screen, off_gameplay, GC_END_CONFIRM);
+                LOG_INFO("GC: off-gameplay read %u%s (%d/%d) — holding\r\n",
+                         (unsigned)sc, (sc != gs.screen) ? " by layout" : "",
+                         off_gameplay, GC_END_CONFIRM);
             }
         }
     }
