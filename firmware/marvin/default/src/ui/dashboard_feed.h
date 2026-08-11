@@ -49,7 +49,6 @@ typedef enum
     DASH_EVT_STREAK,     /* u.streak     (future)                             */
     DASH_EVT_VIDEO,      /* u.on — HEO is (not) covering the video card       */
     DASH_EVT_SHOWDOWN,   /* u.on — the card offers a SHOWDOWN match (or not)  */
-    DASH_EVT_RESULTS,    /* no payload — results.csv gained a row             */
     DASH_EVT_COUNT
 } dashboard_evt_type_t;
 
@@ -110,9 +109,15 @@ void DashboardFeed_PostVideo(bool displayed);
 void DashboardFeed_PostShowdown(bool present);
 
 /* A run's score reached results.csv, so the TOP SCORES board on the human card is stale.
- * An edge, but an idempotent one whose next occurrence is another whole song away: a
- * dropped post costs a board that catches up at the end of the next run. Re-reading the
- * card is the consumer's job, and it happens outside the render lock. */
+ * Re-reading the card is the consumer's job, and it happens outside the render lock.
+ *
+ * This one does NOT travel on the shared queue, and the reason is the classification rule
+ * above. It is an edge with **no successor**: the next one is a whole song away, so unlike
+ * sampled telemetry there is nothing later to correct a loss — a single dropped post leaves
+ * the board stale indefinitely. And it is posted at the worst possible moment, with the
+ * queue at its fullest from a song's worth of per-note DashboardFeed_PostFret. So it is a
+ * flag rather than a message: a flag cannot be crowded out, and the consumer's idle tick
+ * finds it even if the wake it also posts is itself dropped. Still wait-free. */
 void DashboardFeed_PostResults(void);
 
 #ifdef __cplusplus

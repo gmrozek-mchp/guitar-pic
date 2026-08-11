@@ -57,6 +57,10 @@ static dashboard_evt_t s_latest[DASH_EVT_COUNT];
  * costing CPU and DDR write bandwidth for pixels that cannot be seen. */
 static volatile bool   s_shown = true;
 
+/* results.csv gained a row and the TOP SCORES board needs re-reading. Off the shared
+ * queue on purpose — see DashboardFeed_PostResults. */
+static volatile bool   s_results_pending;
+
 static void post(const dashboard_evt_t *evt)
 {
     if (s_q == NULL) { return; }
@@ -83,8 +87,13 @@ void DashboardFeed_PostShowdown(bool present)
 
 void DashboardFeed_PostResults(void)
 {
-    dashboard_evt_t e = { .type = DASH_EVT_RESULTS };
-    post(&e);
+    /* Set the flag first, then nudge. If the nudge is dropped the flag is still set and
+     * the idle tick picks it up within DF_IDLE_TICK_MS; the reverse order could have the
+     * consumer wake, find nothing, and go back to sleep. */
+    s_results_pending = true;
+
+    dashboard_evt_t wake = { .type = DF_EVT_WAKE, .u = { 0 } };
+    post(&wake);
 }
 
 void DashboardFeed_PostSelection(void)
@@ -186,10 +195,17 @@ static void dashboard_task(void *param)
          * show, so no update is lost — only deferred. */
         if (!s_shown) { continue; }
 
+        /* Latched AFTER the shown gate, so a board update arriving while the dashboard is
+         * hidden is deferred with everything else rather than cleared and lost. Cleared
+         * before the read, not after: a post landing during the SD read then survives into
+         * the next pass, where the worst case is one redundant re-read. */
+        bool results = s_results_pending;
+        if (results) { s_results_pending = false; }
+
         /* Re-read the card BEFORE taking the render lock: the TOP SCORES board comes off
          * results.csv, and an SD read is far too long to hold Legato off for. The apply
          * below only walks the loaded cache. */
-        if (s_have[DASH_EVT_RESULTS]) { (void)Showdown_ReloadTop(); }
+        if (results) { (void)Showdown_ReloadTop(); }
 
         /* Selection first (rebuilds the SONG card), then live activity on top. Each
          * apply clears its pending flag, so the next pass only touches what changed. */
@@ -204,7 +220,7 @@ static void dashboard_task(void *param)
         if (s_have[DASH_EVT_FRET])      { ScreenDashboard_ApplyFret(s_latest[DASH_EVT_FRET].u.fret_mask); }
         if (s_have[DASH_EVT_VIDEO])     { ScreenDashboard_ApplyVideoState(s_latest[DASH_EVT_VIDEO].u.on); }
         if (s_have[DASH_EVT_SHOWDOWN])  { ScreenDashboard_ApplyShowdown(s_latest[DASH_EVT_SHOWDOWN].u.on); }
-        if (s_have[DASH_EVT_RESULTS])   { ScreenDashboard_ApplyTopScores(); }
+        if (results)                    { ScreenDashboard_ApplyTopScores(); }
         ScreenDashboard_RefreshActuators();
         UiManager_RenderUnlock();
 

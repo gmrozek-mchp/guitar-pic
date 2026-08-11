@@ -164,8 +164,17 @@ int Results_TopN(const char *setlist, uint8_t index, const char *difficulty,
     char path[80];
     build_path(path, sizeof(path), RES_REL_FILE);
 
+    /* An unopenable file and a file with no matching rows both return 0, and on the
+     * dashboard both look the same — an empty board. Say which: with FF_FS_MAX_FILES = 1
+     * the interesting failure is another task holding the one file slot, and that is
+     * invisible unless it is logged here. */
     SYS_FS_HANDLE h = SYS_FS_FileOpen(path, SYS_FS_FILE_OPEN_READ);
-    if (h == SYS_FS_HANDLE_INVALID) { return 0; }
+    if (h == SYS_FS_HANDLE_INVALID)
+    {
+        LOG_WARN("RES: cannot open %s (fs err %d) — no scores this pass\r\n",
+                 RES_REL_FILE, (int)SYS_FS_Error());
+        return 0;
+    }
 
     int  count = 0;
     bool first = true;

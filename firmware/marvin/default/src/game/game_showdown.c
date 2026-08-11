@@ -210,6 +210,13 @@ int Showdown_ReloadTop(void)
                           GameSelection_DifficultyName(s_cfg.difficulty),
                           Results_AffiliationName(RESULTS_AFFIL_CLIENT),
                           s_top, SHOWDOWN_TOP_MAX);
+
+    /* One line per reload, naming the filter as well as the count: an empty board is a
+     * legitimate answer here (nobody has played this match as a client yet), so the count
+     * alone cannot tell a working reload from a failed one. */
+    LOG_INFO("SHDN: board %s %u %s client -> %d row(s)\r\n",
+             setlist_name(s_cfg.setlist), (unsigned)s_cfg.index,
+             GameSelection_DifficultyName(s_cfg.difficulty), s_ntop);
     return s_ntop;
 }
 
