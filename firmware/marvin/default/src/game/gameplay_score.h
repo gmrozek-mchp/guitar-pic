@@ -31,6 +31,28 @@ int gp_read_score(const uint8_t *frame, int width, int height,
  * fixed ROI — no segmentation, mode-independent. Returns 1 on a bad frame size. */
 int gp_read_multiplier(const uint8_t *frame, int width, int height);
 
+/* ── note meter (five lamps left of the scoreboard; half a lamp per note hit) ──
+ *
+ * Stateless per-frame read of the lamp column, the cheap counterpart to the
+ * odometer below: five lamps × two halves thresholded on brightness, no
+ * segmentation and no glyph matching. `half` is the filtered count (0..10)
+ * obtained by walking up from the bottom lamp and stopping at the first dark
+ * half, so a bright stage light behind the upper column cannot inflate it.
+ * `raw` is the unfiltered per-half result — bit 2k is lamp k's lower half and
+ * bit 2k+1 its upper, k = 0 at the bottom — kept so a disagreement between the
+ * two is visible offline instead of silently becoming a count.
+ *
+ * Costs GP_BULB_PIXEL_READS integer samples, so it is cheap enough to run on
+ * every frame. Meaningful only on the 1p in-song screen; the caller gates it. */
+typedef struct
+{
+    uint8_t  half;   /* 0..10 half-lamps lit, counted from the bottom */
+    uint8_t  valid;  /* 1 = `raw` is a contiguous fill from the bottom */
+    uint16_t raw;    /* 10 per-half bits, unfiltered; see above */
+} gp_bulbs_t;
+
+int gp_read_bulbs(const uint8_t *frame, int width, int height, gp_bulbs_t *out);
+
 /* ── note-streak counter (3-tumbler odometer) ────────────────────────────────
  *
  * Two-part design mirroring the host prototype (score.py):

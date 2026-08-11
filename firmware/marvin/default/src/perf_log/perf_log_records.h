@@ -49,6 +49,19 @@ typedef enum
     PERF_STAGE_TP_TICK            = 0x30,
     PERF_STAGE_FBL_SEND           = 0x40,
     PERF_STAGE_CDC_WRITE_COMPLETE = 0x41,
+    /* Note-meter transition — the game's own verdict on a note, emitted only on
+     * a change so the rate is a few per second. This is the one stage that is
+     * not a latency marker; it rides STAMP because a new stage_id needs no
+     * schema bump and older hosts render it as an unknown stage rather than
+     * failing. `aux` carries the inputs, not just the verdict, so the state
+     * machine is auditable offline:
+     *
+     *   bits  7..0  perf_meter_event_t
+     *   bits 15..8  multiplier as read this frame (1..4)
+     *   bits 23..16 half-lamps as read this frame (0..10)
+     *   bits 31..24 half-lamps previously held (0..10)
+     */
+    PERF_STAGE_GAME_METER         = 0x50,
     /* PERF_STAGE_FBL_READ_COMPLETE = 0x42 — slot reserved; per-Read emit
      * was tried during fretboard-RX bring-up but at the fretboard's 240 Hz
      * polling rate it doubled the timeline marker count and made Plotly's
@@ -57,6 +70,17 @@ typedef enum
      * without a per-Read stamp. Re-enable here only if a sub-frame USB
      * latency tuning task explicitly needs it. */
 } perf_stage_t;
+
+/* PERF_STAGE_GAME_METER event codes. MISS is the signal the CV pipeline is
+ * ultimately judged on; HIT and DECADE are carried too because they are nearly
+ * free and are what let a strum be matched to an accepted note offline. */
+typedef enum
+{
+    PERF_METER_MISS   = 0,  /* lamps emptied short of full, or the multiplier fell */
+    PERF_METER_HIT    = 1,  /* lamps advanced */
+    PERF_METER_DECADE = 2,  /* ten lamps reached: multiplier stepped, lamps reset */
+    PERF_METER_SYNC   = 3,  /* first valid read of a window — state adopted, no verdict */
+} perf_meter_event_t;
 
 #define PERF_FLAG_FROM_ISR        0x01u
 
@@ -231,6 +255,14 @@ typedef enum
     PERF_STRIP_STRIKE_2P      = 6,   /* strum zone, 2-player left (robot) highway */
     PERF_STRIP_SCORE_2P_LEFT  = 7,   /* 2-player left amp scoreboard  (region slot 1) */
     PERF_STRIP_SCORE_2P_RIGHT = 8,   /* 2-player right amp scoreboard (region slot 2) */
+    /* Strum zone, 2:1-decimated in both axes: one strip pixel is a 2x2 box
+     * average of the frame. (x, y) is still the origin in frame coords and
+     * (w, h) are the decimated dimensions, so a host renders these at 2x to
+     * place them. Replaces the native-resolution STRIKE kinds on the wire —
+     * the zone holds no sensors, and the hit flash and fret-pressed highlight
+     * both survive the halving, which buys the rows SENSING grew by. */
+    PERF_STRIP_STRIKE_HALF    = 9,
+    PERF_STRIP_STRIKE_2P_HALF = 10,
 } perf_strip_kind_t;
 
 /* Strip flags byte (perf_rec_strip_t.flags). SNAPSHOT producers set LAST on

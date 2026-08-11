@@ -35,6 +35,25 @@ SOF_BYTES = bytes((0x55, 0x4D, 0x52, 0x56))  # "UMRV"
 
 FRET_COUNT = 5
 
+# One STRIKE_HALF / STRIKE_2P_HALF strip pixel covers this many frame pixels per
+# axis. Mirrors the firmware's decimate2_bgr factor.
+STRIKE_HALF_SCALE = 2
+
+
+class MeterEvent(IntEnum):
+    """aux byte 0 of a Stage.GAME_METER stamp. Mirrors perf_meter_event_t."""
+
+    MISS = 0
+    HIT = 1
+    DECADE = 2
+    SYNC = 3
+
+    @staticmethod
+    def unpack_aux(aux: int) -> tuple[int, int, int, int]:
+        """(event, multiplier, half_lamps, prev_half_lamps) from a GAME_METER aux."""
+        return (aux & 0xFF, (aux >> 8) & 0xFF, (aux >> 16) & 0xFF, (aux >> 24) & 0xFF)
+
+
 # Strip is the variable-size BGR888 region-of-interest record. The wire
 # format treats (kind, x, y, w, h) as fully variable per record so future
 # kinds can carry different rectangles without a schema bump.
@@ -74,6 +93,13 @@ class StripKind(IntEnum):
     STRIKE_2P = 6
     SCORE_2P_LEFT = 7   # 2-player left amp scoreboard  (region slot 1)
     SCORE_2P_RIGHT = 8  # 2-player right amp scoreboard (region slot 2)
+    # Strum zone, 2:1-decimated in both axes — one strip pixel is a 2x2 box
+    # average of the frame. (x, y) is still the frame-space origin while (w, h)
+    # are the decimated dimensions, so rendering at native size draws it at half
+    # scale; multiply by STRIKE_HALF_SCALE to place it against the other strips.
+    # These replace the native STRIKE kinds on the wire.
+    STRIKE_HALF = 9
+    STRIKE_2P_HALF = 10
 
 
 # ui_manager CANVAS_* ids, for PERF_CMD_CANVAS_DUMP. Each is a separate surface:
@@ -113,6 +139,10 @@ class Stage(IntEnum):
     FBL_SEND = 0x40
     CDC_WRITE_COMPLETE = 0x41
     FBL_READ_COMPLETE = 0x42
+    # Note-meter transition — the game's own verdict on a note. Not a latency
+    # marker; it rides STAMP so a new code needs no schema bump. aux packs
+    # (event, multiplier, half_lamps, prev_half_lamps) one byte each, LSB first.
+    GAME_METER = 0x50
 
 
 class TaskId(IntEnum):

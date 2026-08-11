@@ -20,6 +20,7 @@
 
 #include "log.h"
 #include "video/video.h"
+#include "perf_log/perf_log.h"
 
 #define GAME_TASK_STACK_WORDS   1024u
 #define GAME_TASK_PRIORITY      4u    /* vision tier (peer of cv_marvin_v1) */
@@ -66,6 +67,26 @@ static StaticSemaphore_t s_end_sig_buf;
  * gameplay is left (owned solely by game_task; not shared). */
 static gp_streak_state_t s_streak;
 
+/* Note-meter watch, owned by game_task. Held state is the last accepted read;
+ * `s_meter_synced` is cleared whenever the actuation window closes so the next
+ * valid frame adopts the column instead of reading the gap across it as play.
+ *
+ * `s_meter_mult_cand` / `_run` debounce the multiplier: gp_read_multiplier
+ * returns 1 both for a genuine 1x and for "cannot tell", so a single misread
+ * while actually at 3x would otherwise look like the drop that marks a miss. A
+ * change has to hold for GAME_METER_MULT_CONFIRM frames before it is believed. */
+#define GAME_METER_MULT_CONFIRM   2u
+/* Frames a miss is given to settle before another can be reported. Notes arrive
+ * no closer than ~4 frames apart even in a tremolo, so this cannot swallow a
+ * second genuine miss. */
+#define GAME_METER_SETTLE_FRAMES  3u
+static uint8_t s_meter_half;
+static uint8_t s_meter_mult;
+static bool    s_meter_synced;
+static uint8_t s_meter_mult_cand;
+static uint8_t s_meter_mult_run;
+static uint8_t s_meter_settle;
+
 static const char *screen_name(uint8_t idx)
 {
     return (idx < GP_N_SCREENS) ? gp_screen_ids[idx] : "unknown";
@@ -97,6 +118,98 @@ static int16_t read_selection(const uint8_t *frame, int w, int h, uint8_t screen
         }
     }
     return -1;
+}
+
+/* Read the note meter and emit a PERF_STAGE_GAME_METER stamp on any transition.
+ *
+ * The verdict needs both halves of the meter: emptying the lamps means a miss if
+ * they were short of full, but a multiplier step if they were full — and at 4x,
+ * where the lamps saturate, only the multiplier distinguishes the two. Hence:
+ *
+ *   multiplier fell                     -> MISS   (a miss at 2x/3x/4x resets to 1x)
+ *   lamps fell, multiplier unchanged    -> MISS   (a miss at 1x)
+ *   lamps fell, multiplier rose         -> DECADE (the tenth hit, not a miss)
+ *   lamps rose                          -> HIT
+ */
+static void meter_emit(uint32_t frame_epoch, perf_meter_event_t ev,
+                       uint8_t mult_raw, uint8_t half, uint8_t prev_half)
+{
+    PerfLog_EmitStamp(PERF_STAGE_GAME_METER, frame_epoch,
+                      (uint32_t)ev
+                      | ((uint32_t)mult_raw  << 8)
+                      | ((uint32_t)half      << 16)
+                      | ((uint32_t)prev_half << 24));
+}
+
+static void meter_watch(const uint8_t *buf, int w, int h, uint32_t frame_epoch)
+{
+    gp_bulbs_t b;
+    if (gp_read_bulbs(buf, w, h, &b) != 0) { return; }
+
+    /* A non-contiguous column is the rect looking at something that is not the
+     * meter (a menu, a transition wipe). Refusing the frame outright is what
+     * keeps those from entering the state machine as a fabricated count. */
+    if (!b.valid) { return; }
+
+    uint8_t mult_raw = (uint8_t)gp_read_multiplier(buf, w, h);
+
+    if (mult_raw == s_meter_mult_cand)
+    {
+        if (s_meter_mult_run < 0xFFu) { s_meter_mult_run++; }
+    }
+    else
+    {
+        s_meter_mult_cand = mult_raw;
+        s_meter_mult_run  = 1u;
+    }
+
+    if (!s_meter_synced)
+    {
+        s_meter_synced = true;
+        s_meter_half   = b.half;
+        s_meter_mult   = mult_raw;
+        s_meter_settle = 0u;
+        meter_emit(frame_epoch, PERF_METER_SYNC, mult_raw, b.half, 0u);
+        return;
+    }
+
+    /* Only a *fall* in the multiplier can fabricate a miss out of a misread, so
+     * that is the one direction made to persist; a rise is believed at once. */
+    uint8_t mult = mult_raw;
+    if ((mult_raw < s_meter_mult) && (s_meter_mult_run < GAME_METER_MULT_CONFIRM))
+    {
+        mult = s_meter_mult;
+    }
+
+    /* Sample the settle counter before ageing it, so the window is exactly
+     * GAME_METER_SETTLE_FRAMES frames wide however the frame plays out. */
+    uint8_t settling = s_meter_settle;
+    if (s_meter_settle > 0u) { s_meter_settle--; }
+
+    if ((b.half == s_meter_half) && (mult == s_meter_mult)) { return; }
+
+    perf_meter_event_t ev;
+    if      (mult < s_meter_mult)      { ev = PERF_METER_MISS; }
+    else if (mult > s_meter_mult)      { ev = PERF_METER_DECADE; }
+    else if (b.half > s_meter_half)    { ev = PERF_METER_HIT; }
+    else                               { ev = PERF_METER_MISS; }
+
+    /* One miss reaches the meter as two transitions — the lamps empty on one
+     * frame and the multiplier falls a frame or two later. Report the first and
+     * swallow the tail, or the same miss counts twice. Only MISS is held: a hit
+     * immediately after a miss is real and must still be reported. */
+    if ((ev == PERF_METER_MISS) && (settling > 0u))
+    {
+        s_meter_half = b.half;
+        s_meter_mult = mult_raw;
+        return;
+    }
+
+    meter_emit(frame_epoch, ev, mult_raw, b.half, s_meter_half);
+
+    s_meter_half = b.half;
+    s_meter_mult = mult;
+    if (ev == PERF_METER_MISS) { s_meter_settle = GAME_METER_SETTLE_FRAMES; }
 }
 
 static void game_task(void *param)
@@ -152,6 +265,22 @@ static void game_task(void *param)
                 s_end_fired = false;
                 LOG_INFO("GAME: end-of-song probe released (%d hits)\r\n", hits);
             }
+        }
+
+        /* Note-meter watch, on every frame while the actuation window is open —
+         * same justification as the end probe above: GP_BULB_PIXEL_READS integer
+         * samples plus the multiplier's small colour count. This is the only
+         * ground truth marvin has for whether the game accepted a note, so it
+         * has to be sampled at the rate notes arrive, not on request. */
+        if (s_end_armed && frame.buffer != NULL
+            && frame.bytes_per_pixel == GAME_BYTES_PER_PIXEL)
+        {
+            meter_watch((const uint8_t *)frame.buffer,
+                        (int)frame.width, (int)frame.height, frame.frame_count);
+        }
+        else
+        {
+            s_meter_synced = false;
         }
 
         /* Drain every frame so the queue never backs up. Classify only while a

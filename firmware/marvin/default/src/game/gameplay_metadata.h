@@ -337,6 +337,27 @@ static const gp_score_mode_t gp_score_modes[GP_N_SCORE_MODES] = {
 #define GP_MULT_SAT_MIN 40
 #define GP_MULT_MIN_COUNT 30  /* fewer than this of the winning colour => 1x */
 
+/* ── note meter (five lamps immediately left of the 1p scoreboard) ────────────
+ * Half a lamp lights per note hit; ten half-lamps step the multiplier and the
+ * column resets to empty. A miss empties the column AND drops the multiplier to
+ * 1x, which is what makes the pair a per-note hit/miss ground truth.
+ *
+ * Lamps fill bottom-up. GP_BULB_Y0 is the first row of the TOP lamp and
+ * GP_BULB_PITCH walks downward, so lamp index 0 (the bottom one, first to
+ * light) sits at GP_BULB_Y0 + (GP_BULB_N-1)*GP_BULB_PITCH.
+ *
+ * GP_BULB_LIT_MIN is the midpoint of a measured gap, not a guess: over the
+ * snapshot corpus the mean of max(B,G,R) across an 8x4 half-cell reaches 67 on
+ * unlit lamps and starts at 156 on lit ones. */
+#define GP_BULB_X0 118
+#define GP_BULB_X1 126        /* exclusive */
+#define GP_BULB_Y0 336        /* first row of the TOP lamp */
+#define GP_BULB_H  8          /* lamp height in rows; the half split is at H/2 */
+#define GP_BULB_PITCH 13      /* lamp top to next lamp top, downward */
+#define GP_BULB_N  5
+#define GP_BULB_LIT_MIN 110
+#define GP_BULB_PIXEL_READS (GP_BULB_N * GP_BULB_H * (GP_BULB_X1 - GP_BULB_X0))
+
 /* ── note-streak counter (3-tumbler odometer; per-cell coverage L1, 2 banks) ── */
 #define GP_STREAK_GLYPH_ROWS 16
 #define GP_STREAK_GLYPH_COLS 10

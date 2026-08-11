@@ -17,6 +17,11 @@ const STRIP_KIND_REGISTRY = {
   6: { id: "strike_2p",      label: "Strike line (2P)",  color: "#a3e635", cadence: "60 Hz" },
   7: { id: "score_2p_left",  label: "Score 2P left",     color: "#fbbf24", cadence: "60 Hz" },
   8: { id: "score_2p_right", label: "Score 2P right",    color: "#fb7185", cadence: "60 Hz" },
+  // 2:1-decimated strum zone — replaces kinds 1 and 6 on the wire. The canvas is
+  // sized from the strip, so these render at half the pixels and are upscaled by
+  // the pane's CSS width; the label says so because the blockiness is expected.
+  9:  { id: "strike_half",    label: "Strike line (½)",   color: "#4ade80", cadence: "60 Hz" },
+  10: { id: "strike_2p_half", label: "Strike line 2P (½)", color: "#a3e635", cadence: "60 Hz" },
 };
 
 // Kinds gated by their own start/stop command rather than by the STRIP type
