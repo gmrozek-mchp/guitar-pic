@@ -313,6 +313,21 @@ void FretboardLink_Initialize(void)
      * registered handler, TX commands flow through T1SLink_SendToGuitar. */
     T1SLink_Initialize();
     T1SLink_SetFrameHandler(t1s_frame_handler);
+
+    /* Disarm the fretboard before anything else can happen. The node keeps its
+     * arm bit across a marvin reset, so a reset taken mid-song leaves it driving
+     * the guitar peer-to-peer against a marvin that thinks nothing is armed —
+     * two sources on the wire, and gameplay goes wild.
+     *
+     * Staged here, at the earliest point the control channel exists, rather than
+     * sent: ctrl_stage records the value whether or not the link is up, and
+     * ctrl_resync re-pushes every known opcode the first time a node is seen.
+     * So this lands as soon as the fretboard appears, without a retry loop, and
+     * without depending on the link being ready this early in boot.
+     *
+     * Written as an explicit 0 and not FretboardLink_UpdateArm(): a disarm on the
+     * reset path must not be contingent on another module's default state. */
+    (void)T1SLink_SendFretboardCtrl(T1S_DET_CTRL_ARM, 0u);
 #else
     s_rx_notify = xSemaphoreCreateBinaryStatic(&s_rx_notify_buf);
     configASSERT(s_rx_notify != NULL);
