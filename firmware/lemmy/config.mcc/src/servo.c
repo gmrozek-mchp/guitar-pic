@@ -81,7 +81,7 @@ void Servo_SetEnabled(bool en)
     else
     {
         /* Park at neutral before gating, so the head settles rather than freezing
-         * mid-nod (the same courtesy BeatNod_SetEnabled does for the neck). */
+         * mid-nod (the same courtesy BeatNod_SetMode does for the neck). */
         for (servo_id_t s = 0; s < SERVO_COUNT; s++)
         {
             (void)TCC0_PWM16bitDutySet(s_channel[s], us_to_ticks(s_cal[s].neutral_us));

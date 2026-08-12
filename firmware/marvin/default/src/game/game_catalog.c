@@ -39,6 +39,21 @@ static void copy_field(char *dst, size_t n, const char *src)
     dst[n - 1] = '\0';
 }
 
+/* nod_trim, distinguishing "not specified" from an explicit 0: a cell holding only
+ * whitespace takes the default, everything else is used as written. strtol alone
+ * can't tell the two apart, and they mean opposite things (§4.3.1). */
+static int16_t parse_nod_trim(const char *s)
+{
+    for (const char *p = s; *p != '\0'; p++)
+    {
+        if (*p != ' ' && *p != '\t' && *p != '\r' && *p != '\n')
+        {
+            return (int16_t)strtol(s, NULL, 10);
+        }
+    }
+    return (int16_t)GAME_CATALOG_NOD_TRIM_DEFAULT;
+}
+
 /* ---- load --------------------------------------------------------------- */
 
 void GameCatalog_Initialize(void)
@@ -81,7 +96,7 @@ bool GameCatalog_Reload(void)
         copy_field(e->title,  sizeof(e->title),  f[2]);
         copy_field(e->artist, sizeof(e->artist), f[3]);
         copy_field(e->album,  sizeof(e->album),  f[4]);
-        e->nod_trim = (int16_t)strtol(f[5], NULL, 10);   /* signed: a trim, not a tempo */
+        e->nod_trim = parse_nod_trim(f[5]);   /* signed: a trim, not a tempo */
         e->length_s = (uint16_t)strtoul(f[6], NULL, 10);
         e->year     = (uint16_t)strtoul(f[7], NULL, 10);
         copy_field(e->genre,      sizeof(e->genre),      f[8]);
@@ -129,7 +144,7 @@ int16_t GameCatalog_NodTrim(uint8_t setlist, uint8_t index)
             return s_entries[i].nod_trim;
         }
     }
-    return 0;
+    return (int16_t)GAME_CATALOG_NOD_TRIM_DEFAULT;   /* unlisted reads as unspecified */
 }
 
 const char *GameCatalog_Title(uint8_t setlist, uint8_t index)

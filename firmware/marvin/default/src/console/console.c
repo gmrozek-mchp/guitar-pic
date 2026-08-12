@@ -533,7 +533,7 @@ static void cmd_catalog(EmbeddedCli *cli, char *args, void *ctx)
         console_printf("  length %u:%02u", (unsigned)(e.length_s / 60u),
                        (unsigned)(e.length_s % 60u));
     }
-    console_printf("  nod: %s (trim %d)", (e.nod_trim != 0) ? "on" : "off", (int)e.nod_trim);
+    console_printf("  nod: %s (trim %d)", (e.nod_trim != 0) ? "auto" : "off", (int)e.nod_trim);
 }
 
 /* The dashboard SHOWDOWN button's match, from showdown.cfg on the card. The button is
@@ -1756,6 +1756,28 @@ static int8_t parse_pos_i8(const char *s)
     return (int8_t)v;
 }
 
+/* What marvin has commanded on lemmy's nod, for the bare `lemmy nod`/`trim` reads.
+ * "node default" is an opcode never sent since boot — lemmy is then running its own
+ * compiled-in value, not something marvin chose. */
+static void print_lemmy_nod_state(void)
+{
+    uint8_t v;
+    if (T1SLink_GetLemmyCtrl(T1S_ANIM_CTRL_NOD_EN, &v))
+    {
+        const char *m = (v == T1S_ANIM_NOD_AUTO)   ? "auto (occasional bursts)"
+                      : (v == T1S_ANIM_NOD_ALWAYS) ? "on (every beat)"
+                                                   : "off";
+        console_printf("lemmy: nod %s", m);
+    }
+    else { console_printf("lemmy: nod not commanded (node default)"); }
+
+    if (T1SLink_GetLemmyCtrl(T1S_ANIM_CTRL_NOD_TRIM, &v)) { console_printf("  trim %d", (int)(int8_t)v); }
+    else { console_printf("  trim not commanded (node default)"); }
+
+    if (T1SLink_GetLemmyCtrl(T1S_ANIM_CTRL_NOD_CONF, &v)) { console_printf("  conf >= %u", (unsigned)v); }
+    else { console_printf("  conf node default"); }
+}
+
 static void cmd_lemmy(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli; (void)ctx;
@@ -1788,24 +1810,52 @@ static void cmd_lemmy(EmbeddedCli *cli, char *args, void *ctx)
         return;
     }
 
-    /* Nod control channel (0x88B9): enable/disable + tuning. A bench override — the
-     * game controller sets the nod from the song's catalog bpm on every gameplay
-     * window edge (bpm 0 = no nod for that song). */
+    /* Nod control channel (0x88B9): mode + tuning. The game controller pushes the
+     * song's catalog trim and `auto` on every gameplay window edge (an explicit trim
+     * of 0 = no nod for that song), and nothing re-sends until the next edge — so
+     * these apply mid-song and are how you tune the nod by ear while it plays. `on`
+     * is a continuous nod, for watching the motion.
+     *
+     * `nod conf <n>` is the pickiness knob for auto: the tempo confidence lemmy
+     * demands before a burst starts. Raise it if he head-bangs to songs he isn't
+     * tracking; lower it if he never joins in.
+     *
+     * With no value each prints what marvin last commanded, so a live tweak starts
+     * from the song's setting instead of a guess. */
+    if (a != NULL && strcmp(a, "nod") == 0 && b == NULL)
+    {
+        print_lemmy_nod_state();
+        return;
+    }
     if (a != NULL && strcmp(a, "nod") == 0)
     {
-        if (b == NULL || (strcmp(b, "on") != 0 && strcmp(b, "off") != 0))
+        const char *c = embeddedCliGetToken(args, 3);
+        if (b != NULL && strcmp(b, "conf") == 0)
         {
-            console_printf("usage: lemmy nod <on|off>");
+            if (c == NULL) { print_lemmy_nod_state(); return; }
+            unsigned long v = strtoul(c, NULL, 10);
+            if (v > 100ul) { v = 100ul; }
+            if (!T1SLink_SendLemmyCtrl(T1S_ANIM_CTRL_NOD_CONF, (uint8_t)v)) { console_printf("lemmy: link down"); return; }
+            console_printf("lemmy: nod conf>=%u", (unsigned)v);
             return;
         }
-        uint8_t on = (strcmp(b, "on") == 0) ? 1u : 0u;
-        if (!T1SLink_SendLemmyCtrl(T1S_ANIM_CTRL_NOD_EN, on)) { console_printf("lemmy: link down"); return; }
-        console_printf("lemmy: nod %s", on ? "on" : "off");
+
+        uint8_t mode;
+        if (b != NULL && strcmp(b, "on") == 0)        { mode = T1S_ANIM_NOD_ALWAYS; }
+        else if (b != NULL && strcmp(b, "off") == 0)  { mode = T1S_ANIM_NOD_OFF; }
+        else if (b != NULL && strcmp(b, "auto") == 0) { mode = T1S_ANIM_NOD_AUTO; }
+        else
+        {
+            console_printf("usage: lemmy nod <on|off|auto> | lemmy nod conf <0..100>");
+            return;
+        }
+        if (!T1SLink_SendLemmyCtrl(T1S_ANIM_CTRL_NOD_EN, mode)) { console_printf("lemmy: link down"); return; }
+        console_printf("lemmy: nod %s", b);
         return;
     }
     if (a != NULL && strcmp(a, "trim") == 0)
     {
-        if (b == NULL) { console_printf("usage: lemmy trim <-127..127>"); return; }
+        if (b == NULL) { print_lemmy_nod_state(); return; }
         int8_t trim = parse_pos_i8(b);
         if (!T1SLink_SendLemmyCtrl(T1S_ANIM_CTRL_NOD_TRIM, (uint8_t)trim)) { console_printf("lemmy: link down"); return; }
         console_printf("lemmy: trim=%d", (int)trim);
@@ -1827,7 +1877,7 @@ static void cmd_lemmy(EmbeddedCli *cli, char *args, void *ctx)
     if (a == NULL || b == NULL)
     {
         console_printf("usage: lemmy <neck> <jaw> | center | output <on|off> | "
-                       "nod <on|off> | trim <n> | osc <0|1>");
+                       "nod <on|off|auto> | nod conf <0..100> | trim <n> | osc <0|1>");
         return;
     }
     int8_t neck = parse_pos_i8(a);
@@ -1927,7 +1977,7 @@ static const CliCommandBinding bindings[] = {
         { "play",   "play [attach|stop|status]: auto-navigate + CV-play the selected song; 'attach' = play a manually-started game (e.g. 2p)", true, NULL, cmd_play },
         { "fauxmote","fauxmote [status|pair|stop|reconnect|disconnect|btreset|reboot|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off|calib [show|start|save|abort]]", true, NULL, cmd_fauxmote },
         { "guitar", "guitar [on|off]: gate the guitar node's button outputs", true, NULL, cmd_guitar },
-        { "lemmy",  "lemmy <neck> <jaw>|center: servo pos; output <on|off>: gate the servos; nod <on|off>|trim <n>|osc <0|1>: nod control", true, NULL, cmd_lemmy },
+        { "lemmy",  "lemmy <neck> <jaw>|center: servo pos; output <on|off>: gate the servos; nod <on|off|auto>|nod conf <n>|trim <n>|osc <0|1>: nod control", true, NULL, cmd_lemmy },
         { "lightshow","lightshow [on|off]: gate the lightshow node's LED output", true, NULL, cmd_lightshow },
         { "fretboard","fretboard <arm|disarm|stream on|off|model <difficulty>>: gate actuation / data stream, select inference model", true, NULL, cmd_fretboard },
         { "fret",   "fret <g|r|y|b|o> <0|1>: press/release a fret",        true, NULL, cmd_fret },

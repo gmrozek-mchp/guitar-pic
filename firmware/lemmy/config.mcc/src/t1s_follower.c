@@ -35,10 +35,11 @@
 #define T1S_CTRL_OP         (0u)     /* payload[0] = opcode */
 #define T1S_CTRL_ARG        (1u)     /* payload[1] = argument */
 #define T1S_CTRL_LEN        (2u)
-#define T1S_CTRL_NOD_EN     (0x01u)  /* arg 0|1        -> BeatNod_SetEnabled     */
+#define T1S_CTRL_NOD_EN     (0x01u)  /* arg 0|1|2      -> BeatNod_SetMode        */
 #define T1S_CTRL_NOD_TRIM   (0x02u)  /* arg int8       -> NodEngine_SetPotOffset */
 #define T1S_CTRL_NOD_OSC    (0x03u)  /* arg 0|1        -> NodEngine_SetOscEnabled */
 #define T1S_CTRL_OUTPUT_EN  (0x04u)  /* arg 0|1        -> Servo_SetEnabled       */
+#define T1S_CTRL_NOD_CONF   (0x05u)  /* arg 0-100      -> BeatNod_SetAutoConfMin */
 
 /* Heartbeat (docs/t1s-podl-link.md §7.2): followers periodically announce
  * presence to the coordinator. v2 payload (20 B): ver, node_type, node_id, flags,
@@ -487,10 +488,11 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
         uint8_t op  = s_rx_buf[T1S_ETH_HDR_LEN + T1S_CTRL_OP];
         uint8_t arg = s_rx_buf[T1S_ETH_HDR_LEN + T1S_CTRL_ARG];
         switch (op) {
-            case T1S_CTRL_NOD_EN:   BeatNod_SetEnabled(arg != 0u);              break;
+            case T1S_CTRL_NOD_EN:   BeatNod_SetMode((beat_nod_mode_t)arg);      break;
             case T1S_CTRL_NOD_TRIM: NodEngine_SetPotOffset((int8_t)arg);        break;
             case T1S_CTRL_NOD_OSC:  NodEngine_SetOscEnabled((arg != 0u) ? 1u : 0u); break;
             case T1S_CTRL_OUTPUT_EN: Servo_SetEnabled(arg != 0u);               break;
+            case T1S_CTRL_NOD_CONF: BeatNod_SetAutoConfMin(arg);                break;
             default: return;   /* unknown opcode: ignore, don't count */
         }
         s_last_ctrl_op  = op;

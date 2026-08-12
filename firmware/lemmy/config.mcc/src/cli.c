@@ -266,6 +266,24 @@ static const char *band_name(uint8_t b)
     }
 }
 
+static const char *mode_name(beat_nod_mode_t m)
+{
+    switch (m) {
+        case BEAT_NOD_ALWAYS: return "on (every beat)";
+        case BEAT_NOD_AUTO:   return "auto (occasional bursts)";
+        default:              return "off (neck free)";
+    }
+}
+
+static const char *auto_state_name(beat_nod_auto_t s)
+{
+    switch (s) {
+        case BEAT_NOD_AUTO_NODDING:   return "nodding";
+        case BEAT_NOD_AUTO_FINISHING: return "finishing";
+        default:                      return "waiting";
+    }
+}
+
 static void cmd_nod(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli;
@@ -275,8 +293,14 @@ static void cmd_nod(EmbeddedCli *cli, char *args, void *ctx)
     if (sub != NULL)
     {
         const char *val = embeddedCliGetToken(args, 2);
-        if (strcmp(sub, "on") == 0)       { BeatNod_SetEnabled(true); }
-        else if (strcmp(sub, "off") == 0) { BeatNod_SetEnabled(false); }
+        if (strcmp(sub, "on") == 0)        { BeatNod_SetMode(BEAT_NOD_ALWAYS); }
+        else if (strcmp(sub, "off") == 0)  { BeatNod_SetMode(BEAT_NOD_OFF); }
+        else if (strcmp(sub, "auto") == 0) { BeatNod_SetMode(BEAT_NOD_AUTO); }
+        else if (strcmp(sub, "conf") == 0)
+        {
+            if (val == NULL) { cli_printf("usage: nod conf <0..100>"); return; }
+            BeatNod_SetAutoConfMin((uint8_t)strtoul(val, NULL, 10));
+        }
         else if (strcmp(sub, "trim") == 0)
         {
             if (val == NULL) { cli_printf("usage: nod trim <-127..127>"); return; }
@@ -292,14 +316,15 @@ static void cmd_nod(EmbeddedCli *cli, char *args, void *ctx)
         }
         else
         {
-            cli_printf("usage: nod | nod on|off | nod trim <n> | nod osc <0|1>");
+            cli_printf("usage: nod | nod on|off|auto | nod conf <0..100> | "
+                       "nod trim <n> | nod osc <0|1>");
             return;
         }
     }
 
     uint8_t seq, energy, bass, treble, kick, flags;
     BeatNod_GetLast(&seq, &energy, &bass, &treble, &kick, &flags);
-    cli_printf("state:   %s", BeatNod_IsEnabled() ? "on" : "off (neck free)");
+    cli_printf("state:   %s", mode_name(BeatNod_GetMode()));
     cli_printf("output:  %s", Servo_IsEnabled() ? "on" : "off (servos gated)");
     cli_printf("frames:  %lu", (unsigned long)BeatNod_FrameCount());
     cli_printf("last:    seq=%u energy=%u bass=%u treble=%u kick=%u",
@@ -319,6 +344,14 @@ static void cmd_nod(EmbeddedCli *cli, char *args, void *ctx)
                (unsigned)(NodEngine_GetTargetAngle() / 10u),
                (unsigned)(NodEngine_GetTargetAngle() % 10u),
                (int)BeatNod_NeckPosition(), (int)NodEngine_GetPotOffset());
+    beat_nod_auto_status_t a;
+    BeatNod_GetAuto(&a);
+    cli_printf("auto:    %s  run=%ums/%ums  beats=%u  wait=%ums  bursts=%lu",
+               auto_state_name(a.state), (unsigned)a.run_ms, (unsigned)a.target_ms,
+               (unsigned)a.beats, (unsigned)a.wait_ms, (unsigned long)a.bursts);
+    cli_printf("gate:    conf>=%u (peak %u)  eligible=%lu  bigs=%lu",
+               (unsigned)a.conf_min, (unsigned)a.conf_peak,
+               (unsigned long)a.eligible, (unsigned long)a.bigs);
     uint8_t cop = 0u, carg = 0u;
     uint32_t ccount = 0u;
     T1SFollower_LastCtrl(&cop, &carg, &ccount);
@@ -350,7 +383,7 @@ static void register_commands(void)
         { "servo", "Raw servo pulse: servo <neck|jaw> <us>",         true,  NULL, cmd_servo },
         { "pos",   "Position via cal: pos <neck|jaw> <-127..127>",    true,  NULL, cmd_pos },
         { "cal",   "Servo cal: cal [show] | cal <s> <field> <val>",   true,  NULL, cmd_cal },
-        { "nod",   "Beat nod: status; on|off / trim <n> / osc <0|1>", true,  NULL, cmd_nod },
+        { "nod",   "Beat nod: status; on|off|auto / conf <n> / trim <n> / osc <0|1>", true, NULL, cmd_nod },
         { "reset", "Reset the MCU (system reset)",                   false, NULL, cmd_reset },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)

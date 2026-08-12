@@ -223,7 +223,7 @@ static volatile bool    s_lemmy_dirty;
  * `arg` doubles as the desired state: it holds the last value commanded whether
  * or not the wire carried it, which is what lets a resync (node restart) or a
  * reconcile (node's report disagrees) re-push without asking the layer above. */
-#define T1S_CTRL_OP_MAX  (4u)   /* widest opcode namespace (fretboard, lemmy) */
+#define T1S_CTRL_OP_MAX  (5u)   /* widest opcode namespace (lemmy) */
 
 typedef struct {
     t1s_node_type_t  type;
@@ -1095,6 +1095,17 @@ static void hb_reconcile_ctrl(uint8_t idx, t1s_node_type_t type, bool arriving,
 bool T1SLink_SendLemmyCtrl(uint8_t opcode, uint8_t arg)
 {
     return ctrl_stage(T1S_NODE_ANIMATION, opcode, arg);
+}
+
+bool T1SLink_GetLemmyCtrl(uint8_t opcode, uint8_t *arg)
+{
+    t1s_ctrl_chan_t *chan = chan_for_type(T1S_NODE_ANIMATION);
+    if ((chan == NULL) || (opcode == 0u) || (opcode > chan->op_count)) { return false; }
+
+    uint8_t i = (uint8_t)(opcode - 1u);
+    if (!chan->known[i]) { return false; }
+    if (arg != NULL) { *arg = chan->arg[i]; }
+    return true;
 }
 
 bool T1SLink_SendLightshowCtrl(uint8_t opcode, uint8_t arg)

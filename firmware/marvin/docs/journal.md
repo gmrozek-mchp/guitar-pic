@@ -4,6 +4,17 @@ Running log of planning, decisions, open questions, and work-in-progress for mar
 
 ---
 
+**2026-08-11 (later still) — `nod_trim`: blank now means 5, not "never nod", and a live tweak is a first-class thing. NOT YET ON HARDWARE.**
+
+- **Companion to lemmy's new `auto` nod mode** (see [`firmware/lemmy/docs/journal.md`](../../lemmy/docs/journal.md) 2026-08-11): now that the nod comes in occasional bursts on a confident tempo instead of running the whole song, defaulting to "no nod" is the wrong default. Greg's call: **blank → 5**, which he found a decent starting point on most songs.
+- **The parse has to tell blank from 0, because they now mean opposite things.** `strtol("")` and `strtol("0")` both give 0, so `game_catalog.c` gained `parse_nod_trim()`: a cell containing only whitespace takes `GAME_CATALOG_NOD_TRIM_DEFAULT` (5), anything else is used as written and clamped downstream by `GC_NOD_TRIM_MAX` (±14) — the clamp stays in `game_controller` so its out-of-range warning still fires. An unlisted song (catalog miss) and an invalid selection also read as the default, since "no information" should mean "use the default", not "stay still".
+- **Explicit 0 survives as the deliberate opt-out** — the escape hatch for a song he genuinely can't track. It's the one value that keeps the window's nod off entirely.
+- **The regenerator was a live trap.** `fetch_gh3_cover_art.py --catalog` read the column with `int(row.get("nod_trim") or 0)` and wrote it with `%d`, so it turned every blank cell into an explicit `0`. Under the old semantics that was a no-op; under the new one it silently mutes every untuned song. It now carries the cell over **verbatim** as a string (blank stays blank), writes it with `%s`, and defaults a song it has never seen to `""` rather than `0`. **Any catalog that script has already written is all explicit zeros — blank that column on the card or lemmy will never nod.**
+- **Live tuning: it already worked, it just wasn't visible.** `set_performing` only pushes on the window edges and nothing re-sends in between, so `lemmy trim <n>` / `lemmy nod <on|off|auto>` / `lemmy nod conf <n>` have always applied mid-song — the song's value is a floor you tune by ear, replaced at the next run. What was missing was knowing where you were starting from, so `T1SLink_GetLemmyCtrl(opcode, &arg)` exposes the staged desired value (the same one a resync re-pushes) and the bare `lemmy nod` / `lemmy trim` now print marvin's commanded mode/trim/conf instead of a usage line, distinguishing "not commanded since boot" (lemmy is on its own default) from a value marvin chose.
+- Builds clean. Behaviour change on the card contract → **re-check `songs.csv`**, and see the caveat above before the next run.
+
+---
+
 **2026-08-11 (later) — every scoreboard ranks one row per player, holding their best run. NOT YET ON HARDWARE.**
 
 - **Greg's call: a person occupies one slot on a board, no matter how many times they play.** A visitor who runs the same song five times was filling all three dashboard rows (and both song-select boards) with their own attempts, which hides everyone else — the opposite of what a leaderboard is for.

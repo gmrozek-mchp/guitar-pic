@@ -452,14 +452,19 @@ static bool execute(const gc_step_t *st)
  *
  *   - lemmy's servos and lightshow's LEDs, gated at each node via actuator_enable
  *     (ANDed with the operator's master toggle, which is unchanged by this).
- *   - lemmy's nod, per song, from the catalog's nod_trim column: 0 means "he doesn't
- *     nod well to this one" (and is what an unknown song reads as), so the nod stays
- *     off for the whole window; anything else is pushed as his trim and the nod is
- *     enabled. Trim first, so the first nod frame already runs at the song's setting.
+ *   - lemmy's nod, per song, from the catalog's nod_trim column: an explicit 0 means
+ *     "he doesn't nod well to this one" and keeps the nod off for the whole window.
+ *     Anything else — including a blank cell or an unlisted song, which read as
+ *     GAME_CATALOG_NOD_TRIM_DEFAULT — is pushed as his trim and the nod goes to
+ *     `auto`, where lemmy head-bangs in occasional bursts off beatbox's beat frame
+ *     instead of for the whole song. Trim first, so the first nod frame already runs
+ *     at the song's setting.
  *
- * Sending on the window edges makes the console's `lemmy nod`/`trim` a bench override
- * that the next run replaces. Idempotent, because every terminal path routes through
- * finish() including those that never reached gameplay. */
+ * Sending on the window edges is a floor, not a lock: the console's `lemmy nod`/`trim`
+ * still apply mid-song (nothing re-sends until the next edge), so the song's value is
+ * a starting point you can tune by ear while it plays — the next run replaces it.
+ * Idempotent, because every terminal path routes through finish() including those that
+ * never reached gameplay. */
 static void set_performing(bool on)
 {
     if (s_performing == on) { return; }
@@ -471,7 +476,8 @@ static void set_performing(bool on)
     if (on)
     {
         const game_selection_t *sel = GameSelection_Get();
-        int16_t raw = sel->valid ? GameCatalog_NodTrim(sel->setlist, sel->index) : 0;
+        int16_t raw = sel->valid ? GameCatalog_NodTrim(sel->setlist, sel->index)
+                                 : (int16_t)GAME_CATALOG_NOD_TRIM_DEFAULT;
 
         trim = raw;
         if (trim >  GC_NOD_TRIM_MAX) { trim =  GC_NOD_TRIM_MAX; }
@@ -482,13 +488,14 @@ static void set_performing(bool on)
                      "trim, not a tempo\r\n", (int)raw, (int)trim);
         }
 
-        LOG_INFO("GC: song nod trim %d - lemmy nod %s\r\n", (int)trim, trim ? "on" : "off");
+        LOG_INFO("GC: song nod trim %d - lemmy nod %s\r\n", (int)trim, trim ? "auto" : "off");
         if (trim != 0)
         {
             (void)T1SLink_SendLemmyCtrl(T1S_ANIM_CTRL_NOD_TRIM, (uint8_t)(int8_t)trim);
         }
     }
-    (void)T1SLink_SendLemmyCtrl(T1S_ANIM_CTRL_NOD_EN, (trim != 0) ? 1u : 0u);
+    (void)T1SLink_SendLemmyCtrl(T1S_ANIM_CTRL_NOD_EN,
+                                (trim != 0) ? T1S_ANIM_NOD_AUTO : T1S_ANIM_NOD_OFF);
 }
 
 /* Release the wire, disable CV, report a terminal status.

@@ -256,9 +256,11 @@ command TX targets. marvin selects the active node of each class.
       command is what makes it authoritative: inside a song with the fretboard selected, the
       **fretboard drives the guitar peer-to-peer and marvin is silent**, so a marvin-side gate
       would not stop actuation in exactly the window that matters.
-    - **lemmy** (`02:..:06`) — beat-nod tuning: `0x01` nod enable (arg 0|1), `0x02` nod trim
-      (arg int8), `0x03` oscillator (arg 0|1); the same tunables as lemmy's local `nod` CLI,
-      driven from marvin's `lemmy nod|trim|osc`. Plus `0x04` **servo output enable** (arg 0|1) →
+    - **lemmy** (`02:..:06`) — beat-nod tuning: `0x01` nod mode (arg 0 = off, 1 = nod every beat,
+      2 = **auto**: occasional bursts on a tempo the engine is confident of), `0x02` nod trim
+      (arg int8), `0x03` oscillator (arg 0|1), `0x05` auto confidence floor (arg 0-100); the same
+      tunables as lemmy's local `nod` CLI, driven from marvin's `lemmy nod|trim|osc`. A gameplay
+      window commands mode 2; mode 1 is the bench override. Plus `0x04` **servo output enable** (arg 0|1) →
       `Servo_SetEnabled`, driven from marvin's `lemmy output on|off`. The two are different knobs
       and deliberately so: `nod enable` only detaches the neck from the beat engine (freeing it
       for a manual `0x88B5` position), while `output enable` gates the single hardware write in

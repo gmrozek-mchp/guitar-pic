@@ -17,6 +17,10 @@
  * FF_FS_MAX_FILES=1 since the file is closed once loaded. Editable on a PC in
  * pandas/Excel, like results.csv. */
 
+/* What an unspecified nod_trim means: a middling setting that suits most songs, so
+ * the catalog only has to carry the exceptions. */
+#define GAME_CATALOG_NOD_TRIM_DEFAULT  (5)
+
 typedef struct
 {
     uint8_t  setlist;     /* GP_SETLIST_* */
@@ -24,11 +28,14 @@ typedef struct
     char     title[64];
     char     artist[48];
     char     album[64];   /* may be empty (no clean commercial release) */
-    /* lemmy's beat-nod trim for this song, signed — the 6th CSV column. 0 = don't
-     * nod to this one (he doesn't suit every song), which is also what a blank cell
-     * and an unlisted song read as. Not a tempo: it is lemmy's `nod trim` knob
-     * verbatim, an offset on the nod oscillator's half-period, useful over roughly
-     * ±14 (the node clamps the resulting period to 4..18 frames). */
+    /* lemmy's beat-nod trim for this song, signed — the 6th CSV column. Not a tempo:
+     * it is lemmy's `nod trim` knob verbatim, an offset on the nod oscillator's
+     * half-period, useful over roughly ±14 (the node clamps the resulting period to
+     * 4..18 frames).
+     *
+     * A blank cell — and an unlisted song — read as GAME_CATALOG_NOD_TRIM_DEFAULT,
+     * so an untuned song still nods. Only an explicit 0 means "don't nod to this
+     * one", which makes it a deliberate opt-out rather than the absence of a value. */
     int16_t  nod_trim;
     uint16_t length_s;    /* 0 = unknown */
     uint16_t year;        /* original-release year; 0 = unknown */
@@ -47,9 +54,10 @@ bool GameCatalog_Lookup(uint8_t setlist, uint8_t index, game_catalog_entry_t *ou
 /* Convenience wrapper keyed by a recognizer result. */
 bool GameCatalog_LookupSong(const gp_song_t *song, game_catalog_entry_t *out);
 
-/* Just the nod_trim column — 0 for a song the catalog doesn't know as well as for a
- * blank cell, so 0 always means "no nod". Separate from Lookup so a caller that only
- * needs it doesn't put a whole entry on its stack. */
+/* Just the nod_trim column — GAME_CATALOG_NOD_TRIM_DEFAULT for a song the catalog
+ * doesn't know, the same as for a blank cell, so 0 always means an explicit "no nod".
+ * Separate from Lookup so a caller that only needs it doesn't put a whole entry on
+ * its stack. */
 int16_t GameCatalog_NodTrim(uint8_t setlist, uint8_t index);
 
 /* This song's human title, or NULL on a miss / empty catalog. Returns a pointer

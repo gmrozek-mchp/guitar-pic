@@ -125,12 +125,27 @@ bool T1SLink_SendToLemmy(int8_t neck, int8_t jaw);
  * tune the beat nod remotely. Staged per-opcode and flushed by the T1S service
  * task; same threading contract as T1SLink_SendToLemmy. Returns false if the
  * link is not up or the opcode is unknown. */
-#define T1S_ANIM_CTRL_NOD_EN     (1u)  /* arg 0|1  : enable/disable the nod        */
+#define T1S_ANIM_CTRL_NOD_EN     (1u)  /* arg mode : nod off / always / auto       */
 #define T1S_ANIM_CTRL_NOD_TRIM   (2u)  /* arg int8 : nod trim / pot offset         */
 #define T1S_ANIM_CTRL_NOD_OSC    (3u)  /* arg 0|1  : oscillator (beat-only vs osc) */
 #define T1S_ANIM_CTRL_OUTPUT_EN  (4u)  /* arg 0|1  : gate every servo write        */
-#define T1S_ANIM_CTRL_OP_COUNT   (4u)
+#define T1S_ANIM_CTRL_NOD_CONF   (5u)  /* arg 0-100: tempo confidence auto needs   */
+#define T1S_ANIM_CTRL_OP_COUNT   (5u)
+
+/* NOD_EN arg — lemmy's beat_nod_mode_t. `auto` is what a gameplay window commands:
+ * the nod runs in occasional bursts on a confident tempo rather than for the whole
+ * song. `always` is the bench override. */
+#define T1S_ANIM_NOD_OFF         (0u)
+#define T1S_ANIM_NOD_ALWAYS      (1u)
+#define T1S_ANIM_NOD_AUTO        (2u)
 bool T1SLink_SendLemmyCtrl(uint8_t opcode, uint8_t arg);
+
+/* What marvin last commanded on one of lemmy's control opcodes — the staged desired
+ * value, which is also what a resync re-pushes. False (and *arg untouched) for an
+ * opcode never commanded since boot, so a caller can tell "still on lemmy's own
+ * default" from "commanded". Reads marvin's intent, not lemmy's state: only the
+ * output gate is reported back (see T1SLink_GetActuatorState). */
+bool T1SLink_GetLemmyCtrl(uint8_t opcode, uint8_t *arg);
 
 /* Lightshow control channel — same 0x88B9 transport + [opcode, arg] grammar as
  * the lemmy control channel, routed to the lightshow node with its own opcode

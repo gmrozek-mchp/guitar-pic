@@ -6,8 +6,9 @@
 > **Status: smart — beat-driven nod wired.** T1S PLCA follower (id 6, link + presence + CLI), the
 > two-servo TCC0 PWM driver + position/calibration layer are up and verified on hardware. lemmy now
 > consumes [`beatbox`](../beatbox/SPEC.md)'s beat frame (ethertype `0x88B8`) and runs a local nod
-> engine (`nod_engine.{c,h}` + `beat_nod.{c,h}`) to head-bang the neck servo in time to the music,
-> pending on-hardware verification against a live beatbox. See §6 and [`docs/journal.md`](docs/journal.md).
+> engine (`nod_engine.{c,h}` + `beat_nod.{c,h}`) to head-bang the neck servo in time to the music —
+> in **occasional bursts** on a confident tempo (`auto` mode, §4.7), not continuously — pending
+> on-hardware verification against a live beatbox. See §6 and [`docs/journal.md`](docs/journal.md).
 
 ## 1. Purpose
 
@@ -85,8 +86,9 @@ to `guitar`'s:
   servo command** — a `0x88B5` unicast frame carrying `[neck_i8, jaw_i8]` still drives both servos
   latest-wins (marvin's `lemmy <neck> <jaw>`), the manual/override seam when the nod is disabled or
   beatbox is quiet. (3) **control channel** — a `0x88B9` unicast frame carrying a typed `[opcode, arg]`
-  tunes the nod remotely: `0x01` enable/disable, `0x02` trim, `0x03` oscillator (marvin's
-  `lemmy nod|trim|osc`), mapping onto the same `BeatNod`/`NodEngine` setters as lemmy's local `nod` CLI.
+  tunes the nod remotely: `0x01` **nod mode** (0 = off, 1 = every beat, 2 = auto — see §4.7), `0x02`
+  trim, `0x03` oscillator, `0x05` auto confidence floor (marvin's `lemmy nod|trim|osc`, `lemmy nod conf`),
+  mapping onto the same `BeatNod`/`NodEngine` setters as lemmy's local `nod` CLI.
   `nod off` here is what frees the neck for the `0x88B5` manual path. Opcode `0x04` is the
   **servo output enable** (marvin's `lemmy output on|off`) → `Servo_SetEnabled`; see §4. Opcode space is
   left open for future scripted gestures / jaw talking (L4).
@@ -113,7 +115,8 @@ layer:
 3. **Heartbeat:** periodic (≈500 ms) `0x88B6` presence frame to the coordinator.
 4. **CLI** (debug aid, SERCOM1 UART via embedded-cli, static allocation): `t1s` (link / sync /
    chipRev / PLCA / counters), `servo`/`pos`/`cal` (exercise + calibrate the mechanism), `nod`
-   (beat-nod status; `on|off` / `trim <n>` / `osc <0|1>`), and `output <on|off>` (the gate below).
+   (beat-nod status incl. the auto burst state; `on|off|auto` / `conf <0..100>` / `trim <n>` /
+   `osc <0|1>`), and `output <on|off>` (the gate below).
    `servo`/`pos`/`cal` say so explicitly when the gate is closed — otherwise calibrating a gated node
    looks like broken hardware. The local setting is a bench aid, not an override: marvin reconciles it
    against the heartbeat echo while it is on the bus.
@@ -131,6 +134,26 @@ layer:
    the engine's target angle onto the neck servo position. The head parks at neutral when frames stop.
    The nod engine ports from the source project (`config.mcc.bak/nod_engine.c`), decoupled from its
    servo so the caller reads the angle out. jaw stays neutral (L4).
+7. **Nod mode** (`beat_nod_mode_t`): **off** (neck free for `0x88B5`/`pos`), **always** (nod every
+   frame — the bench setting for watching the motion), and **auto**, which is what a gameplay window
+   commands. Auto head-bangs in **occasional bursts**:
+   - **Entry** — he becomes eligible once `NodEngine_GetConfidence()` clears a floor (default 30,
+     `nod conf` / op `0x05`; 0 disables the gate) and the cooldown has expired. Eligible, he *prefers*
+     to come in on a `BIG_BEAT`, but after 2 s armed **any onset** starts the burst — beatbox only
+     flags `BIG` above 3× its onset threshold, so requiring one outright meant quiet material never
+     triggered at all.
+   - **Duration is a floor in time, not a beat count** — a randomized **10-18 s**, and nothing cuts it
+     short. Confidence is re-evaluated only every ~2 s and can read 0 for a stretch; as a mid-burst
+     abort that ended bursts almost as soon as they began. The only early exit is the frames stopping
+     (idle park). It finishes on a head-up frame rather than mid-slam, with 2 s of slack.
+   - **Then parks** for a randomized **8-20 s**.
+
+   The engine ticks in every mode, so tempo tracking is warm when a burst starts. Between bursts the
+   neck is parked **once** and then left alone, so a manual position still sticks. Confidence is the
+   quality gate: the nod looks worst exactly when the engine has not settled on a band and an
+   interval, so auto only joins in once it has. `nod`'s `gate:` line reports the floor, the peak
+   confidence actually seen, eligible-frame and big-beat counts — the three distinct reasons a burst
+   might not be starting.
 
 Static allocation only (no malloc), per project rule.
 
@@ -155,4 +178,5 @@ Static allocation only (no malloc), per project rule.
 | 🚧 | **L3** — beat-driven head nod: `nod_engine.{c,h}` (ported, decoupled integer DSP) + `beat_nod.{c,h}` consume beatbox's `0x88B8` beat frame → neck head-bang; `nod` CLI (status / `on\|off` / `trim` / `osc`). Wired; pending on-hardware verification against a live beatbox |
 | ✅ | **L3.5** — `0x88B9` control channel: remote nod enable/disable + trim + osc (`[opcode, arg]`), driven by marvin's `lemmy nod\|trim\|osc`. `nod off` frees the neck for the `0x88B5` manual path. Wired; pending on-hardware verification |
 | ✅ | **L3.6** — servo **output enable** (`0x88B9` op `0x04`) gating `Servo_SetPulseUs`, so one switch stops every motion source; echoed back as heartbeat `flags` bit1 so marvin reconciles it. Drives marvin's dashboard LEMMY toggle. Wired; pending on-hardware verification |
+| ✅ | **L3.7** — **auto nod mode**: occasional bursts (10-18 s, 8-20 s apart) gated on tempo confidence, so the head joins in for a stretch instead of banging through a whole song. Op `0x01` arg becomes a mode (0/1/2), new op `0x05` tunes the confidence floor; a gameplay window commands `auto`. Builds clean; pending on-hardware verification |
 | 🔭 | **L4** (future) — jaw "talking" animation; scripted gestures on the `0x88B9` channel (new opcodes) |
