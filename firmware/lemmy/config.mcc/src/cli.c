@@ -11,6 +11,7 @@
 #include "embedded_cli.h"
 #include "t1s_follower.h"
 #include "servo.h"
+#include "beat_jaw.h"
 #include "beat_nod.h"
 #include "nod_engine.h"
 
@@ -275,6 +276,15 @@ static const char *mode_name(beat_nod_mode_t m)
     }
 }
 
+static const char *jaw_state_name(beat_jaw_state_t s)
+{
+    switch (s) {
+        case BEAT_JAW_YELL:   return "wide open";
+        case BEAT_JAW_CLOSED: return "shut";
+        default:              return "relaxed";
+    }
+}
+
 static const char *auto_state_name(beat_nod_auto_t s)
 {
     switch (s) {
@@ -352,6 +362,10 @@ static void cmd_nod(EmbeddedCli *cli, char *args, void *ctx)
     cli_printf("gate:    conf>=%u (peak %u)  eligible=%lu  bigs=%lu",
                (unsigned)a.conf_min, (unsigned)a.conf_peak,
                (unsigned long)a.eligible, (unsigned long)a.bigs);
+    cli_printf("jaw:     %s  pos=%d  hold=%ums  yells=%lu  closes=%lu",
+               jaw_state_name(BeatJaw_State()), (int)BeatJaw_Position(),
+               (unsigned)BeatJaw_HoldMs(), (unsigned long)BeatJaw_Yells(),
+               (unsigned long)BeatJaw_Closes());
     uint8_t cop = 0u, carg = 0u;
     uint32_t ccount = 0u;
     T1SFollower_LastCtrl(&cop, &carg, &ccount);

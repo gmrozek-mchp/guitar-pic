@@ -1,5 +1,6 @@
 #include "beat_nod.h"
 
+#include "beat_jaw.h"
 #include "definitions.h"   /* SYSTICK_GetTickCounter */
 #include "nod_engine.h"
 #include "servo.h"
@@ -142,6 +143,7 @@ static void auto_tick(uint8_t beat_now, bool big)
 void BeatNod_Initialize(void)
 {
     NodEngine_Init();
+    BeatJaw_Initialize();   /* the frame tick lives here, so the jaw's clock does too */
     s_last_frame_ms = SYSTICK_GetTickCounter();
     s_neck_pos = Servo_SetPosition(SERVO_NECK, SERVO_POS_NEUTRAL);
     s_parked = true;
@@ -177,6 +179,7 @@ void BeatNod_Tasks(void)
             s_parked = true;
             s_auto_state = BEAT_NOD_AUTO_WAIT;
             s_auto_wait  = 0u;
+            BeatJaw_Park();
         }
         return;
     }
@@ -211,6 +214,15 @@ void BeatNod_Tasks(void)
         s_neck_pos = Servo_SetPosition(SERVO_NECK, SERVO_POS_NEUTRAL);
         s_parked = true;
     }
+
+    /* The jaw animates for as long as the nod is enabled at all — including between
+     * auto's bursts, where the neck is parked but the mouth still has a life. Only
+     * `nod off` stops it, which is what hands both servos to manual control. */
+    if (s_mode != BEAT_NOD_OFF) {
+        BeatJaw_Frame(driving(), (s_flags & BEAT_FLAG_BIG) != 0u, s_energy);
+    } else {
+        BeatJaw_Park();
+    }
 }
 
 void BeatNod_SetMode(beat_nod_mode_t mode)
@@ -225,6 +237,7 @@ void BeatNod_SetMode(beat_nod_mode_t mode)
         s_neck_pos = Servo_SetPosition(SERVO_NECK, SERVO_POS_NEUTRAL);
         s_parked = true;
     }
+    if (mode == BEAT_NOD_OFF) { BeatJaw_Park(); }
 }
 
 beat_nod_mode_t BeatNod_GetMode(void) { return s_mode; }

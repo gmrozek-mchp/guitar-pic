@@ -3,6 +3,7 @@ target_sources(lemmy_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../config.mcc/src/servo.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../config.mcc/src/nod_engine.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../config.mcc/src/beat_nod.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../config.mcc/src/beat_jaw.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../config.mcc/src/status_led.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../config.mcc/src/cli.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../config.mcc/src/third_party/embedded-cli/embedded_cli.c"

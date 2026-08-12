@@ -18,9 +18,10 @@ It drives **two R/C hobby servos** to bring the puppet to life:
 - **Neck joint** — nods / head-bangs the head.
 - **Bottom jaw** — opens and closes the mouth.
 
-Its **primary purpose is to nod the head in time to the music**, driven by beat signals from a
-future **beatbox** node (T1S id 5). Long term the jaw may animate "talking." lemmy does **no
-sensing and no game logic** — like [`guitar`](../guitar/SPEC.md) it is a follower that receives
+Its **primary purpose is to nod the head in time to the music**, driven by beat signals from the
+**beatbox** node (T1S id 5). The **jaw animates itself** off the same beat frames — relaxed open,
+wide open on a big hit while he is banging, shut now and then — with nothing on the bus commanding
+it (§4.8); "talking" is a later layer. lemmy does **no sensing and no game logic** — like [`guitar`](../guitar/SPEC.md) it is a follower that receives
 signals over the bus and actuates.
 
 lemmy is a new **node class** (*animation*) alongside the existing detector / guitar / controller
@@ -133,7 +134,7 @@ layer:
    integer `nod_engine` once per frame (its tempo/oscillator tracking is self-contained), then maps
    the engine's target angle onto the neck servo position. The head parks at neutral when frames stop.
    The nod engine ports from the source project (`config.mcc.bak/nod_engine.c`), decoupled from its
-   servo so the caller reads the angle out. jaw stays neutral (L4).
+   servo so the caller reads the angle out. The jaw is animated separately (§4.8).
 7. **Nod mode** (`beat_nod_mode_t`): **off** (neck free for `0x88B5`/`pos`), **always** (nod every
    frame — the bench setting for watching the motion), and **auto**, which is what a gameplay window
    commands. Auto head-bangs in **occasional bursts**:
@@ -154,6 +155,16 @@ layer:
    interval, so auto only joins in once it has. `nod`'s `gate:` line reports the floor, the peak
    confidence actually seen, eligible-frame and big-beat counts — the three distinct reasons a burst
    might not be starting.
+8. **Jaw animation** (`beat_jaw.{c,h}`): **lemmy's own business — nothing on the bus commands the jaw.**
+   It repositions itself off the same beat frames, in poses held for seconds rather than chewed once
+   per beat: **relaxed open** (`-50`) where it lives, **wide open** (`-100`) for a yell — only while
+   the neck is actually being driven, hung on a `BIG_BEAT`, held 1.5-3 s and no more often than every
+   6-14 s — and **shut** (`0`) now and then, 1-2.5 s at a time, 12-28 s apart, which needs no excuse
+   and happens between bursts too. Moves are slew-limited (~160 counts/s) so they read as a jaw
+   moving rather than a servo twitching; the yell snaps open faster. The jaw animates whenever the
+   nod mode is anything but off — so in `auto` the mouth still has a life while the neck is parked
+   between bursts — and `nod off` parks it at rest and leaves it alone, which is what hands **both**
+   servos to manual `pos`/`0x88B5` control. Beat frames stopping parks it the same way.
 
 Static allocation only (no malloc), per project rule.
 
@@ -178,5 +189,6 @@ Static allocation only (no malloc), per project rule.
 | 🚧 | **L3** — beat-driven head nod: `nod_engine.{c,h}` (ported, decoupled integer DSP) + `beat_nod.{c,h}` consume beatbox's `0x88B8` beat frame → neck head-bang; `nod` CLI (status / `on\|off` / `trim` / `osc`). Wired; pending on-hardware verification against a live beatbox |
 | ✅ | **L3.5** — `0x88B9` control channel: remote nod enable/disable + trim + osc (`[opcode, arg]`), driven by marvin's `lemmy nod\|trim\|osc`. `nod off` frees the neck for the `0x88B5` manual path. Wired; pending on-hardware verification |
 | ✅ | **L3.6** — servo **output enable** (`0x88B9` op `0x04`) gating `Servo_SetPulseUs`, so one switch stops every motion source; echoed back as heartbeat `flags` bit1 so marvin reconciles it. Drives marvin's dashboard LEMMY toggle. Wired; pending on-hardware verification |
+| ✅ | **L3.8** — **jaw animation** (`beat_jaw.{c,h}`): autonomous, off the same beat frames — relaxed open at rest, wide open on a big beat during a burst, shut now and then; slew-limited, no bus involvement. Builds clean; pending on-hardware verification |
 | ✅ | **L3.7** — **auto nod mode**: occasional bursts (10-18 s, 8-20 s apart) gated on tempo confidence, so the head joins in for a stretch instead of banging through a whole song. Op `0x01` arg becomes a mode (0/1/2), new op `0x05` tunes the confidence floor; a gameplay window commands `auto`. Builds clean; pending on-hardware verification |
 | 🔭 | **L4** (future) — jaw "talking" animation; scripted gestures on the `0x88B9` channel (new opcodes) |
