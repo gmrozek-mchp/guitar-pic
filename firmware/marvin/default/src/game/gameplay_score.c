@@ -211,63 +211,6 @@ int gp_read_multiplier(const uint8_t *frame, int width, int height)
     return 2;
 }
 
-/* ── note meter (lamp column) ───────────────────────────────────────────────── */
-
-/* Mean of max(B,G,R) over one lamp half: GP_BULB_H/2 rows from `y0`, full lamp
- * width. Integer throughout — the read runs on every frame. */
-static int bulb_half_mean(const uint8_t *frame, int width, int y0)
-{
-    uint32_t sum = 0u;
-    for (int y = y0; y < y0 + GP_BULB_H / 2; y++)
-    {
-        const uint8_t *p = frame + ((uint32_t)y * (uint32_t)width
-                                    + (uint32_t)GP_BULB_X0) * GP_BPP;
-        for (int x = GP_BULB_X0; x < GP_BULB_X1; x++, p += GP_BPP)
-        {
-            int B = p[0], G = p[1], R = p[2];
-            int mx = R > G ? R : G; if (B > mx) { mx = B; }
-            sum += (uint32_t)mx;
-        }
-    }
-    return (int)(sum / (uint32_t)((GP_BULB_H / 2) * (GP_BULB_X1 - GP_BULB_X0)));
-}
-
-int gp_read_bulbs(const uint8_t *frame, int width, int height, gp_bulbs_t *out)
-{
-    if (out == NULL) { return -1; }
-    out->half  = 0u;
-    out->valid = 0u;
-    out->raw   = 0u;
-    if (frame == NULL || width != GP_CANON_W || height != GP_CANON_H) { return -1; }
-
-    int filling = 1;
-    for (int k = 0; k < GP_BULB_N; k++)   /* k = 0 is the bottom lamp */
-    {
-        int top = GP_BULB_Y0 + (GP_BULB_N - 1 - k) * GP_BULB_PITCH;
-        int lower = bulb_half_mean(frame, width, top + GP_BULB_H / 2) > GP_BULB_LIT_MIN;
-        int upper = bulb_half_mean(frame, width, top) > GP_BULB_LIT_MIN;
-
-        if (lower) { out->raw |= (uint16_t)(1u << (2 * k)); }
-        if (upper) { out->raw |= (uint16_t)(1u << (2 * k + 1)); }
-
-        /* The column fills bottom-up, so the count is the contiguous run from
-         * the bottom; stop counting at the first dark half but keep reading so
-         * `raw` still describes the whole column. */
-        if (!filling) { continue; }
-        if (!lower)         { filling = 0; continue; }
-        out->half++;
-        if (!upper)         { filling = 0; continue; }
-        out->half++;
-    }
-
-    /* A real lamp column is lit contiguously from the bottom, so the filtered
-     * run has to account for every lit half. It does not on a menu screen,
-     * where the rect lands on unrelated art — the caller uses this to refuse a
-     * frame rather than turn it into a bogus count. */
-    out->valid = (out->raw == (uint16_t)((1u << out->half) - 1u)) ? 1u : 0u;
-    return 0;
-}
-
 /* ── note-streak counter (odometer OCR + monotonic tracker) ────────────────── */
 
 static uint8_t s_scell_ink[GP_STREAK_CELL_MAX_H * GP_STREAK_CELL_MAX_W];

@@ -56,10 +56,6 @@ _EXPORT_KINDS: dict[str, tuple[StripKind, str]] = {
     "strike": (StripKind.STRIKE, "strike"),
     "sensing-2p": (StripKind.SENSING_2P, "sensing-2p"),
     "strike-2p": (StripKind.STRIKE_2P, "strike-2p"),
-    # What the device emits for the strum zone now; the two above stay so older
-    # captures still export.
-    "strike-half": (StripKind.STRIKE_HALF, "strike-half"),
-    "strike-2p-half": (StripKind.STRIKE_2P_HALF, "strike-2p-half"),
 }
 
 

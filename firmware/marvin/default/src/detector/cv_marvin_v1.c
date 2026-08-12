@@ -32,22 +32,9 @@
 #define CV_EDGE_THRESH         25.0f
 
 /* SENSING scratch is sized for the largest configured strip so a runtime
- * config swap can't overflow it (1p's 185×48 dominates 2p-left's 166×48).
- *
- * 48 rows rather than the sensor row's immediate neighbourhood: the rows below
- * the sample point are where a gem's descent is visible, so they carry its
- * velocity and separate a note head from a sustain trail. Offline work needs
- * that to derive the observation lead instead of hand-tuning it. Paid for by
- * halving STRIKE (see decimate2_bgr). */
+ * config swap can't overflow it (1p's 185×32 dominates 2p-left's 166×32). */
 #define CV_SENSING_MAX_W       185u
-#define CV_SENSING_MAX_H       48u
-
-/* STRIKE is shipped 2:1-decimated in both axes — it carries no sensors and is
- * read by eye, for hit flashes and the fret-pressed highlight, both of which are
- * large high-contrast features that survive the halving. Scratch is sized for the
- * largest decimated strike (1p 290×32 → 145×16; 2p-left 205×34 → 102×17). */
-#define CV_STRIKE_HALF_MAX_W   145u
-#define CV_STRIKE_HALF_MAX_H   17u
+#define CV_SENSING_MAX_H       32u
 
 /* Per-highway geometry, selectable at runtime via CvMarvinV1_SetConfig.
  * (hx,hy) = brightness sensor, (ex,ey) = color-filtered edge sensor. 1p coords
@@ -68,10 +55,10 @@ const cv_marvin_v1_config_t CV_MARVIN_CFG_1P =
         [FRET_BLUE]   = { 393, 311, 406, 311 },
         [FRET_ORANGE] = { 430, 311, 442, 311 },
     },
-    .sensing_x = 265u, .sensing_y = 300u, .sensing_w = 185u, .sensing_h = 48u,
+    .sensing_x = 265u, .sensing_y = 300u, .sensing_w = 185u, .sensing_h = 32u,
     .strike_x  = 212u, .strike_y  = 395u, .strike_w  = 290u, .strike_h  = 32u,
     .sensing_kind = PERF_STRIP_SENSING,
-    .strike_kind  = PERF_STRIP_STRIKE_HALF,
+    .strike_kind  = PERF_STRIP_STRIKE,
     .lead_slot    = CV_LEAD_SLOT_1P,
 };
 
@@ -86,10 +73,10 @@ const cv_marvin_v1_config_t CV_MARVIN_CFG_2P_LEFT =
         [FRET_BLUE]   = { 255, 337, 266, 337 },
         [FRET_ORANGE] = { 287, 337, 297, 337 },
     },
-    .sensing_x = 140u, .sensing_y = 326u, .sensing_w = 166u, .sensing_h = 48u,
+    .sensing_x = 140u, .sensing_y = 326u, .sensing_w = 166u, .sensing_h = 32u,
     .strike_x  = 120u, .strike_y  = 395u, .strike_w  = 205u, .strike_h  = 34u,
     .sensing_kind = PERF_STRIP_SENSING_2P,
-    .strike_kind  = PERF_STRIP_STRIKE_2P_HALF,
+    .strike_kind  = PERF_STRIP_STRIKE_2P,
     .lead_slot    = CV_LEAD_SLOT_2P_LEFT,
 };
 
@@ -160,43 +147,8 @@ static uint8_t       s_frame_queue_storage[CV_FRAME_QUEUE_DEPTH * sizeof(Video_F
  * stay clean. */
 static uint8_t s_sensing_scratch[CV_SENSING_MAX_W * CV_SENSING_MAX_H * CV_BYTES_PER_PIXEL];
 
-/* Tightly-packed scratch for the decimated STRIKE strip. */
-static uint8_t s_strike_scratch[CV_STRIKE_HALF_MAX_W * CV_STRIKE_HALF_MAX_H
-                                * CV_BYTES_PER_PIXEL];
-
 static StackType_t   s_task_stack[CV_TASK_STACK_WORDS];
 static StaticTask_t  s_task_tcb;
-
-/* ─── Strip helpers ────────────────────────────────────────────────────── */
-
-/* Box-average a w×h BGR888 region 2:1 in each axis into tightly-packed `dst`,
- * which must hold (w/2)*(h/2) pixels. An odd trailing row or column is dropped,
- * so the caller's (w/2, h/2) is exactly what lands on the wire. */
-static void decimate2_bgr(const uint8_t *src, uint32_t src_stride,
-                          uint16_t w, uint16_t h, uint8_t *dst)
-{
-    uint16_t ow = (uint16_t)(w / 2u);
-    uint16_t oh = (uint16_t)(h / 2u);
-
-    for (uint16_t oy = 0u; oy < oh; oy++)
-    {
-        const uint8_t *r0 = src + (uint32_t)(2u * oy) * src_stride;
-        const uint8_t *r1 = r0 + src_stride;
-        for (uint16_t ox = 0u; ox < ow; ox++)
-        {
-            uint32_t off = (uint32_t)(2u * ox) * CV_BYTES_PER_PIXEL;
-            const uint8_t *a = r0 + off;
-            const uint8_t *b = a + CV_BYTES_PER_PIXEL;
-            const uint8_t *c = r1 + off;
-            const uint8_t *d = c + CV_BYTES_PER_PIXEL;
-            for (uint8_t ch = 0u; ch < CV_BYTES_PER_PIXEL; ch++)
-            {
-                uint32_t sum = (uint32_t)a[ch] + b[ch] + c[ch] + d[ch] + 2u;
-                *dst++ = (uint8_t)(sum / 4u);
-            }
-        }
-    }
-}
 
 /* ─── Sampling ─────────────────────────────────────────────────────────── */
 
@@ -564,24 +516,13 @@ static void cv_marvin_v1_task(void *param)
 
         const uint32_t fstride = (uint32_t)frame.width * CV_BYTES_PER_PIXEL;
 
-        /* STRIKE: the strum trigger zone, 2:1-decimated into scratch (no sensors
-         * there → no rings, and nothing reads it but the host viewer). Gated on
-         * the STRIP mask like SENSING below, so the box-average costs nothing
-         * when the host isn't consuming strips. */
-        if ((PerfLog_GetEnabledMask() & (1u << PERF_REC_STRIP)) != 0u)
-        {
-            const uint8_t *ssrc = (const uint8_t *)frame.buffer
-                                + (uint32_t)cfg->strike_y * fstride
-                                + (uint32_t)cfg->strike_x * CV_BYTES_PER_PIXEL;
-            decimate2_bgr(ssrc, fstride, cfg->strike_w, cfg->strike_h,
-                          s_strike_scratch);
-            PerfLog_EmitStripPacked(frame.frame_count,
-                                    (perf_strip_kind_t)cfg->strike_kind,
-                                    cfg->strike_x, cfg->strike_y,
-                                    (uint16_t)(cfg->strike_w / 2u),
-                                    (uint16_t)(cfg->strike_h / 2u),
-                                    s_strike_scratch);
-        }
+        /* STRIKE: the strum trigger zone, copied straight from the frame (no
+         * sensors there → no rings). */
+        PerfLog_EmitStripFromFrame(frame.frame_count,
+                                   (perf_strip_kind_t)cfg->strike_kind,
+                                   (const uint8_t *)frame.buffer, fstride,
+                                   cfg->strike_x, cfg->strike_y,
+                                   cfg->strike_w, cfg->strike_h);
 
         /* SENSING: copy the sensor row into scratch and (when the overlay sink
          * is on) paint the target rings onto the copy before shipping it. The
