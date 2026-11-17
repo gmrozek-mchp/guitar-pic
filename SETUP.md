@@ -107,6 +107,58 @@ Follow the [puppet setup video](media/video/puppet-setup.mp4).
 |---|---|
 | ![puppet](media/photos/lemmy-puppet.jpg) | ![servo wiring](media/photos/lemmy-servo-wiring.jpg) |
 
+### 2.5 marvin's SD card (before each show)
+
+marvin's microSD card holds the song list, album art, the SHOWDOWN setup and the high
+scores. Do these on a PC **with marvin powered off**, then put the card back before power-up.
+
+The card is reached through the small opening in the black electronics box on the back of
+marvin (yellow box below):
+
+![microSD card location](media/photos/marvin-sd-card.jpg)
+
+**Only touch the two files below. Leave everything else on the card exactly as it is.**
+The other folders hold what gameplay and the dashboard need (song list, album art, node
+photos). Don't delete, rename or reformat them.
+
+```
+games/gh3-wii/
+  showdown.cfg       ← EDIT: SHOWDOWN song + difficulty
+  songs.csv          leave: song list (look up song numbers here, don't change it)
+  art/               leave: album art
+system/              leave: System-screen node photos
+players/
+  results.csv        ← RENAME to clear high scores (keep the players/ folder)
+health/              leave: marvin's health logs
+```
+
+If the card is ever lost or corrupted, recreate it by copying `games/` and `system/` from
+[`firmware/marvin/data/`](firmware/marvin/data/) to the root of a FAT32 card.
+
+**Clear the high scores.** Rename just the file `players/results.csv` to something like
+`results-<show>-<date>.csv` (or move that one file off the card). Leave the `players/`
+folder in place. marvin starts a fresh file on the next result. Renaming keeps the old
+show's results for later. Also wipe the high-score whiteboard.
+
+**Change the SHOWDOWN song or difficulty.** Edit `showdown.cfg`:
+
+```
+song       = main,4        # <main|bonus>,<number>: the number from songs.csv
+difficulty = hard          # easy | medium | hard | expert
+```
+
+The current setting is song `main,4` ("Rock and Roll All Nite") on hard. The TOP SCORES
+board belongs to one song *and* difficulty, so a new SHOWDOWN starts on an empty board
+even without clearing. If the file has a mistake, the **SHOWDOWN button disappears** from
+the dashboard. Power off, fix the file, and boot again. marvin's **Activity log**
+screen shows a `SHDN:` line saying what was wrong.
+
+**Check it** after power-up, on marvin's console:
+- `showdown` prints the loaded match; `showdown reload` re-reads the file.
+- `scores main 4 hard` lists the top scores for that song and difficulty.
+
+Format detail: [`firmware/marvin/data/README.md`](firmware/marvin/data/README.md).
+
 ## 3. Power-up
 
 Follow the [power-up video](media/video/power-up.mp4).
@@ -181,6 +233,7 @@ rather than switching every game. Videos: [swapping](media/video/captouch-guitar
 | Green doesn't skip GH3's intro videos | §3 step 6: RECONNECT, then power-cycle the remote, then RECONNECT. |
 | No sound | The speakers are in Bluetooth mode (blue). Press **OPT** for green. |
 | Puppet or lights idle | They only run during a song, and only if enabled under the dashboard ACTUATORS. |
+| No SHOWDOWN button on the dashboard | `showdown.cfg` is missing or has a mistake. See §2.5. |
 | Black video window | Check the HDMI chain and splitter power. If it stays black, reboot marvin. |
 
 **Consoles.** marvin's operator console is on its CLI port (FLEXCOM2, 115200 8N1); `help`
