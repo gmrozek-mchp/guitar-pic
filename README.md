@@ -21,6 +21,7 @@ head-banging puppet and a light show, all in time to the music.
 |---|---|
 | Set up the booth demo | [SETUP.md](SETUP.md) |
 | Demo it to visitors | [DEMO.md](DEMO.md) |
+| Pack it for shipping | [PACKING.md](PACKING.md) |
 | Understand the whole system | [SPEC.md](SPEC.md) |
 | Work on a subproject | its spec + journal, indexed in [SPEC.md §3](SPEC.md#3-subprojects) |
 
@@ -28,7 +29,7 @@ head-banging puppet and a light show, all in time to the music.
 
 ```
 guitar-pic/
-├── README.md  SPEC.md  SETUP.md  DEMO.md  CLAUDE.md
+├── README.md  SPEC.md  SETUP.md  DEMO.md  PACKING.md  CLAUDE.md
 ├── media/          # photos + video for SETUP/DEMO
 ├── firmware/
 │   ├── marvin/     # SAM9X75 host: capture, CV, timing, game control, UI   (XC32)

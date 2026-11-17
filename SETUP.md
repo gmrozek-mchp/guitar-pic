@@ -3,6 +3,7 @@
 Checklist for assembling the **Human vs. Machine** Guitar Hero demo at a venue. Every board
 arrives already built and flashed. This guide covers unpacking, cabling, powering up, and
 checking that everything is alive. Reflashing is in the [appendix](#appendix-reflashing).
+The road cases and how to pack them are in [PACKING.md](PACKING.md).
 
 Videos of each step are in [`media/video/`](media/video/):
 - [system walkthrough](media/video/system-walkthrough.mp4) (every cable, end to end)
@@ -35,10 +36,10 @@ Also in the kit:
 - [ ] **OREI 1×4 HDMI splitter** + **OREI HDMI audio extractor**
 - [ ] Two speaker towers (with the light strips) + their AC adapter + **speaker remote**
 - [ ] Player guitars: the standard Wii guitar (Wiimote inside) and the
-  [capacitive-touch guitar](#5-the-capacitive-touch-guitar), plus picks
+  [capacitive-touch guitar](#5-the-capacitive-touch-guitar) (ships separately), plus picks
 - [ ] Puppet, tripod, guitar mounting bracket, hat, Velcro ties, safety pins
 - [ ] Two identical power bricks (light controller, servo controller), power strip
-- [ ] Optional: a large display for the audience
+- [ ] Optional: a large display for the audience. **Not shipped; arrange one on site.**
 - [ ] Booth signs and the Human / Machine high-score whiteboard
 
 ## 2. Cabling
