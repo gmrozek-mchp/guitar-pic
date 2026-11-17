@@ -10,7 +10,8 @@
 
 Firmware for PIC32CM6408PL10048 (Cortex-M0+, 24 MHz). The fretboard is a 10BASE-T1S
 node that both **senses** and **drives**. Each 240 Hz tick it samples five
-phototransistors above the TV strike line; an on-device int8 neural net
+phototransistors over the strike line of a small HDMI display (fed from the booth's
+HDMI splitter); an on-device int8 neural net
 (`model_infer.c`, weights in the generated `model_weights.h`) infers the Wii-guitar
 button bitmask from the ADC window. Over T1S it then:
 
@@ -53,7 +54,8 @@ Wii-guitar outputs** — those pins are the LAN8651 SPI. See
 
 #### Sensor Inputs (ADC)
 
-Five phototransistors positioned above the TV strike line. Each
+Five phototransistors (Sensor-LCD5 board) positioned over the strike line of the node's own
+small HDMI display. Each
 produces an analog voltage that drops when a note passes the sensor.
 ADC reads 12-bit unsigned (0–4095); lower values indicate note
 presence.

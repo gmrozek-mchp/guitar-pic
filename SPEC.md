@@ -32,8 +32,8 @@ SHOWDOWN mode.
   pipeline. It reads the GH3 screens to navigate menus, owns the operator UI, and coordinates
   the bus. It sends each button mask to fauxmote (which plays it) and to the guitar node
   (which mirrors it on LEDs).
-- **fretboard** is an alternate detector. Five phototransistors sit above the TV's strike line
-  and an int8 neural net runs on-MCU. When it is selected (`active fretboard`, hard 1-player)
+- **fretboard** is an alternate detector. Five phototransistors sit over the strike line of its own
+  small HDMI display, and an int8 neural net runs on-MCU. When it is selected (`active fretboard`, hard 1-player)
   it drives fauxmote and the guitar node directly, peer-to-peer, and marvin stays silent.
 - **beatbox** listens to line-in audio and runs FFT beat detection. It broadcasts a beat frame
   (ethertype `0x88B8`, ~23 Hz) that **lemmy** and **lightshow** both consume. marvin gates

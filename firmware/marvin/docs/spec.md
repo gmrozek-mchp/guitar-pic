@@ -68,7 +68,7 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
                                                + NN model
 ```
 
-The fretboard node (phototransistors on the TV + NN) drives fauxmote and the guitar node peer-to-peer when it is the active detector inside a song. Wire-level detail: [`docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md). Off-band: a dev PC on the FLEXCOM2 console and the USB CDC perf-log (`tools/marvin-perf`); not in the runtime path.
+The fretboard node (phototransistors on its own small HDMI display + NN) drives fauxmote and the guitar node peer-to-peer when it is the active detector inside a song. Wire-level detail: [`docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md). Off-band: a dev PC on the FLEXCOM2 console and the USB CDC perf-log (`tools/marvin-perf`); not in the runtime path.
 
 ### 2.2 Who owns what
 
