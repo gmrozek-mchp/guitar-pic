@@ -1,14 +1,13 @@
 # marvin ↔ fauxmote command link
 
 > Protocol spec for the control link between **marvin** (SAM9X75 runtime brain) and
-> **fauxmote** (ESP32 Wiimote/guitar emulator). marvin sends controller input;
-> fauxmote reflects it to the real Wii. This is an alternative to the T1S
-> `guitar` actuator node — fauxmote *becomes* the controller instead of pressing a
-> real one.
+> **fauxmote** (ESP32 Wiimote/guitar emulator). marvin — and, while armed in a song,
+> the fretboard detector — sends controller input; fauxmote reflects it to the real
+> Wii. fauxmote *is* the controller, so this is the game-critical actuation path.
 >
 > Companion docs: [`firmware/fauxmote/SPEC.md`](../firmware/fauxmote/SPEC.md),
 > [`firmware/fauxmote/docs/journal.md`](../firmware/fauxmote/docs/journal.md), and the
-> T1S bus link [`docs/t1s-podl-link.md`](t1s-podl-link.md) (the eventual second transport).
+> T1S bus link [`docs/t1s-podl-link.md`](t1s-podl-link.md) (the default transport).
 
 **Protocol version:** 1. Both ends are compiled to a matching version for now
 (no runtime negotiation); the version is reported in `STATUS` so a mismatch is
@@ -27,8 +26,8 @@ visible.
    existing 1-byte guitar bitmask is latest-wins, and fauxmote already streams the
    current state to the Wii every ~15 ms regardless of the command source.
 3. **Transport-independent message layer.** The message bytes (§4) are identical
-   over any physical layer. UART is the first transport (§3); 10BASE-T1S is the
-   planned second (§6). Only the framing/binding changes.
+   over any physical layer. 10BASE-T1S is the default transport (§8); a
+   point-to-point UART is the fallback (§3). Only the framing/binding changes.
 4. **Fail safe.** If the command link goes quiet, fauxmote releases all inputs —
    a dropped link must never leave a note held.
 
@@ -41,7 +40,7 @@ visible.
   │  L2  Framing layer   delimit + integrity      │  ← UART: SOF/LEN/CRC (§3.2)
   │                                               │     T1S: none (Ethernet FCS) (§6)
   ├─────────────────────────────────────────────┤
-  │  L1  Physical        UART now / T1S later      │
+  │  L1  Physical        T1S (default) / UART      │
   └─────────────────────────────────────────────┘
 ```
 
@@ -49,14 +48,14 @@ Both firmwares implement the message layer against a thin transport seam
 (`send(type, payload, len)` / `on_message(type, payload, len)`); UART and T1S are
 two implementations of that seam (§7).
 
-## 3. UART transport (transport #1)
+## 3. UART transport (fallback)
 
 ### 3.1 Physical
 
 | Parameter | Value |
 |---|---|
 | Baud | **1 000 000** (1 Mbaud), 8-N-1, no flow control |
-| Wiring | 3 wires: marvin TX → fauxmote RX, fauxmote TX → marvin RX, common GND |
+| Wiring | 3 wires: marvin PA16 → ESP `GPIO7`, ESP `GPIO8` → marvin PA15, common GND |
 | marvin port | **FLEXCOM5 USART** — `PA16` (`FAUXMOTE_TX`) / `PA15` (`FAUXMOTE_RX`); a dedicated peripheral, independent of the guitar transport |
 | fauxmote port | **UART1** on the Feather V2's broken-out RX=`GPIO7` / TX=`GPIO8` (the board's second hardware UART, `Serial1`) — **not** UART0, which is the USB-CDC console/CLI |
 
@@ -88,10 +87,11 @@ Framing overhead is 4 bytes; a 3-byte `GUITAR` payload is 7 bytes on the wire.
 
 **Receiver rules:**
 - Scan for `SOF`, then read `TYPE`/`LEN`, then `LEN` payload bytes, then `CRC8`.
-- If the CRC fails, or `LEN` disagrees with the known length for `TYPE`, **discard
-  and rescan** from the next `0x7E`. (A `0x7E` inside a payload that causes a false
+- If the CRC fails, **discard and rescan** from the next `0x7E`. (A `0x7E` inside a payload that causes a false
   frame is rejected by the CRC and the receiver re-syncs on the real boundary.)
 - `TYPE = 0x00` is never valid — treat as noise and rescan.
+- The message layer drops a payload shorter than the known length for its `TYPE`
+  and ignores trailing bytes (T1S frames arrive padded).
 - No ack on any message; corruption self-heals on the next state frame.
 
 ## 4. Message types
@@ -165,6 +165,57 @@ The analog stick is the guitar-mode Home-menu control (the IR pointer is
 physically blocked when the Wiimote is seated in the guitar — see the fauxmote
 journal). Bare-Wiimote menu nav uses the separate `POINTER` slice (§5.6).
 
+### 5.3 `LINK_CMD` (m→f, 1 byte) — Bluetooth link management
+
+Mirrors the fauxmote CLI so marvin owns the whole link lifecycle. Fire-and-forget;
+the result is reflected in the next `STATUS`.
+
+| Byte | Field | Values |
+|---|---|---|
+| 0 | opcode | `0x01` PAIR (enter sync/pairing) · `0x02` STOP (leave pairing) · `0x03` RECONNECT · `0x04` UNLINK (erase bond) · `0x05` EXT_ATTACH · `0x06` EXT_DETACH · `0x07` STATUS_REQ (send a `STATUS` now) · `0x08` DISCONNECT · `0x09` REBOOT · `0x0A` BT_RESET · `0x0B` PAIR_TEMP |
+
+`PAIR` opens a **bonding** window for the Wii's red SYNC button; `PAIR_TEMP` opens a
+**temporary/guest** window for the Wii's one-time sync screen. Same handshake — the only
+difference is the PIN, which is the host's BD_ADDR reversed for bonding and fauxmote's own
+reversed for temporary. The temporary flow hands out a player slot *without* the Wii
+bonding, so it is how you re-slot a controller rather than register one; the Wii will not
+remember fauxmote afterwards. Both windows are refused while already discoverable or
+connected, so re-slotting a live link is `DISCONNECT` then `PAIR_TEMP`. Which window is
+armed comes back as `STATUS` bit7.
+
+`RECONNECT` is a no-op when the link is already up or an attempt is in flight.
+`DISCONNECT` closes both HID channels, staying bonded and reconnectable. `BT_RESET` does
+that plus an explicit L2CAP deinit/re-init. `REBOOT` restarts fauxmote (the bond lives in
+NVS and survives) — last resort; it costs a heartbeat gap of about a second, and the T1S
+link re-establishes on its own.
+
+**`RECONNECT` alone is the normal recovery from the GH3 game-launch drop.** fauxmote
+restarts its L2CAP layer as part of every link teardown, because a torn-down session
+leaves state that the *next* connect inherits — on hardware the channels reopen and look
+healthy while the Wii sees nothing on them and never answers. With the layer restarted,
+a reconnect gets a full re-init from the Wii (`0x30` → `0x33` → `0x37`) and a usable
+in-game session. `BT_RESET` and `REBOOT` remain as escalation if that ever stops holding;
+watch `STATUS` bit6 (host-silent) to decide.
+
+### 5.4 `STATUS` (f→m, 4 bytes) — the uplink
+
+Sent on any state change **and** as a heartbeat (~2 Hz) so marvin can tell the link
+is alive and gate/annotate commands.
+
+| Byte | Field | Encoding |
+|---|---|---|
+| 0 | flags | `bit0` discoverable, `bit1` connected (HID data channel), `bit2` assigned (Wii gave a player slot), `bit3` ext-attached, `bit4` pairing-active, `bit5` bonded (bond in NVS), `bit6` host-silent, `bit7` pairing-temporary. fauxmote sets `bit0` and `bit4` **together** — discoverable and pairing-active are the same state in the current code |
+| 1 | player_slot | `0` = none, else `1..4` |
+| 2 | report_mode | the Wii's last-requested report ID (e.g. `0x37`); defaults to `0x30` (core buttons) before the Wii sets a mode, never `0` |
+| 3 | last_result | result of the most recent `LINK_CMD`: `0` = ok/idle, nonzero = error code |
+
+`bit6` (host-silent) means both HID channels are open but the Wii has sent nothing for
+3 s — the session exists and is being ignored. `bit1` alone is therefore not proof the
+Wii is listening; `bit1 && !bit6` is.
+
+`bit7` (pairing-temporary) distinguishes the two pairing windows and is only meaningful
+alongside `bit4`: set = the guest/one-time flow (`PAIR_TEMP`), clear = red-SYNC bonding.
+
 ### 5.5 `ACCEL` (m→f, 3 bytes)
 
 Wiimote accelerometer state — the raw device axis, in physical units. marvin sends
@@ -218,57 +269,6 @@ touches the cursor at each) and persisted in marvin's QSPI settings. See
 `net/fauxmote/fauxmote_pointer.h`. Nothing on the wire changes: fauxmote still receives
 plain 0..255 positions and knows nothing about the calibration.
 
-### 5.3 `LINK_CMD` (m→f, 1 byte) — Bluetooth link management
-
-Mirrors the fauxmote CLI so marvin owns the whole link lifecycle. Fire-and-forget;
-the result is reflected in the next `STATUS`.
-
-| Byte | Field | Values |
-|---|---|---|
-| 0 | opcode | `0x01` PAIR (enter sync/pairing) · `0x02` STOP (leave pairing) · `0x03` RECONNECT · `0x04` UNLINK (erase bond) · `0x05` EXT_ATTACH · `0x06` EXT_DETACH · `0x07` STATUS_REQ (send a `STATUS` now) · `0x08` DISCONNECT · `0x09` REBOOT · `0x0A` BT_RESET · `0x0B` PAIR_TEMP |
-
-`PAIR` opens a **bonding** window for the Wii's red SYNC button; `PAIR_TEMP` opens a
-**temporary/guest** window for the Wii's one-time sync screen. Same handshake — the only
-difference is the PIN, which is the host's BD_ADDR reversed for bonding and fauxmote's own
-reversed for temporary. The temporary flow hands out a player slot *without* the Wii
-bonding, so it is how you re-slot a controller rather than register one; the Wii will not
-remember fauxmote afterwards. Both windows are refused while already discoverable or
-connected, so re-slotting a live link is `DISCONNECT` then `PAIR_TEMP`. Which window is
-armed comes back as `STATUS` bit7.
-
-`RECONNECT` is a no-op when the link is already up or an attempt is in flight.
-`DISCONNECT` closes both HID channels, staying bonded and reconnectable. `BT_RESET` does
-that plus an explicit L2CAP deinit/re-init. `REBOOT` restarts fauxmote (the bond lives in
-NVS and survives) — last resort; it costs a heartbeat gap of about a second, and the T1S
-link re-establishes on its own.
-
-**`RECONNECT` alone is the normal recovery from the GH3 game-launch drop.** fauxmote
-restarts its L2CAP layer as part of every link teardown, because a torn-down session
-leaves state that the *next* connect inherits — on hardware the channels reopen and look
-healthy while the Wii sees nothing on them and never answers. With the layer restarted,
-a reconnect gets a full re-init from the Wii (`0x30` → `0x33` → `0x37`) and a usable
-in-game session. `BT_RESET` and `REBOOT` remain as escalation if that ever stops holding;
-watch `STATUS` bit6 (host-silent) to decide.
-
-### 5.4 `STATUS` (f→m, 4 bytes) — the uplink
-
-Sent on any state change **and** as a heartbeat (~2 Hz) so marvin can tell the link
-is alive and gate/annotate commands.
-
-| Byte | Field | Encoding |
-|---|---|---|
-| 0 | flags | `bit0` discoverable, `bit1` connected (HID data channel), `bit2` assigned (Wii gave a player slot), `bit3` ext-attached, `bit4` pairing-active, `bit5` bonded (bond in NVS), `bit6` host-silent, `bit7` pairing-temporary. fauxmote sets `bit0` and `bit4` **together** — discoverable and pairing-active are the same state in the current code |
-| 1 | player_slot | `0` = none, else `1..4` |
-| 2 | report_mode | the Wii's last-requested report ID (e.g. `0x37`); defaults to `0x30` (core buttons) before the Wii sets a mode, never `0` |
-| 3 | last_result | result of the most recent `LINK_CMD`: `0` = ok/idle, nonzero = error code |
-
-`bit6` (host-silent) means both HID channels are open but the Wii has sent nothing for
-3 s — the session exists and is being ignored. `bit1` alone is therefore not proof the
-Wii is listening; `bit1 && !bit6` is.
-
-`bit7` (pairing-temporary) distinguishes the two pairing windows and is only meaningful
-alongside `bit4`: set = the guest/one-time flow (`PAIR_TEMP`), clear = red-SYNC bonding.
-
 ## 6. Semantics & timing
 
 - **Absolute / latest-wins, per slice.** Every input message carries the full
@@ -276,7 +276,7 @@ alongside `bit4`: set = the guest/one-time flow (`PAIR_TEMP`), clear = red-SYNC 
   slice and reflects all latched slices in its next Wii report. No history, no
   ordering requirement beyond last-writer-wins within a slice.
 - **Send policy (marvin).** Send a slice on any change; additionally resend it at a
-  floor rate (~10 Hz) so a dropped frame self-corrects. Bursting faster than the Wii
+  floor rate (50 ms) so a dropped frame self-corrects. Bursting faster than the Wii
   report cadence (~15 ms) is wasted. marvin sends only the slices it needs —
   `GUITAR` continuously during gameplay, `WIIMOTE`/`POINTER` only while navigating.
 - **Fail-safe (fauxmote), one watchdog.** A single **link timeout** (200 ms
@@ -284,33 +284,38 @@ alongside `bit4`: set = the guest/one-time flow (`PAIR_TEMP`), clear = red-SYNC 
   stay in effect. On expiry (the link has gone fully quiet) fauxmote reverts *all*
   slices to their safe defaults at once — `GUITAR` frets/strum released + whammy
   rest (≈ `0x10`), `WIIMOTE` buttons released / stick centered, `ACCEL` level, `POINTER`
-  off. A dead link never holds a note. (marvin's ~10 Hz refresh of at least one
-  slice keeps the watchdog alive during normal play.)
+  off. A dead link never holds a note. (marvin's 50 ms `GUITAR` refresh keeps the watchdog alive during normal play.)
 - **`STATUS` cadence (fauxmote).** On every state change, plus a ~500 ms heartbeat,
   plus immediately on `STATUS_REQ`.
 - **`LINK_CMD`** is fire-and-forget; marvin reads the outcome in the following
   `STATUS`.
+- **Two senders, one owner at a time.** While the fretboard is the selected detector
+  *and* a song is playing (`Detector_FretboardDriving()`), the fretboard sends `GUITAR`
+  peer-to-peer over T1S and marvin suppresses its own `GUITAR` (one all-release frame on
+  the handoff). Nav, pointer and `LINK_CMD` stay marvin's. fauxmote does not filter by
+  source MAC.
 
 ## 7. Implementation seam (both ends)
 
-Keep the message layer transport-agnostic so the T1S move (§8) is a transport swap,
+Keep the message layer transport-agnostic so T1S (§8) and UART (§3) are a transport swap,
 not a rewrite.
 
-**fauxmote** — `main/marvin_link.c` (implemented 2026-07-02):
-- Owns the second UART, the §3.2 framing/CRC, and message parse/dispatch (FreeRTOS
-  task); started at boot via `MarvinLink_Start()`.
-- On `GUITAR`/`WIIMOTE`/`LINK_CMD`, calls the **same module APIs the CLI uses**
+**fauxmote** — `main/mf_link.c` is the message layer; `main/mf_t1s.c` (T1S) or
+`main/marvin_link.c` (UART, §3.2 framing) is the backend, selected by the Kconfig
+choice `FAUXMOTE_LINK_TRANSPORT` and started at boot via `MarvinLink_Start()`.
+- On each message, calls the **same module APIs the CLI uses**
   (`Wiimote_SetButton`, `Guitar_SetWhammy`, `Wiimote_SetPointer`,
   `Fauxmote_EnterPairing`/`StopPairing`/`Reconnect`/`Unlink`, `Wiimote_SetExtension`),
   so the link is a second front-end over existing logic — no behavior duplicated.
 - Emits `STATUS` from the existing `Wiimote_Is*` / `Fauxmote_*` state.
 - The CLI stays for manual bring-up/debug.
 
-**marvin** — `net/fauxmote/fauxmote_link.c` (implemented 2026-07-02; FLEXCOM5 2026-07-23;
-transport made selectable 2026-07-28):
+**marvin** — `net/fauxmote/fauxmote_link.c`:
 - The producer/latching layer is transport-independent. Exposes
   `Fauxmote_SendGuitar(mask, whammy, aux)` / `SendGuitarMask(mask)`,
-  `Fauxmote_SendNav(...)`, `Fauxmote_SendCmd(op)`, and `Fauxmote_GetStatus(...)`. A TX task
+  `Fauxmote_SendNav(...)`, `Fauxmote_SendPointer(...)`, `Fauxmote_SendAccel(...)` /
+  `SendTilt(deg)`, `Fauxmote_SendCmd(op)`, and `Fauxmote_GetStatus(...)` (full list in
+  `fauxmote_link.h`). A TX task
   re-sends the latched `GUITAR` slice on change (low latency) and at a 50 ms floor; the
   `STATUS` uplink is latched into the same state on either transport.
 - **Transport seam** behind `MARVIN_FAUXMOTE_TRANSPORT` (default **T1S**, §8): T1S rides
@@ -320,14 +325,14 @@ transport made selectable 2026-07-28):
 - **Mirror-to-both** (not a switched sink): `FretboardLink_Send()` — the one choke
   point both producers (timing pipeline + `manual_control`) call — also calls
   `Fauxmote_SendGuitarMask()`, so the guitar node and fauxmote move in lock-step.
-  `GUITAR` byte 0 == the 7-bit guitar mask. Runs on every build, regardless of
-  `MARVIN_FRETBOARD_TRANSPORT`.
+  `GUITAR` byte 0 == the 7-bit guitar mask. `Fauxmote_SetOverride()` (held by the
+  wiimotes screen) makes the mirror ignore gameplay masks so a manual producer owns
+  the slice.
 
-## 8. T1S transport (transport #2)
+## 8. T1S transport (default)
 
-The fauxmote side of the T1S transport is **implemented** (`main/mf_t1s.c`, a LAN8651
-MAC-PHY on SPI driven by the vendored OPEN Alliance TC6 library) and is the **default**
-build; UART is retained as a Kconfig-selectable fallback (`FAUXMOTE_LINK_TRANSPORT_UART`).
+T1S is the **default** on both ends (fauxmote `main/mf_t1s.c`, a LAN8651 MAC-PHY on SPI
+driven by the vendored OPEN Alliance TC6 library; UART via `FAUXMOTE_LINK_TRANSPORT_UART`).
 The **message layer (§4–§5) travels unchanged as the payload of a T1S Ethernet frame**:
 
 - The UART framing layer (§3.2) is dropped — the Ethernet frame provides delimiting
@@ -343,7 +348,7 @@ The **message layer (§4–§5) travels unchanged as the payload of a T1S Ethern
   alongside it; see [`docs/t1s-podl-link.md`](t1s-podl-link.md) §7.1/§7.2.
 - Only the transport seam (§7) changes; message handling and semantics are identical.
 
-**marvin side (implemented 2026-07-28, default T1S).** marvin has a *single* LAN8651, so
+**marvin side.** marvin has a *single* LAN8651, so
 the controller channel is not a second interface — `fauxmote_link` rides the shared
 `net/t1s` MAC-PHY. Behind `MARVIN_FAUXMOTE_TRANSPORT={UART,T1S}` (default T1S):
 - **TX:** `send_frame` → `T1SLink_SendToController(type, payload, len)`, which stages the
@@ -359,23 +364,11 @@ the controller channel is not a second interface — `fauxmote_link` rides the s
 - `T1SLink_Initialize` is idempotent, so the fretboard-T1S and fauxmote-T1S paths can both
   call it. `MARVIN_FAUXMOTE_TRANSPORT=0` restores the dedicated FLEXCOM5 UART path (§3).
 
-**Status:** both ends now speak T1S in source; the fauxmote side still awaits its LAN8651
-being wired to the Feather (Feather V2 pin defaults SCK=5/MO=19/MI=21/CS=33/RST=27/IRQ=32,
-all Kconfig-overridable), so on-bus verification is a later session.
+**Status:** working on hardware — marvin drives fauxmote over T1S (see the fauxmote
+journal). Feather V2 LAN8651 pins: SCK=5/MO=19/MI=21/CS=33/RST=27/IRQ=32 (Kconfig).
 
 ## 9. Open questions
 
-- ~~Exact marvin FLEXCOM instance + pins~~ **settled 2026-07-23:** marvin =
-  **FLEXCOM5 / PA16 (`FAUXMOTE_TX`) / PA15 (`FAUXMOTE_RX`)** — a dedicated peripheral,
-  independent of the guitar transport; fauxmote = UART1 on Feather RX=`GPIO7` /
-  TX=`GPIO8`. Wiring: marvin PA16 → ESP `GPIO7`, ESP `GPIO8` → marvin PA15, common GND.
-  (Originally FLEXCOM1/PA28/PA29 on 2026-07-02; moved to a dedicated FLEXCOM5 so the
-  link no longer depends on the guitar being on T1S.)
-- ~~When to make the planned `ACCEL` slice live in fauxmote~~ **done (fauxmote side)
-  2026-07-24:** fauxmote drives the accel field from the `ACCEL` slice; encoding is
-  signed g (`1 LSB = 1/32 g`), fauxmote translates to raw. Slices carry no tilt/SP
-  semantics — the `GUITAR` aux star-power bit is ignored; marvin drives star power via
-  `ACCEL`. Marvin-side `Fauxmote_SendAccel()` producer still to do.
 - Whether to retire the now-unused `MF_AUX_STARPOWER` aux bit (star power moved to the
   `ACCEL` slice); a shared-`mf_proto.h` decision to make with the marvin side.
 - Whether `ACCEL` needs finer than 8-bit-per-axis for smooth tilt; 10-bit can be

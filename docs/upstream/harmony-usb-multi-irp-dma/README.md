@@ -1,5 +1,7 @@
 # UDPHS device driver: queued IRPs are accepted but never armed for DMA
 
+> **Status (2026-11-17):** upstream fix not confirmed. Still carried locally as marvin re-apply patch #9 (`F_DRV_USB_UDPHS_DEVICE_ArmDmaForIrp` in marvin's generated `drv_usb_udphs_device.c`) for the perf-log CDC channel; re-check on each Harmony USB update.
+
 **Affected:** Harmony USB v3.16.0, file `driver/usb/udphs/src/drv_usb_udphs_device.c`.
 **Tested on:** SAM9X75. The defect is in shared driver code that runs on every UDPHS-based part, so it likely affects SAM9X60, SAMA5D2, SAM9X25, and any other UDPHS device using this driver.
 **Symptom severity:** Per-instance `queueSizeWrite > 1` is behaviorally indistinguishable from `queueSizeWrite = 1`. Bulk-IN throughput is capped at the application's round-trip-per-write rate even when the lower CDC and driver layers are configured for multi-IRP pipelining.

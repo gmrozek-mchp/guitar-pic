@@ -141,7 +141,7 @@ This single number governs the architecture, because of three consequences:
 
 ### Why RF 85, decided by an overfit A/B
 
-The fret-accuracy ceiling was first diagnosed on a detector-labelled probe (labels coincident with the photo dip, so *inside* even a tiny RF — frets hit 0.99 trivially) and then predicted to bite the deployable `actuator-fb` labels (strike-line timing, ~48 samples after the dip). An overfit A/B on the line-263 `actuator-fb` data (slowride-hard, train == eval) confirmed the prediction and the fix in one shot:
+Detector-timed labels sit on the photo dip, inside even a tiny RF; command labels sit at strike-line timing, ~48 samples later. An overfit A/B on command-labelled data (slowride-hard, train == eval, 2026-06-04) settled the RF:
 
 | | RF 21 `(1,4)` | RF 85 `(1,4,16)` |
 |---|---|---|
@@ -169,7 +169,7 @@ But at deploy you only need the **last timestep**. Two on-device paths exploit t
 | **recompute** ([`model_infer.c`](../../../firmware/fretboard/model_infer.c)) | only the conv positions the last timestep transitively needs (back-propagated `s_need`: 21 / 5 / 1 positions per layer) | **~16 k MACs** (~12.5 k at window 60) |
 | **streaming** ([`model_infer_stream.c`](../../../firmware/fretboard/model_infer_stream.c)) | exactly **one new conv column per layer**, caching prior columns in small rings | **~3.1 k MACs** (888 at 8 ch) |
 
-So against the ~100 k MAC/tick budget at 24 MHz, **even the 16-channel model fits comfortably**, and the streaming path clears 240 Hz with large margin. The "13× over budget" figure we once quoted was a `count_macs` artifact of the dense formula — real deploy cost is 1–2 orders of magnitude lower. We are **not** as capacity-constrained as the dense printout implies, which is what made widening to 16 channels affordable.
+So against the ~100 k MAC/tick budget at 24 MHz, **even the 16-channel model fits comfortably**, and the streaming path clears 240 Hz with large margin. Real deploy cost is 1–2 orders of magnitude below the dense printout, which is what made widening to 16 channels affordable.
 
 ## 6. Training
 
@@ -181,22 +181,22 @@ So against the ~100 k MAC/tick budget at 24 MHz, **even the 16-channel model fit
 
 ## 7. Inference & deployment (int8, on hardware)
 
-This is **built and running standalone on the fretboard PIC32CM** (the int8 path is no longer a future "Phase 3" — it is the deployed path; see [`runtime.md`](runtime.md) and the [journal](journal.md)).
+Built and running standalone on the fretboard PIC32CM; firmware integration is in [`runtime.md`](runtime.md).
 
 - **Quantisation — post-training, int8, essentially lossless.** [`quantize.py`](../edge_ai/quantize.py) does per-tensor symmetric int8 weights, int32 accumulators, and int64 fixed-point requant back to int8 activations (the target M0+ has no FPU, so float inference is out). Standardisation folds into an integer **input affine** `(M_in, B_in, S_in)`; output thresholding folds into an integer **compare on the head accumulator** (no on-device sigmoid: `sigmoid(x) ≥ t ⇔ x ≥ logit(t)`, so frets compare against 0 and strum against `logit(thresh)`). Measured PTQ error on slowride-hard: frets within ±0.001 of float, strum recall unchanged — so **no QAT is needed**.
 - **Bit-exactness gate.** The host int8 reference (`quantize.int8_sim_*`) is asserted bit-for-bit against the actual firmware C — both the recompute path ([`tests/test_bitexact.py`](../tests/test_bitexact.py)) and the streaming path ([`tests/test_stream_bitexact.py`](../tests/test_stream_bitexact.py)), over a full capture, 0 mismatches.
 - **Threshold** the 6 head accumulators (frets at 0, strum at the folded `--strum-thresh`).
 - **Monostable** on the strum bit: a rising-edge-triggered one-shot (`hold` ticks high, then `refractory` ticks blocking new triggers — [`metrics.monostable`](../edge_ai/metrics.py)). It guarantees clean uniform pulses, absorbs mid-pulse glitches, and emits exactly one pulse per rising edge. A few counters; runs on the MCU. The same logic lives in both firmware paths.
 - **Streaming vs recompute (why two paths).** The streaming path is bit-exact with a continuous causal conv, which only matches a model **trained at `window ≥ RF` (= 85)** — at a shorter window the moving zero-pad boundary differs. So the shipped model is trained at window 85 and deployed streaming (locks to 240 Hz, ~3 k MACs/tick). The recompute path works at any trained window but re-runs the needed positions each tick (~93 Hz at 16 ch) and is kept as the general-window fallback. Selected at build time by `MODEL_INFER_STREAMING` in [`fretboard_config.h`](../../../firmware/fretboard/fretboard_config.h).
-- **Runtime weight swap.** The active model is a `model_def_t` pointer; the quantiser emits one named `model_<name>` per `--name`, several link together (shared arch dims guarded by a `_Static_assert`), and `model_infer_set_model()` swaps at runtime — the mechanism for per-difficulty models.
+- **Runtime weight swap.** The active model is a `model_def_t` pointer; the quantiser emits one named `model_<name>` per `--name`, several link together, and the node swaps between them at runtime — the per-difficulty mechanism ([runtime.md §6](runtime.md)).
 
 ## 8. Capacity, limitations & open design questions
 
-- **Deploy width = 16 channels (not the 8 ch training default).** 8 ch is capacity-limited on the sparse strum class: it overstrummed on hardware and **no threshold fixed it** — 0.85 missed real strums *and* still overstrummed, i.e. the precision/recall *curve itself* was the wall (the same signature as the early 8 ch-vs-64 ch overfit diagnostic, strum recall .86 vs .99). 16 ch lifts the whole curve (mono precision/recall .856/.969 → .942/.981) so a single threshold lands both. It's affordable because inference runs cheaply on device (§5: ~3 k MACs streaming, RAM ~4 KB of 8 KB). 32 ch would be RAM-bound, not compute-bound. The training *default* stays 8 ch; deploy passes `--channels 16`.
+- **Deploy width = 16 channels (not the 8 ch training default).** 8 ch is capacity-limited on the sparse strum class: it overstrummed on hardware and **no threshold fixed it** — 0.85 missed real strums *and* still overstrummed, i.e. the precision/recall *curve itself* was the wall (the same signature as the early 8 ch-vs-64 ch overfit diagnostic, strum recall .86 vs .99). 16 ch lifts the whole curve (mono precision/recall .856/.969 → .942/.981) so a single threshold lands both. It's affordable because inference runs cheaply on device (§5: ~3 k MACs streaming, ~1.4 KB scratch RAM — [runtime.md §5](runtime.md)). 32 ch would be RAM-bound, not compute-bound. The training *default* stays 8 ch; deploy passes `--channels 16`.
 - **~~Receptive field too small for the lag~~ (resolved §4).** Was the headline issue; `(1,4,16)` RF-85 covers the lag (overfit frets ~0.99, held-out ≥0.96 except red). The remaining open item is generalisation polish, not the RF.
 - **Red fret is the lone laggard** (held-out ~0.89 vs ≥0.96 for the others), consistent across epochs and not a corpus-coverage gap. Hypotheses (holdout variance / green-yellow neighbour confusion / `ph_red` channel quality) are listed in the [journal](journal.md) open questions; cheapest test is rotate-holdout cross-val. Carried as a known caveat — confirm it costs game score before treating it as blocking.
 - **Last-timestep head** — correct for a predict-*now* model; fine as-is now the RF covers the lag. Temporal pooling would use more of the window but blur onset timing — not the right fix.
 - **Per-bit independence** — chords occupy a tiny subset of 2⁶; a chord-shape head or the two-head event detector ([review.md](review.md)) is the fallback if independence caps accuracy. Not hit yet.
-- **Single-difficulty validity.** The model *is* the timing function it was distilled from; mixing difficulties (or timing-constant regimes) teaches two photo→strum lags for identical inputs — ill-posed. v1 is one model per regime; multi-difficulty routes (per-difficulty models, or a scroll-speed sensor) are in [review.md](review.md) / the [journal](journal.md).
+- **Single-difficulty validity.** The model *is* the timing function it was distilled from; scroll speed varies with difficulty, so mixing difficulties (or timing regimes) teaches two photo→strum lags for identical inputs — ill-posed. One model per difficulty; a scroll-speed sensor is the alternative ([review.md](review.md) Q5).
 </content>
 </invoke>

@@ -4,35 +4,19 @@ Engineering detail for the marvin↔node link over **10BASE-T1S single-pair Ethe
 (with planned "dumb" Power-over-Data-Lines). System-level summary and rationale live
 in [`../SPEC.md`](../SPEC.md) §2/§6; this document holds the detail.
 
-Status: **built and working between marvin (PLCA coordinator, node 0) and the
-[`guitar`](../firmware/guitar/SPEC.md) actuator node (follower, node 2)** as of
-2026-06-17. A LAN8651 MAC-PHY at each end over SPI + the OPEN Alliance TC6 driver
-([`third_party/oa-tc6-lib`](../third_party/oa-tc6-lib)); a custom L2 header
-(ethertype `0x88B5`) carries the existing 1-byte command bitmask; a presence
-heartbeat (`0x88B6`, §7.2) plus link / `nodes` diagnostics run on both ends.
+Status: **built and working.** marvin (PLCA coordinator, id 0) runs the bus; every PIC32CM /
+dsPIC / ESP32 follower uses a LAN8651 MAC-PHY over SPI + the OPEN Alliance TC6 driver
+([`third_party/oa-tc6-lib`](../third_party/oa-tc6-lib)). Followers on the bus: fauxmote (id 1,
+the game input), guitar (id 3), fretboard (id 4), beatbox (id 5), lemmy (id 6), lightshow (id 7)
+— see §7.1. Each sends a presence heartbeat (`0x88B6`, §7.2); marvin's `nodes` console command
+and bus-stats screen report them. **PoDL is design-direction only** (not built) — nodes are
+powered separately; a PoDL sink board is in progress under [`hardware/t1s-sink/`](../hardware/t1s-sink/).
 
-The [`fretboard`](../firmware/fretboard/SPEC.md) firmware to join as node 1 is
-**written** (2026-06-17, `t1s_detector.{c,h}`), **T1S-only** (the old UART path +
-build flags removed). It is a **sense+actuate** node: it streams its 17-byte data
-frame to the coordinator (`0x88B5`, logging), drives **fauxmote** (the controller node,
-dst `02:..:01`) directly with an mf_proto GUITAR message on `0x88B7` — the game-critical
-path — **and** sends its on-device model's inferred 1-byte command **directly to the
-guitar node** (`0x88B5`, dst `02:..:03`) as an indicator — both peer-to-peer actuation,
-gated by the arm state — plus a `0x88B6` heartbeat. Its MCC config is done (SERCOM0
-SPI + CS/RST/IRQ_N, mirror of guitar G0); remaining is the build-wiring + on-hardware
-bring-up. marvin's RX side is already in place (node-table id 4 + `fretboard_link.c`
-T1S frame handler); marvin keeps a `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` build flag
-(§8). **PoDL is design-direction only** (not built) — the link is separately powered
-during bring-up. Addressing in §7.1; the scope widened from a 2-node UART swap to
-this multi-node PLCA bus on 2026-06-16.
-
-> **Command-plane note:** with the fretboard driving the guitar directly, two nodes
-> can address the guitar (marvin and the fretboard). The guitar applies whoever
-> transmitted last, so only one source should be armed at a time. marvin gates the
-> fretboard's actuation manually over the control channel (`fretboard arm|disarm`,
-> §7.1) — a remote arm is authoritative over the detector's local SW0. Automatic
-> active-detector/active-guitar coordination (marvin arming the selected detector and
-> silencing itself) is still the follow-up; it currently picks `node_for_type(GUITAR)`.
+> **Command-plane note:** two senders can address fauxmote and the guitar — marvin's CV pipeline
+> and the fretboard (peer-to-peer). Neither node filters by source, so marvin's
+> `active <cv|fretboard>` plus its per-song gameplay window decide which one drives (§7.1,
+> `0x88B9` fretboard arm). There is one guitar node, so marvin picks it with
+> `node_for_type(GUITAR)`; active-guitar selection is not built.
 
 ---
 
@@ -47,8 +31,8 @@ this multi-node PLCA bus on 2026-06-16.
   second sensor node or fretboard can share the same pair *and* the same power.
 - **Demonstration** — showcasing 10BASE-T1S + PoDL doing real work inside a
   larger Microchip system (SAM9X7 + LAN8651 + PIC32CM) is an explicit goal, not
-  just an incidental benefit. Bandwidth is *not* a motivation — the existing
-  500 kbaud UART already carries the ~4 KB/s payload with ~12× headroom.
+  just an incidental benefit. Bandwidth is *not* a motivation — the original
+  500 kbaud UART link carried the ~4 KB/s payload with ~12× headroom.
 
 ## 2. The part: LAN8651B1
 
@@ -96,21 +80,18 @@ No TCP/IP, ARP, DHCP, or any IP stack. Three layers, none large:
    each footer), plus a separate control-transaction format for register
    read/writes during init. Microchip publishes an open-source reference driver
    ([`MicrochipTech/oa-tc6-lib`](https://github.com/MicrochipTech/oa-tc6-lib),
-   §References) small enough to run on an Arduino — the candidate base for both
-   ends here.
+   §References) small enough to run on an Arduino — used on every node here.
 3. **Minimal L2 framing** — the MAC-PHY only transmits *valid Ethernet frames*,
    so the host prepends a fixed 14-byte Ethernet header (dest MAC, src MAC,
    ethertype) to the payload. For this link the MACs are hardcoded and a custom
    ethertype carries the existing frame formats verbatim:
-   - detector (fretboard, id 4) → marvin: the 17-byte data-stream frame (see fretboard SPEC).
+   - detector (fretboard, id 4) → marvin: the 18-byte data-stream frame (see fretboard SPEC).
    - command source → guitar (id 3): the 1-byte button bitmask — sent by marvin
      (timing pipeline) and/or directly by the active detector (fretboard's model,
      peer-to-peer).
 
-   17 B + 14 B header = 31 B → a single chunk. The 1-byte command likewise. The
-   existing UART framing (`0x03 … 0xFC`, `sample_seq`, etc.) can ride unchanged
-   inside the Ethernet payload, so higher layers don't need to know the
-   transport changed.
+   18 B + 14 B header = 32 B → a single chunk. The 1-byte command likewise. The
+   frame keeps its `0x03 … 0xFC` delimiters and `sample_seq` inside the Ethernet payload.
 
 ## 4. Resource budget — fretboard (PIC32CM6408PL10048, 64 KB flash / 8 KB SRAM)
 
@@ -118,19 +99,16 @@ Estimates; static allocation only (no malloc), per project rule.
 
 | Resource | Estimate | Notes |
 |---|---|---|
-| Flash | ~6–10 KB | OA TC6 lib (~4–8 KB) + SPI glue + L2 framing. Reclaim the UART data path if the UART link is fully retired. |
+| Flash | ~6–10 KB | OA TC6 lib (~4–8 KB) + SPI glue + L2 framing. |
 | SRAM | ~1–2 KB | A couple of chunk buffers + one TX/RX frame buffer. |
-| SERCOM | 1 (SPI master) | A free SERCOM alongside SERCOM1 (still UART for now). |
+| SERCOM | 1 (SPI master) | SERCOM0; SERCOM1 stays the debug-console UART. |
 | GPIO | 2–3 | `CS_N`, `IRQ_N` (ext-int), reset. |
 | CPU | negligible | One chunk per 240 Hz tick, interrupt-driven off `IRQ_N`; the TC0 ISR stays lean. |
 
-SPI clock: the PIC32CM SERCOM SPI master maxes at GCLK/2 ≈ **12 MHz** on the 24 MHz
-part (`BAUD=0`; not the chip's 25 MHz ceiling). Irrelevant for *throughput* (the wire
-is 10 Mbps) but it **dominates command latency** — see §4.1. The PIC32CM followers
-(fretboard + guitar) are brought up at `BAUD=11` ≈ 1 MHz (conservative); planned bump
-toward the 12 MHz ceiling. This ≤12 MHz / 1 MHz figure is **follower-side only**:
-marvin, the PLCA coordinator, drives its FLEXCOM SPI at **15 MHz** (`t1s_link.c`
-`T1S_SPI_HZ`).
+SPI clock: the PIC32CM SERCOM SPI master maxes at GCLK/2 = **12 MHz** on the 24 MHz
+part (`BAUD=0`; not the LAN8651's 25 MHz ceiling). All PIC32CM followers (fretboard,
+guitar, lemmy, lightshow) run SERCOM0 at `BAUD=0` = 12 MHz. marvin drives its FLEXCOM
+SPI at **15 MHz** (`t1s_link.c` `T1S_SPI_HZ`).
 
 Everything fits comfortably inside 64 KB / 8 KB.
 
@@ -142,15 +120,15 @@ End-to-end for the fretboard's inferred command to drive the guitar GPIO, by sta
 | Stage | Worst case | Notes |
 |---|---|---|
 | Command-ready quantization | ~4.2 ms | model output gated to the fretboard's 240 Hz tick — kept deliberately (the model is timing-fit to this grid; see fretboard journal 2026-06-17). |
-| Fretboard SPI TX to MAC-PHY | ~0.5–1.1 ms | 1 TC6 chunk = 68 B; **0.55 ms @ 1 MHz**, ~45 µs @ 12 MHz. +1 chunk if a data frame is queued ahead. |
-| PLCA media access | ~0.2–0.5 ms | wait for the node's transmit opportunity (8-slot cycle, 3 active); +1 cycle if behind the data frame. **Not** the bottleneck. |
+| Fretboard SPI TX to MAC-PHY | ~45–90 µs | 1 TC6 chunk = 68 B ≈ 45 µs @ 12 MHz. +1 chunk if a data frame is queued ahead. |
+| PLCA media access | ~0.2–0.5 ms | wait for the node's transmit opportunity (8-slot cycle); +1 cycle if behind the data frame. |
 | Wire (10 Mbps) | ~0.06 ms | 60-byte min frame. |
-| Guitar SPI RX + apply | ~0.6 ms | 1 chunk read; **0.55 ms @ 1 MHz**, ~45 µs @ 12 MHz. GPIO assert instant. |
-| **Total** | **~6–7 ms** (≈2–3 ms typical) | |
+| Guitar SPI RX + apply | ~50 µs | 1 chunk read @ 12 MHz. GPIO assert instant. |
+| **Total** | **~5 ms** worst case | |
 
-The two off-wire terms dominate: the 240 Hz tick (firmware, intentionally kept) and
-the **1 MHz host SPI** (~0.55 ms/chunk each end). Raising both nodes' SPI to 12 MHz
-removes ~1 ms; PLCA media access is already sub-ms. The command is edge-triggered
+The 240 Hz tick quantization dominates; the transport adds well under 1 ms. The same path
+applies to the fretboard's `0x88B7` GUITAR message to fauxmote, which then adds its own
+Bluetooth report latency. The command is edge-triggered
 (sent on change, not waiting for the 50 ms refresh), so a new note isn't delayed by
 the refresh. Analytical estimate — validate by scoping fretboard `SetCommand` →
 guitar GPIO apply.
@@ -160,7 +138,7 @@ guitar GPIO apply.
 marvin runs **FreeRTOS + Harmony (no Linux)**, so it does *not* get a free
 netdev — it needs its own TC6 driver. The TC6 service runs as a task woken by
 the LAN8651 `IRQ_N` (a PIO external interrupt → `xSemaphoreGiveFromISR`, the
-same pattern as `fretboard_link.c`'s RX path). The plan **adapts
+same pattern as `fretboard_link.c`'s RX path). It **adapts
 [`MicrochipTech/oa-tc6-lib`](https://github.com/MicrochipTech/oa-tc6-lib)** (its
 hardware-agnostic core + thin Harmony FLEXCOM-SPI glue), rather than writing a
 TC6 from scratch — proven chunk/credit logic, and a **single portable `oa_tc6`
@@ -193,9 +171,7 @@ helps the demonstration story.
 to grow several nodes on one pair — multiple guitars and phototransistor
 fretboard-detector nodes coexisting — so PLCA multidrop is a requirement, not just
 headroom. marvin is the **PLCA coordinator (ID 0)**; every other node is a
-follower. The single marvin↔fretboard link is brought up first, but the
-addressing and demux are designed for N from the start so a new node joins with a
-table entry, not a transport rewrite.
+follower. A new node joins with a table entry, not a transport rewrite.
 
 ### 7.1 Addressing (static — no discovery, keeps the M0+ node dumb)
 
@@ -203,27 +179,20 @@ Followers are typed by **node class** (top-level [`SPEC.md`](../SPEC.md) §2): *
 nodes are RX sources (each maps to a marvin `detector_id`); **guitar** (actuator) nodes are
 command TX targets. marvin selects the active node of each class.
 
-**Target id assignment** (canonical — the whole bus renumbers to this):
+**Id assignment** (canonical; matches `T1S_NODE_ID` in each node and marvin's `s_nodes[]`;
+`node_type` is the heartbeat byte, §7.2):
 
-| Node | Class | PLCA ID | MAC (locally administered) | Notes |
-|---|---|---|---|---|
-| marvin | coordinator | 0 | `02:00:00:00:00:00` | beacons the PLCA cycle; selects active detector + guitar |
-| fauxmote | controller | 1 | `02:00:00:00:00:01` | Wiimote emulator; receives mf_proto slices on `0x88B7`, sends `STATUS` uplink. **Single controller node** — id 2 was reserved for a second fauxmote and was dropped 2026-08-04 (never built, not planned); marvin's node table has one controller row, so `nodes` and the bus screen no longer carry a permanently-absent id-2 entry. The node's own id stays build-configurable (`CONFIG_FAUXMOTE_T1S_NODE_ID`, default 1) |
-| guitar | guitar (actuator) | 3 | `02:00:00:00:00:03` | receives the 1-byte command bitmask (from marvin or a detector) |
-| fretboard | detector | 4 | `02:00:00:00:00:04` | photo-ADC stream → `detector_id`; also commands the guitar directly |
-| beatbox | (future) | 5 | `02:00:00:00:00:05` | reserved — beat-signal source for lemmy / lightshow |
-| lemmy | animation | 6 | `02:00:00:00:00:06` | animated guitar puppet, 2 R/C servos (neck nod + jaw); **bring-up** (base MCC scaffolded, T1S follower next) |
-| lightshow | lightshow | 7 | `02:00:00:00:00:07` | LED lighting node — drives LEDs / lamps in time to the music; **bring-up** (bootstrapped from lemmy's T1S follower, LED output next) |
+| Node | Class | PLCA ID | MAC (locally administered) | `node_type` | Notes |
+|---|---|---|---|---|---|
+| marvin | coordinator | 0 | `02:00:00:00:00:00` | — | beacons the PLCA cycle; selects the active detector |
+| fauxmote | controller | 1 | `02:00:00:00:00:01` | 3 | Wiimote emulator; mf_proto on `0x88B7`, `STATUS` uplink. Single controller node; id is build-configurable (`CONFIG_FAUXMOTE_T1S_NODE_ID`, default 1). Row compiled into marvin only when `MARVIN_FAUXMOTE_TRANSPORT` = T1S |
+| guitar | guitar (actuator) | 3 | `02:00:00:00:00:03` | 2 | receives the 1-byte bitmask (from marvin or the fretboard) |
+| fretboard | detector | 4 | `02:00:00:00:00:04` | 1 | photo-ADC stream → `detector_id`; drives fauxmote + guitar directly when armed |
+| beatbox | beat source | 5 | `02:00:00:00:00:05` | 6 | dsPIC33AK; broadcasts the `0x88B8` beat frame |
+| lemmy | animation | 6 | `02:00:00:00:00:06` | 4 | puppet, 2 R/C servos (neck nod + jaw) |
+| lightshow | lighting | 7 | `02:00:00:00:00:07` | 5 | WS2812 strands driven from the beat frame |
 
-> **Transition status (2026-07-28).** **fauxmote** (id 1, range 1–2), the **guitar**
-> (id 3), and the **fretboard** (id 4) are all on the target scheme in source. The guitar
-> id 3 is set at all three points that address it (guitar firmware, marvin's coordinator
-> node table, and the fretboard's peer-to-peer guitar target); the fretboard id 4 is set
-> at its two points (its firmware `T1S_NODE_ID` + marvin's coordinator table entry). Each
-> node was last *flashed/verified* at its old id (guitar 2, fretboard 1), so re-flash each
-> node **together with marvin** for the new ids to take effect on the wire (marvin filters
-> by src MAC). Until the fretboard is re-flashed, a *running* fretboard is still physically
-> at id 1, so hold off co-busing a default-id-1 fauxmote with a not-yet-reflashed fretboard.
+Id 2 is unused. PLCA `NODE_COUNT` = 8 on every node.
 
 - One **custom ethertype** `0x88B5` (IEEE local/experimental range; no
   registration needed for a private bus) carries the fretboard/guitar payloads verbatim.
@@ -269,7 +238,8 @@ command TX targets. marvin selects the active node of each class.
     - **lightshow** (`02:..:07`) — LED output: `0x01` output enable (arg 0|1), driven from
       marvin's `lightshow on|off` → `BeatShow_SetEnabled`. Disabling blanks the strands.
     - **fretboard** (`02:..:04`) — `0x01` arm (arg 0|1) + `0x02` stream (arg 0|1) + `0x03` model
-      (arg 0..4), driven from marvin's `fretboard arm|disarm` / `fretboard stream on|off` /
+      (arg 0..4) + `0x04` teacher (arg = marvin's 7-bit CV command, latched into the data frame's
+      `commanded_mask`; sent automatically), driven from marvin's `fretboard arm|disarm` / `fretboard stream on|off` /
       `fretboard model <difficulty>`. Arm tracks marvin's **per-song gameplay window** —
       marvin asserts it only while a song is actually playing *and* the fretboard is the selected
       detector, disasserts it when the song ends or `active cv` is chosen; **it gates both of the
@@ -287,7 +257,8 @@ command TX targets. marvin selects the active node of each class.
       — marvin turns it on when it wants the logging / edge-ai capture. Model selects the on-device
       inference model — one per Guitar Hero difficulty (`easy`/`medium`/`hard`/`expert`, indices
       0..3) plus a reserved `auto` slot (index 4); shared with the node's local `model` CLI command.
-      Plumbing today: only `hard` is trained, so all slots currently resolve to the hard model.
+      Only `hard` is trained, so all slots currently resolve to the hard model. marvin also pushes
+      the song-select difficulty on every run start, overriding a manual `fretboard model`.
   Opcode space in each namespace is left open for future control (scripted gestures / jaw for
   lemmy; scenes / brightness for lightshow; per-fret sensitivity for the detector).
 
@@ -295,8 +266,7 @@ command TX targets. marvin selects the active node of each class.
   compiled-in defaults, so "marvin sent it once" is not the same as "the node is in that state".
   Three rules close the gap, all on the coordinator side:
     1. **Retry until sent.** A staged opcode clears its dirty flag only when `send_to_node`
-       actually accepted the frame; a refusal leaves it staged for the next service pass. (Before
-       this, a busy MAC-PHY silently dropped the command while marvin believed it had gone out.)
+       actually accepted the frame; a refusal leaves it staged for the next service pass.
     2. **Resync on (re)appearance.** When a node's heartbeat shows it arriving — never seen, or its
        presence window had lapsed, or its cumulative counters went *backwards* (which only happens
        when the node restarted, and catches a reboot too quick to look absent) — marvin re-pushes
@@ -313,11 +283,9 @@ command TX targets. marvin selects the active node of each class.
   and defaults to **all enabled**, so a cold boot plays without operator interaction.
 - A static **node table** on marvin maps `{PLCA ID, MAC, node_type}` → the bus
   `detector_id` (and the actuator target for TX). The single fretboard keeps
-  `detector_id = 1`, matching today's `adc_fretboard` bus slot. No discovery /
+  `detector_id = DETECTOR_FRETBOARD`. No discovery /
   enumeration protocol — the table is compiled in.
-- The 17-byte fretboard→marvin frame and the 1-byte marvin→fretboard bitmask ride
-  inside the Ethernet payload unchanged; marvin demuxes incoming frames by src MAC
-  and addresses outgoing ones to a specific node.
+- marvin demuxes incoming frames by src MAC and addresses outgoing ones to a specific node.
 - **Unicast is the default; broadcast is for one-to-many producer streams.** The
   detector/guitar/controller traffic is all point-to-point (unicast, src-MAC demux). A
   producer whose stream is consumed by several nodes at once — beatbox's beat frame being the
@@ -368,11 +336,10 @@ per-node TX/RX **rates** (frames/s) from the reported cumulative deltas once a s
 
 ## 8. Transport coexistence
 
-The marvin `FretboardLink_{Initialize,Send,IsConnected}` API is preserved; the
-actuator command now targets the guitar node (`T1SLink_SendToGuitar`). UART and
-T1S transports live behind a `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` **build flag**.
-The `t1s` branch builds **T1S by default**; UART stays one (commented) line away in
-`user.cmake` as a fallback during the fretboard's own transition.
+marvin's `FretboardLink_*` API targets the guitar node (`T1SLink_SendToGuitar`) for
+commands. UART and T1S transports live behind `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}`:
+the header default is UART, and `cmake/marvin/default/user.cmake` sets it to T1S (`=1`).
+The fretboard firmware itself is T1S-only, so the UART setting is legacy.
 
 The **fauxmote (controller) link** is behind the same kind of seam:
 `MARVIN_FAUXMOTE_TRANSPORT={UART,T1S}` in `net/fauxmote/fauxmote_link.h`, **default T1S**.
@@ -446,42 +413,23 @@ are **no octet counters** in the MAC statistics block (MMS1 0x288–0x293 is fra
 and error counts only), so byte totals have to be accumulated in software
 regardless.
 
-## 10. Decisions & open items
+## 10. Open items
 
-**Built and working (2026-06-17):** marvin coordinator (id 0) ↔ guitar follower
-over T1S — command TX, presence heartbeat, and link/`nodes` diagnostics on both
-ends. First brought up at guitar id 2; renumbered to the target **id 3** in source
-(2026-07-28, §7.1) — re-flash guitar + marvin for it to take effect. The earlier
-prerequisites (a FLEXCOM/SERCOM in SPI-master mode via MCC; the `oa-tc6-lib`
-submodule) are resolved.
-
-Open / future:
-
-- **Fretboard node (id 4) — firmware written 2026-06-17** (`t1s_detector.{c,h}`,
-  T1S-only). Sense+actuate: streams the 17-byte data frame to marvin (RX/detector path
-  + node-table slot already in place) **and** sends its model's inferred command
-  directly to the guitar (id 3). MCC config done. First brought up at id 1; renumbered to
-  the target **id 4** in source (2026-07-28, §7.1) — re-flash fretboard + marvin for it to
-  take effect. **Remaining:** build-wiring + on-hardware bring-up (banner
-  `LAN8651 up … PLCA follower id=4/8`; confirm the
-  `FRETBOARD_RAW` rate holds ≈240 Hz — data + command + heartbeat now share the node's
-  PLCA TX).
-- **Active-source arbitration.** Both marvin and the fretboard can address the guitar
-  (`02:..:03`); the guitar applies whoever transmitted last. Need marvin-side
-  active-detector/active-guitar selection so exactly one source drives at a time
-  (today: single guitar → `node_for_type(GUITAR)`; the fretboard's SW0 is an interim
-  manual arm).
-- **PoDL** supply voltage + PD-side regulator topology (BOM, not firmware) — not
-  built; the link is separately powered for now.
-- Magnetics-free coupling component selection on the Sensor-LCD5 PCB.
+- **Active-guitar selection.** One guitar node today; marvin targets it via
+  `node_for_type(GUITAR)`. A second guitar variant would need a selector like `active`.
+- **Local arm hazard.** The fretboard's local `arm` command shares the flag marvin sets;
+  arming locally while `active cv` double-drives fauxmote (§7.1).
+- **PoDL** supply voltage + PD-side regulator topology (BOM, not firmware) — not built;
+  sink board in progress in [`hardware/t1s-sink/`](../hardware/t1s-sink/).
+- **PLCA hardware counters** (`TOCNT`/`BCNCNT`, §9) not yet polled.
 
 ## References
 
-- **OA TC6 driver (candidate base, both ends):**
+- **OA TC6 driver (all nodes):**
   [`MicrochipTech/oa-tc6-lib`](https://github.com/MicrochipTech/oa-tc6-lib) —
   Microchip's open-source OPEN Alliance TC6 (10BASE-T1x MAC-PHY Serial
-  Interface) library: SPI chunk protocol + control transactions, used as the
-  shared portable layer (§3, §5).
+  Interface) library: SPI chunk protocol + control transactions, the shared
+  portable layer (§3, §5).
 - LAN8650/1 (LAN8651B1) datasheet — 10BASE-T1S MAC-PHY Ethernet Controller with
   SPI, on [Microchip online docs](https://onlinedocs.microchip.com/) /
   the LAN8651 product page.

@@ -3,40 +3,27 @@
 > What beatbox *is* (purpose, hardware, interfaces, firmware design, milestones).
 > The running diary of decisions and progress lives in [`docs/journal.md`](docs/journal.md) — read it alongside this on any non-trivial task.
 
-> **Status: on the bench — beat detection + T1S follower up.** The peripheral config was
-> regenerated from scratch on the MPS512 (fresh MCC/Melody baseline). Running today: stereo audio
-> in (ADC4, 48 kHz) → 512-pt FFT beat detection → discrete beat events; an onboard RGB beat
-> indicator; an audio passthrough to the PWM DACs (monitor quality); a UART2 CLI; and a
-> **10BASE-T1S PLCA follower (id 5)** that brings up the LAN8651 MAC-PHY, syncs PLCA, heartbeats
-> presence, and **broadcasts the beat frame** to lightshow (ethertype `0x88B8`, ~23.4 Hz). Still
-> ahead: the **lightshow consumer** (decode + drive LEDs), **position commands → lemmy** (B4), and
-> the **tempo/BPM + phase** layer those need. The imported puppet-motion + WS2812 effects remain
-> parked in `config.mcc.bak/`. See §6 and
-> [`docs/journal.md`](docs/journal.md); the signal chain is documented in
+> **Status: working on the bus.** Stereo line-in (ADC4, 48 kHz) → 512-pt FFT beat detection →
+> `BeatFrame`, shown locally (onboard RGB beat indicator, LED0–7 VU meter, UART1 PC visualizer) and
+> **broadcast** as an 8-byte beat frame on 10BASE-T1S (PLCA follower id 5, ethertype `0x88B8`,
+> ~23.4 Hz). lightshow and lemmy both consume that broadcast; lightshow's show was verified with
+> beatbox live. Not done: a tempo/BPM + phase layer (the frame's `tempo`/`phase` bytes are 0) and the
+> pot read. See §6, [`docs/journal.md`](docs/journal.md), and the signal chain in
 > [`docs/beat-detection.md`](docs/beat-detection.md).
 
 ## 1. Purpose
 
 beatbox is the **beat-source node** on the marvin T1S bus — the system's ear. It listens to a
-line-level audio feed, runs real-time FFT beat/tempo detection, and **publishes** the result on the
-bus for the animation and lighting nodes to consume:
+line-level audio feed, runs real-time FFT beat detection, and **broadcasts** one compact beat frame
+(`LightshowFrame`, §5) that every interested node consumes:
 
-- **To [`lemmy`](../lemmy/SPEC.md) (animation, id 6):** beatbox owns the puppet *choreography* and
-  sends **position commands** (neck / jaw targets). lemmy is a dumb actuator — it executes the
-  positions beatbox computes. The nod/head-bang brain (`nod_engine`) lives here, not in lemmy.
-- **To [`lightshow`](../lightshow/SPEC.md) (lighting, id 7):** beatbox sends a compact **beat
-  frame** (~5 parameters — e.g. beat pulse, band energy, tempo/phase, big-beat flag). lightshow
-  runs its own light show locally from those parameters; beatbox does not drive LEDs on the bus.
+- **[`lightshow`](../lightshow/SPEC.md) (lighting, id 7)** renders its LED show from it.
+- **[`lemmy`](../lemmy/SPEC.md) (animation, id 6)** runs its own nod engine and jaw animator from
+  it. The puppet choreography lives on lemmy; beatbox sends lemmy no per-node commands.
 
 beatbox is a new **node class** (*beat source* / talker) — unlike the detector/guitar/animation/
 lighting followers it is primarily a **producer** of bus traffic for its peers, closer in spirit to
-how `fretboard` streams ADC to marvin. It does **no game logic**; it is an audio-domain sensor +
-animation director. lemmy's spec already anticipates it as **T1S id 5**.
-
-Today beatbox detects beats and shows them locally (the onboard RGB indicator + the `beat` CLI) and
-passes audio through to the PWM DACs; it is not yet on the bus. The imported puppet-motion (`servo`,
-`nod_engine`) and WS2812 strip effects — the actuation destined for lemmy/lightshow — are parked in
-`config.mcc.bak/` pending the pure-publisher rework.
+how `fretboard` streams ADC to marvin. It does **no game logic** and drives no actuator on the bus.
 
 ## 2. Hardware
 
@@ -47,12 +34,10 @@ passes audio through to the PWM DACs; it is not yet on the bus. The imported pup
 | Toolchain | **XC-DSC v3.31** (distinct from the PIC32CM nodes' XC32) |
 | Build | CMake → Ninja; artifacts under `out/beatbox/` |
 | DFP | `dsPIC33AK-MP_DFP` (version pinned by MCC on regen — must include MPS512) |
-| MAC-PHY | LAN8651 (10BASE-T1S), SPI1 — **up**: PLCA follower id 5, presence heartbeat, `t1s` CLI |
+| MAC-PHY | LAN8651 (10BASE-T1S), SPI1 — PLCA follower **id 5** of 8, MAC `02:00:00:00:00:05` |
 
-**Note on identity.** The MPLAB project is named `beatbox` — the descriptor is
-`.vscode/beatbox.mplab.json`, and the `cmake/`, `_build/`, and `out/` trees regenerate under
-`beatbox/`. (Renamed from the source project's `Beat_Detection`; MCC↔project association in
-`config.mcc/mcc/mcc.vscode` updated to match.)
+The MPLAB project descriptor is `.vscode/beatbox.mplab.json` (programmer: the board's on-board
+PKOB4); `cmake/`, `_build/`, and `out/` regenerate under `beatbox/`.
 
 ### Pin map (MPS512, current MCC config)
 
@@ -80,8 +65,7 @@ other peripheral routes are PPS.
 | RC8–RC15 | Out | Board LED0–LED7 (active-high) |
 | RF3 / RF0 / RB2 | In | Board SW1 / SW2 / SW3 (active-low) |
 
-*Not yet re-added from the `.bak` baseline:* the speed-trim potentiometer (ADC1) and the WS2812
-strip (moves to lightshow). See the journal's B0.6 plan.
+The sensitivity pot is configured in MCC (ADC5, `ADC_POT` on AD5AN0) but nothing reads it yet.
 
 ## 3. Signal chain
 
@@ -106,36 +90,31 @@ Line-in (stereo) → ADC4 @ 48 kHz, 256× oversample, PG1-triggered      (audio.
 
   → T1S broadcast (ethertype 0x88B8, ~23.4 Hz)                        (t1s_follower.c)
 
-  Consumers today:   onboard RGB indicator (main.c), `beat` + `show` CLI (cli.c),
-                     T1S beat frame → lightshow (broadcast on the wire; consumer TBD)
-  Consumers planned: T1S position cmds → lemmy   (needs tempo/phase + choreography)
+  Consumers: onboard RGB indicator (main.c), LED0–7 VU meter (vu_meter.c),
+             UART1 telemetry → PC visualizer (uart_debug.c), `beat` + `show` CLI (cli.c),
+             T1S broadcast → lightshow (LED show) + lemmy (nod + jaw)
 ```
 
 ## 4. Source modules (`config.mcc/src/`)
-
-Current app modules on the fresh MCC config:
 
 | File | Role |
 |------|------|
 | `audio.c/h` | 48 kHz stereo ADC4 ISR, DC-block HPF, PWM-DAC passthrough, `Audio_SampleCallbackRegister` |
 | `beat_detect.c/h` | downsample + 512-pt FFT, spectral flux, kick detector, auto-ranging (features) |
 | `beat_engine.c/h` | onset decision over the features; publishes a `BeatFrame` |
-| `publish.c/h` | outbound-payload layer: maps `BeatFrame` → the compact `LightshowFrame` bus payload (lemmy position commands join here later) |
+| `publish.c/h` | outbound-payload layer: maps `BeatFrame` → the compact `LightshowFrame` bus payload |
 | `t1s_follower.c/h` | OA-TC6 / LAN8651 10BASE-T1S PLCA follower (SPI1) + `tc6-conf.h`; presence heartbeat + beat-frame broadcast (`0x88B8`) |
 | `rgb_led.c/h` | onboard RGB LED (three SCCP PWM channels) |
+| `vu_meter.c/h` | board LED0–LED7 as an audio VU meter off `raw_env` |
 | `uart_debug.c/h` | UART1 GUI telemetry: `D,`/`S,` lines → PC visualizer (`tools/gui/puppet.py`), non-blocking TX ring |
 | `cli.c/h` | UART2 command line (embedded-cli), `main.c` glues it all together |
 
 MCC-generated files under `config.mcc/mcc_generated_files/` — **do not edit** (project rule).
 
-### Parked in `config.mcc.bak/`
-
-The pre-migration tree (imported `dspicguitarhero` modules) is retained for re-integration or
-retirement: `nod_engine` (puppet choreography → the future **lemmy command source**), `servo`
-(local RC-servo, role → lemmy), `ws2812` (strip, role → lightshow), and the original `main.c`
-(tempo tracking + phase oscillator + WS2812 effects, the source of the deferred tempo/phase work).
-(The parked `uart_debug` was superseded — the UART1 app port landed as a re-scoped GUI telemetry
-emitter, `config.mcc/src/uart_debug.{c,h}`; its `NodEngine_*`/frame-timing fields no longer exist.)
+The imported `dspicguitarhero` actuation code (`servo`, `nod_engine`, `ws2812`, and the original
+`main.c` with its tempo/phase oscillator) is not built here. Its roles moved to lemmy (`nod_engine`
+port) and lightshow (WS2812 effects port). The pre-migration tree was kept as a local, git-ignored
+`config.mcc.bak/`; it is not in the repo.
 
 ## 5. Interfaces
 
@@ -145,11 +124,11 @@ emitter, `config.mcc/src/uart_debug.{c,h}`; its `NodEngine_*`/frame-timing field
   kick beat flags, kick strength, bass/mid+high flux, absolute envelope, bass-dominance. This is the
   data the on-bus formats are derived from. Field table in
   [`docs/beat-detection.md`](docs/beat-detection.md) §6.
-- **`LightshowFrame` (lightshow bus payload, on the wire)** — `publish` builds one per
-  `BeatFrame` (~23.4 Hz): an 8-byte frame (`seq`, `energy`, `bass`, `treble`, `kick`, `flags`, and
-  reserved `tempo`/`phase`), all normalized to 0–255. `t1s_follower` broadcasts it under **ethertype
-  `0x88B8`** (dst `FF:FF:FF:FF:FF:FF`) at the frame rate. The **lightshow consumer** (decode + LED
-  drive) is the remaining B4 piece. Field detail in the journal's decision log.
+- **`LightshowFrame` (bus payload, on the wire)** — `publish` builds one per `BeatFrame`
+  (~23.4 Hz): an 8-byte frame (`seq`, `energy`, `bass`, `treble`, `kick`, `flags`, and reserved
+  `tempo`/`phase` = 0), all 0–255; `flags` = `PUB_FLAG_*` in `publish.h`. `t1s_follower` broadcasts
+  it under **ethertype `0x88B8`** (dst `FF:FF:FF:FF:FF:FF`), dropping a frame if PLCA isn't operating
+  or the previous one is still draining. Consumed by lightshow and lemmy.
 - **UART2 CLI @ 115200** — `info`, `beat` (latest detection frame), `show` (latest `LightshowFrame`),
   `audio` (raw/filtered levels + peaks), `rgb`, `t1s` (status incl. a `beat tx` counter; + `t1s id` /
   `t1s plca`), `gui` (GUI telemetry on/off + band), `reset`.
@@ -158,30 +137,19 @@ emitter, `config.mcc/src/uart_debug.{c,h}`; its `NodEngine_*`/frame-timing field
   for the PC visualizer `tools/gui/puppet.py`. `phase`/`bpm` are 0 (no tempo/phase layer yet) and the
   reported frame period is the constant 23.4375 Hz. Toggle with the `gui` CLI command. Separate from
   the UART2 CLI — this is a machine-readable stream, not an interactive console.
-- **T1S presence heartbeat** — ethertype `0x88B6`, `node_type = 6` (beat source), so marvin's node
-  table sees beatbox once a coordinator is on the wire. (marvin-side decode of `node_type = 6` is a
-  follow-up; until then it lists beatbox by src-MAC / id 5.)
+- **T1S presence heartbeat** — ethertype `0x88B6`, every 500 ms once PLCA is operating; v2 payload
+  (20 bytes, incl. tx/rx/crc/sym counters), `node_type = 6` (beat source). marvin lists beatbox by
+  node id 5 ([`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md) §7.2).
+- **Inbound:** beatbox has no control channel; `0x88B5` frames are only logged for diagnostics.
 
-### Planned (B4)
+### Not yet built
 
-- **lemmy position commands** — beatbox computes neck/jaw targets (the ported `nod_engine`
-  choreography) and sends them to lemmy over the bus. Payload/ethertype TBD; shared design with
-  lemmy (which drops its own beat-driven nod and becomes a position follower).
-- **lightshow beat frame** — the `LightshowFrame` is now produced *and* broadcast on the bus
-  (ethertype `0x88B8`, `t1s_follower.c`); what remains for B4 is the **lightshow consumer** — accept
-  `0x88B8`, decode the 8 bytes, and drive its LEDs. The `tempo`/`phase` bytes stay reserved until the
-  tempo layer lands (the frame's reactive fields work without it).
-
-The **lemmy** position-command format still depends on the **tempo/BPM + phase** layer (a downstream
-consumer of the beat events) and the ported choreography, neither yet done. lightshow's reactive
-frame does not.
+- **Tempo/BPM + phase** — would fill the frame's reserved `tempo`/`phase` bytes (lightshow's comet
+  switches to the wire phase when non-zero; lemmy tracks tempo itself).
 
 ## 6. Milestones
 
-T1S was brought up ahead of the pure-publisher rework (B3 before B1/B2), so the transport
-foundation exists while the local actuation is simply left parked rather than formally stripped.
-The journal's [Plan](docs/journal.md) tracks the fine-grained sub-steps (B0.5 device retarget,
-B0.5.5 clock tree, B0.6 per-peripheral MCC re-integration).
+The journal's [Plan](docs/journal.md) tracks the fine-grained sub-steps.
 
 - [x] **B0 — Import.** Firmware brought into `firmware/beatbox/`, cruft dropped, docs written.
 - [x] **B0.5 — Retarget to MPS512** (EV80L65A DIM on EV74H48A) via a **fresh MCC config** (not a
@@ -189,21 +157,17 @@ B0.5.5 clock tree, B0.6 per-peripheral MCC re-integration).
       PLL1 200 MHz / 100 MHz Fcy.
 - [~] **B0.6 — Re-integrate keep-set peripherals onto the fresh config.** Done: PWM audio + 48 kHz
       ADC trigger, ADC4 stereo audio, RGB LED, UART2 CLI, UART1 GUI telemetry (`uart_debug`).
-      Pending: ADC1 pot read.
+      Pending: ADC5 pot read.
 - [x] **Beat detection ported.** Audio passthrough (`audio.c`) → FFT feature extraction
       (`beat_detect.c`) → onset decision (`beat_engine.c`) → `BeatFrame`; `beat` CLI + onboard RGB
       indicator. Tempo/BPM + phase deferred (downstream of the beat events).
 - [x] **B3 — T1S on dsPIC33AK.** OA-TC6 follower + LAN8651 glue ported to dsPIC33A / XC-DSC (first
       non-PIC32CM node, first bus *talker*). PLCA follower **id 5**, presence heartbeat, `t1s` CLI.
-- [ ] **B1 — Pure-publisher rework.** Formalize dropping the parked on-node actuation
-      (`servo`/`nod_engine` → lemmy, `ws2812` → lightshow). Keep the PWM audio output and the RGB
-      indicator. Define the beat/command data model the bus will carry.
-- [ ] **B2 — Publish over UART fallback.** *(optional, now that T1S is up)* Emit position commands +
-      beat frame over UART1 first to prove the data model against lemmy/lightshow.
-- [~] **B4 — Live show.** Beatbox side of the lightshow path is live: the beat frame broadcasts over
-      T1S (`0x88B8`) at the frame rate, and marvin recognizes beatbox's heartbeat (id 5). Remaining:
-      the lightshow consumer (decode `0x88B8` → LEDs), then lemmy position commands (`0x88B9` unicast,
-      needs the tempo/phase + choreography layer).
+- [x] **B1 — Pure publisher.** beatbox builds no actuation code; the bus data model is the single
+      `LightshowFrame` broadcast (`publish.{c,h}`).
+- [~] **B4 — Live show.** Beat frame broadcasts over T1S (`0x88B8`); lightshow's show verified with
+      beatbox live; lemmy's nod/jaw consume the same frame (pending lemmy's on-hardware check).
+      Remaining: tempo/phase layer.
 
 ## 7. Provenance
 

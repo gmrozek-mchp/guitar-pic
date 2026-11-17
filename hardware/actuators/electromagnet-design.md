@@ -1,5 +1,7 @@
 # Electromagnet + Neodymium Magnet Actuation Design
 
+> **Status: candidate design.** No physical actuator has been chosen or built — see [`hardware/README.md`](../README.md).
+
 ## Overview
 
 This document describes an alternative actuation approach using electromagnets to attract small neodymium magnets attached to keyboard switch keys. This approach offers potentially quieter operation than traditional solenoids.

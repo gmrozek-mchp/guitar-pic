@@ -62,4 +62,4 @@ Point `--out` elsewhere to stage into a different tree.
   with black pillarbox/letterbox, no overlay. PNG.
 
 Both are offline-processed once; marvin decodes them into static RGB888 caches at boot
-(`firmware/marvin/default/src/game/art.c`) and loads with no runtime scaling.
+(`firmware/marvin/default/src/game/game_art.c`) and loads with no runtime scaling.

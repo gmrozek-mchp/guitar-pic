@@ -1,6 +1,6 @@
 # UDPHS / AIC boot interrupt-storm on SAM9x (bug report)
 
-**Status:** root-caused and fixed on hardware (SAM9X75 Curiosity Hybrid, marvin firmware). Fixes live in the MCC-generated tree — see the re-apply list in [`journal.md`](journal.md) (patches #11–#13) and the 2026-07-22 entry.
+**Status:** root-caused and fixed on hardware (SAM9X75 Curiosity Hybrid). **The fix in the tree is not Fix 1 below.** The AIC-mask approach (Fix 1) booted cleanly but broke the CDC connect path, so it was reverted (2026-08-03). The fix applied now quiesces UDPHS (`DETACH`, `UDPHS_IEN = 0`, clear all) in `SYS_Initialize` just before `AIC_INT_Initialize()` — `config/default/initialization.c`, re-apply patch #13 in [`journal.md`](journal.md). Fixes 2 and 3 are not applied; they stay documented as fallbacks (re-apply patches #11/#12, marked NOT APPLIED). §1–§6 (defect analysis) are still accurate and are what to file with Microchip; §7–§9 describe the earlier fix set.
 
 **Intended for:** filing with Microchip (Harmony `csp` AIC PLIB + Harmony USB device UDPHS driver).
 

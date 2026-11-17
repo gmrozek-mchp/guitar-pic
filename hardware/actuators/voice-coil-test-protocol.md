@@ -1,5 +1,7 @@
 # Voice Coil Actuator - Test Protocol
 
+> **Status: candidate design.** No physical actuator has been chosen or built — see [`hardware/README.md`](../README.md).
+
 ## Purpose
 
 Validate the DIY voice coil actuator concept before building all 7 units. This test will confirm that sufficient force can be generated with the proposed magnet and coil configuration.

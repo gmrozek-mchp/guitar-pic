@@ -1,5 +1,7 @@
 # Electromagnet Actuation - Test Protocol
 
+> **Status: candidate design.** No physical actuator has been chosen or built — see [`hardware/README.md`](../README.md).
+
 ## Purpose
 
 Validate the electromagnet + neodymium magnet actuation concept before committing to full build. This low-cost test will determine if sufficient force can be generated at 4mm air gap.

@@ -6,7 +6,8 @@ start with [`docs/SPEC.md`](docs/SPEC.md) and [`docs/journal.md`](docs/journal.m
 
 This package is the host-side pipeline (PyTorch): train a causal CNN, then int8
 post-training quantise it into the `model_weights.h` the fretboard firmware runs.
-Input is the actuator-labelled CSV from `marvin-perf export-ml --labels=actuator-fb`.
+Input is the teacher-labelled CSV from `marvin-perf export-ml --labels commanded-fb`
+([`docs/training.md`](docs/training.md)).
 
 ## Layout
 
@@ -30,25 +31,29 @@ export UV_CACHE_DIR="$TMPDIR/uv-cache"   # only needed inside a restricted sandb
 # size the causal window from real data (no torch needed)
 uv run edge-ai lag path/to/song-expert.csv --curve
 
-# install the heavy deps and train
+# install the heavy deps; train with one song held out, then evaluate it
 uv sync --group train --group dev
 uv run edge-ai train --holdout heldout.csv song1.csv song2.csv song3.csv \
-    --window 60 --out model.pt
+    --channels 16 --window 85 --out model.pt
 uv run edge-ai eval --model model.pt heldout.csv
 
-# int8 quantise -> firmware header (deploy model: --no-holdout --channels 16 --window 85)
+# deploy model (all songs) -> int8 -> firmware header
+uv run edge-ai train --no-holdout --channels 16 --window 85 --strum-weight 5 --epochs 50 \
+    --out model.pt song*.csv
 uv run edge-ai quantize --model model.pt --name hard \
-    --strum-thresh 0.80 --out ../../firmware/fretboard/model_weights.h song1.csv song2.csv
+    --strum-thresh 0.80 --strum-hold 8 --strum-refractory 8 \
+    --out ../../firmware/fretboard/model_weights.h song*.csv
 
 # visualise the model (summary + RF cone always; graph needs the graphviz binary)
 uv sync --group train --group viz   # adds torchinfo, torchview, matplotlib
 uv run edge-ai viz --model model.pt --rf-cone rf_cone.png --graph graph.svg
 
-# tests (stdlib-only; needs the dev group for pytest)
+# tests (bit-exact tests compile the fretboard inference C; they skip without the train group or a host cc)
 uv run --group dev pytest
 ```
 
 For block diagrams beyond these, export the float model to ONNX and open it in
 [Netron](https://netron.app), or redraw in PlotNeuralNet / NN-SVG.
 
-Corpus is Expert-only, one song held out — see [`docs/training.md`](docs/training.md) §4.
+The corpus is one difficulty (currently 5 hard songs) — see [`docs/training.md`](docs/training.md) §3.
+`--window` must be ≥ the receptive field (85) or the firmware's streaming engine won't build.

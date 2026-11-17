@@ -1,5 +1,7 @@
 # DIY Voice Coil Actuator Design
 
+> **Status: candidate design.** No physical actuator has been chosen or built — see [`hardware/README.md`](../README.md).
+
 ## Overview
 
 This document describes a custom voice coil actuator designed to fit around a standard keyboard switch (Cherry MX compatible) and actuate by pulling on a custom keycap/bobbin assembly.

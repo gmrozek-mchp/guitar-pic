@@ -16,9 +16,10 @@ firmware design, milestones), read [`../SPEC.md`](../SPEC.md) — this journal d
 
 ## Current focus
 
-**Bring lightshow up on the T1S bus first, then add the LED output.** lightshow is the **lighting
-node**: a PIC32CM6408PL10048 PLCA follower (id 7) that will drive LEDs / lamps in time to the music.
-Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 beat-driven light show.
+**Working on hardware; remaining work is verification.** lightshow is the **lighting node**: a
+PIC32CM6408PL10048 PLCA follower (id 7) driving 2× WS2812 strands from beatbox's `0x88B8` beat frame
+(L1–L3 working, verified with beatbox live). Open: on-hardware checks of the `0x88B9` output gate +
+heartbeat echo, idle-clear on silence, and the 5 V rail / VDDIO2 / bit-timing items under L2.
 
 ## Plan
 

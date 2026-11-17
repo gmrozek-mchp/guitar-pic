@@ -2,15 +2,12 @@
 
 The **beat-source node** for the Guitar Hero Bot system — a Microchip
 **dsPIC33AK512MPS512** DSC that listens to line-level audio, runs real-time FFT
-beat detection, and publishes the result to the animation and lighting nodes over
-10BASE-T1S: **position commands → [`lemmy`](../lemmy)** and a compact **beat frame →
-[`lightshow`](../lightshow)**. It is the system's ear and its choreography brain;
-it drives no actuator on the bus itself.
+beat detection, and broadcasts a compact **beat frame** over 10BASE-T1S that
+[`lightshow`](../lightshow) (LED show) and [`lemmy`](../lemmy) (puppet nod + jaw)
+both consume. It is the system's ear; it drives no actuator on the bus itself.
+Imported from the standalone `dspicguitarhero` animatronic.
 
-Imported from the standalone `dspicguitarhero` head-banging animatronic and rebuilt
-on a fresh MCC config for the MPS512.
-
-## What works today (on the bench)
+## What works today
 
 - **Audio in → beat events.** ADC4 samples stereo line-in at 48 kHz; a 512-point FFT
   extracts spectral-flux / envelope / kick features; a two-band onset detector emits
@@ -20,13 +17,14 @@ on a fresh MCC config for the MPS512.
   clean speaker feed (hiss in both the ADC and PWM stages; see the journal).
 - **Live RGB indicator.** The onboard LED flashes on beats (kick = white, bass = red,
   mid/high = blue) — a quick visual check that detection is tracking the music.
+- **VU meter** on board LED0–LED7 (fills from LED7 up).
+- **PC beat visualizer** — UART1 telemetry for [`tools/gui/`](tools/gui/README.md).
 - **UART2 CLI** for bench control and diagnostics (below).
-- **10BASE-T1S PLCA follower (id 5).** Brings up the LAN8651 MAC-PHY, syncs PLCA, and
-  announces presence via a heartbeat once a coordinator is on the wire.
+- **10BASE-T1S PLCA follower (id 5).** Heartbeats presence to marvin and broadcasts
+  the 8-byte beat frame (ethertype `0x88B8`, ~23.4 Hz).
 
-Not yet done: publishing beat frames / position commands **on the bus** (milestone
-B4), and the **tempo/BPM + phase** layer those need. The imported puppet-motion and
-WS2812 effects remain parked in `config.mcc.bak/`.
+Not yet done: a **tempo/BPM + phase** layer (the frame's `tempo`/`phase` bytes are
+0) and reading the sensitivity pot.
 
 ## Architecture at a glance
 
@@ -46,8 +44,11 @@ no-RTOS cooperation model, in [`docs/beat-detection.md`](docs/beat-detection.md)
 | `audio.{c,h}` | 48 kHz ADC ISR, DC-block HPF, PWM passthrough, sample callback |
 | `beat_detect.{c,h}` | downsample + 512-pt FFT + flux/envelope/kick feature extraction |
 | `beat_engine.{c,h}` | onset decision over the features → publishes a `BeatFrame` |
-| `t1s_follower.{c,h}` | OA-TC6 / LAN8651 10BASE-T1S PLCA follower |
+| `publish.{c,h}` | `BeatFrame` → 8-byte `LightshowFrame` bus payload |
+| `t1s_follower.{c,h}` | OA-TC6 / LAN8651 10BASE-T1S PLCA follower + beat-frame broadcast |
 | `rgb_led.{c,h}` | onboard RGB LED (three SCCP PWM channels) |
+| `vu_meter.{c,h}` | LED0–LED7 VU meter |
+| `uart_debug.{c,h}` | UART1 telemetry for the PC visualizer |
 | `cli.{c,h}` | UART2 command line (embedded-cli) |
 
 ## CLI
@@ -58,14 +59,18 @@ Over UART2 (`beatbox>` prompt):
 |---|---|
 | `info` | node identity / bring-up state |
 | `beat` | latest beat frame — envelope, bass/full flux, kick, beat flags |
+| `show` | latest `LightshowFrame` (the bus payload) |
 | `audio` | raw + filtered L/R sample and peak-to-peak envelope |
 | `rgb <r> <g> <b>` / `rgb off` | set the onboard RGB LED (0–255) |
-| `t1s` / `t1s id` / `t1s plca` | T1S link status; MAC-PHY id / PLCA diagnostics |
+| `t1s` / `t1s id` / `t1s plca` | T1S link status (incl. `beat tx` counter); MAC-PHY id / PLCA diagnostics |
+| `gui [on\|off]` | UART1 visualizer telemetry on/off |
 | `reset` | software reset |
 
 ## Build
 
-Toolchain: **XC-DSC v3.31**. Build with CMake → Ninja (MPLAB project `beatbox`):
+Toolchain: **XC-DSC v3.31** (not XC32). Open the MPLAB project `beatbox`
+(`.vscode/beatbox.mplab.json`) in MPLAB for VS Code to build and program over the
+board's on-board PKOB4, or build from the command line with CMake → Ninja:
 
 ```
 cmake -G Ninja \

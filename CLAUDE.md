@@ -8,7 +8,7 @@ Never run `git commit` on your own initiative. Always ask first and wait for exp
 
 ## Specs orient you; journals track progress
 
-The repo has three subprojects (marvin, fretboard, fret-tuner) plus a top-level system spec.
+The repo has seven firmware subprojects (marvin, fauxmote, guitar, fretboard, beatbox, lemmy, lightshow), host tools under `tools/`, and top-level docs (`README.md`, `SPEC.md`, booth `SETUP.md` / `DEMO.md`).
 
 - **[`SPEC.md`](SPEC.md) is the cross-subproject overview** — read it first if a task spans subprojects or if you're new to the repo. It points at each subproject's spec and journal.
 - For non-trivial work inside a single subproject, read that subproject's spec **and** journal first (see below).
@@ -21,21 +21,21 @@ Current journals:
 
 - `firmware/marvin/docs/journal.md` — marvin firmware (SAM9X75 vision-based guitar-playing robot)
   - System-level spec for marvin lives at `firmware/marvin/docs/spec.md` — **read it first** alongside the journal on any non-trivial marvin task. The spec is the durable description of what marvin is (purpose, subsystems, interfaces, milestones); the journal is the running diary.
-- `firmware/fretboard/docs/journal.md` — fretboard firmware (PIC32CM phototransistor **detector** node: ADC stream out; re-scoping from sensor/actuator — the actuator role is moving to the `guitar` subproject, but fretboard still actuates until that node is proven)
+- `firmware/fretboard/docs/journal.md` — fretboard firmware (PIC32CM PL10 phototransistor + on-MCU NN **detector** node; T1S follower id 4; streams ADC to marvin and, when active, drives fauxmote + guitar peer-to-peer)
   - Spec for fretboard lives at `firmware/fretboard/SPEC.md` — read it alongside the journal on any non-trivial fretboard task.
-- `firmware/guitar/docs/journal.md` — guitar firmware (PIC32CM PL10 Wii-guitar **actuator** node: receives marvin's button bitmask over T1S → open-drain GPIO; T1S PLCA follower id 3. Working on hardware — follower up, marvin drives it over T1S, presence heartbeat + CLI)
+- `firmware/guitar/docs/journal.md` — guitar firmware (PIC32CM PL10 **indicator** node on the ATE_2026 board: receives the button bitmask over T1S → status LEDs; T1S follower id 3. Working on hardware)
   - Spec for guitar lives at `firmware/guitar/SPEC.md` — read it alongside the journal on any non-trivial guitar task.
-- `firmware/lemmy/docs/journal.md` — lemmy firmware (PIC32CM PL10 **animation** node: animated guitar-playing puppet, two R/C servos — neck nod + jaw; T1S PLCA follower id 6. Bring-up — base MCC project scaffolded; T1S follower first, motion second)
+- `firmware/lemmy/docs/journal.md` — lemmy firmware (PIC32CM PL10 **animation** node: animated guitar-playing puppet, two R/C servos — neck nod + jaw; T1S follower id 6. On the bus; nods to beatbox's beat frame, jaw runs locally)
   - Spec for lemmy lives at `firmware/lemmy/SPEC.md` — read it alongside the journal on any non-trivial lemmy task.
-- `firmware/lightshow/docs/journal.md` — lightshow firmware (PIC32CM PL10 **lighting** node: drives LEDs/lamps in time to the music; T1S PLCA follower id 7, `node_type = 5`. Bring-up — bootstrapped from lemmy's T1S follower; T1S follower first, LED output second)
+- `firmware/lightshow/docs/journal.md` — lightshow firmware (PIC32CM PL10 **lighting** node: drives LEDs/lamps in time to the music; T1S follower id 7, `node_type = 5`. On the bus; WS2812 effects from beatbox's beat frame)
   - Spec for lightshow lives at `firmware/lightshow/SPEC.md` — read it alongside the journal on any non-trivial lightshow task.
-- `firmware/beatbox/docs/journal.md` — beatbox firmware (dsPIC33AK512MPS512 **beat-source** node: listens to audio, runs FFT beat detection, and publishes position commands → lemmy + a beat frame → lightshow; T1S PLCA follower id 5, planned. Imported from the standalone `dspicguitarhero` project; runs autonomously today (local servo/RGB/WS2812), not yet on the bus)
+- `firmware/beatbox/docs/journal.md` — beatbox firmware (dsPIC33AK512MPS512 **beat-source** node: listens to audio, runs FFT beat detection, and broadcasts a beat frame consumed by lemmy + lightshow; T1S follower id 5. On the bus)
   - Spec for beatbox lives at `firmware/beatbox/SPEC.md` — read it alongside the journal on any non-trivial beatbox task. **XC-DSC toolchain** (not XC32).
 - `tools/edge-ai/docs/journal.md` — edge-ai (distill marvin's gameplay commands into a small ML model for the fretboard MCU)
   - Specs for edge-ai live under `tools/edge-ai/docs/` (`SPEC.md` + the doc map there) — read them alongside the journal on any non-trivial edge-ai task.
-- `firmware/fauxmote/docs/journal.md` — fauxmote (ESP32 firmware emulating a Wiimote + guitar extension to a real Wii; parallel proof-of-concept)
+- `firmware/fauxmote/docs/journal.md` — fauxmote (ESP32 firmware emulating a Wiimote + guitar extension to a real Wii; T1S follower id 1; **the game input** — what actually plays the Wii)
   - Spec for fauxmote lives at `firmware/fauxmote/SPEC.md` — read it alongside the journal on any non-trivial fauxmote task.
-- `tools/gameplay/docs/journal.md` — gameplay (offline host-side prototype for marvin's GH3 game-state observer/controller; algorithms proven against the screen corpus, then ported to a firmware `gameplay_engine`)
+- `tools/gameplay/docs/journal.md` — gameplay (offline host-side prototype for marvin's GH3 game-state observer/controller; algorithms proven against the screen corpus, largely ported to marvin's `game/`)
   - Orienting docs: marvin `spec.md` §4.8 and `firmware/marvin/docs/gh3_navigation.md` — read them alongside the journal on any non-trivial gameplay task.
 
 When working on a subproject that has a journal:

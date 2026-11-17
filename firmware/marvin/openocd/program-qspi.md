@@ -23,46 +23,21 @@ Block-Erase is **non-uniform** — see the caveat below.
 
 ## Prerequisite: a u-boot with `sf` support
 
-The flasher u-boot must include the SPI-flash stack (`CONFIG_CMD_SF` + the SAM9X7
-QSPI controller + `CONFIG_SPI_FLASH_SST`).
+The committed NAND flasher (`../binaries/sam9x75-uboot-nandflash-flasher-2025.07.bin`)
+already includes the SPI-flash stack — `sf probe 0` detects the SST26 — so it is the
+default `UBOOT_BIN` and no separate QSPI flasher is needed. To check a different
+u-boot, stage it without programming and probe by hand:
 
-**Resolved for this board: the committed NAND flasher
-(`sam9x75-uboot-nandflash-flasher-2025.07.bin`) already includes SF** — `sf probe 0`
-detects the SST26 — so it is the **default `UBOOT_BIN`** and no separate qspiflash
-build is needed. The steps below are only for re-verifying on a new board/u-boot.
+```sh
+cd firmware/marvin/openocd
+UBOOT_BIN=<other-u-boot.bin> ./program-qspi.sh shell
+screen /dev/cu.usbserial-XXXX2 115200      # then: sf probe 0   (exit: Ctrl-A k)
+```
 
-1. **Confirm SF in a u-boot** — the `shell` mode stages just the bootstrap + u-boot
-   (no programming) and hands you the console:
-
-   ```sh
-   cd firmware/marvin/openocd
-   UBOOT_BIN=../binaries/sam9x75-uboot-nandflash-flasher-2025.07.bin ./program-qspi.sh shell
-   # then, in another terminal:
-   screen /dev/cu.usbserial-XXXX2 115200      # exit: Ctrl-A k
-   U-Boot> sf probe 0
-   ```
-
-   If it prints `SF: Detected sst26...`, you're done — set `UBOOT_BIN` to that
-   binary for the real runs and skip the build. (Many Microchip u-boot configs
-   enable SF regardless of boot medium.) `qspi_console.py` also bails with a clear
-   message if `sf probe` isn't supported, so a real run can't silently half-flash.
-
-2. **Otherwise build the qspiflash variant** (one-time, same toolchain as the NAND
-   flasher — see program-nand.md for the macOS gmake/OpenSSL notes):
-
-   ```sh
-   git clone -b linux4microchip-2026.04 https://github.com/linux4microchip/u-boot-mchp.git
-   cd u-boot-mchp
-   export HOST_EXTRACFLAGS="-I$(brew --prefix openssl@3)/include"
-   export HOSTLDFLAGS="-L$(brew --prefix openssl@3)/lib"
-   gmake CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_pro_qspiflash_defconfig
-   gmake CROSS_COMPILE=arm-none-eabi- -j8       # -> u-boot.bin (entry 0x23f00000)
-   cp u-boot.bin <repo>/firmware/marvin/binaries/sam9x75-uboot-qspiflash-flasher-2025.07.bin
-   ```
-
-   Verify the entry/link address is still `0x23f00000` (`CONFIG_TEXT_BASE`); the
-   scripts load u-boot there. If a `qspiflash` defconfig doesn't exist, start from
-   the nandflash one and enable `CMD_SF` + the QSPI driver + SST flash.
+`SF: Detected sst26...` means it works. A u-boot without SF needs `CONFIG_CMD_SF`, the
+SAM9X7 QSPI driver and `CONFIG_SPI_FLASH_SST`, linked at `0x23f00000` (build recipe:
+[`program-nand.md`](program-nand.md)). `qspi_console.py` bails clearly if `sf probe`
+fails, so a real run can't half-flash.
 
 ## Jumpers / physical prerequisites
 
@@ -76,10 +51,10 @@ build is needed. The steps below are only for re-verifying on a new board/u-boot
 - Kill any debug OpenOCD server holding the FT4232H, and close any serial monitor
   on the DBGU console.
 
-> This jumper state (JP4 IN, JP3 OUT, no SD) is also fine for `load-ram.sh`: with no
-> bootable image anywhere, RomBOOT falls through to the monitor either way — so the
-> dev loop is **flash QSPI → load-ram marvin** without re-jumpering. (Verify on first
-> use that RomBOOT skips the non-bootable QSPI with JP4 IN.)
+> This jumper state (JP4 IN, JP3 OUT, no SD) should also suit `load-ram.sh` — with no
+> bootable image anywhere RomBOOT falls through to the monitor — so the dev loop is
+> **flash QSPI → load-ram marvin** without re-jumpering. Not yet confirmed on hardware
+> that RomBOOT skips the header-less QSPI with JP4 IN.
 
 ## Program
 
@@ -117,21 +92,22 @@ up to 64 KiB, which is also the whole splash region.
   erases 8, 32 or 64 KiB **depending on address**, but u-boot's spi-nor sets a flat
   64 KiB `erase_size`, so `sf erase 0x0 …` issues `D8h` at `0x0` (clearing only
   `0x0–0x1FFF`), then jumps to `0x10000` — leaving `0x2000–0xFFFF` un-erased and
-  reporting `Erased: OK`. The following `sf write` then ANDs into stale bits (NOR
-  only clears), which is why the splash used to come back with a corrupted band ~11
-  rows from the top. **The layout keeps both non-uniform bands out of the host
-  window, so this can't recur** — and the script refuses any write that leaves it.
+  reporting `Erased: OK`; the following `sf write` then ANDs into stale bits (NOR
+  only clears). **The layout keeps both non-uniform bands out of the host window**,
+  and the script refuses any write that leaves it.
 - **Regions above `0x7F0000` are firmware-only:** the reserved band and the settings
   ring are erased by firmware's uniform 4 KiB Sector-Erase (`20h`), which has no
-  address dependence. (The `qspi`/`settings` *firmware* tools still scribble in the
-  settings region — see the partition-map decision in the journal.)
+  address dependence. (The firmware `qspi` smoke test's scratch lands in the
+  settings region; the settings CRC fallback makes that non-fatal.)
 - **A full-chip escape hatch exists** if the low blocks ever need clearing from
   u-boot: `sf erase 0 0x800000` matches the device size, which takes u-boot's
   whole-chip path (`C7h`) and is uniform. It wipes splash, assets *and* settings, so
   it's a recovery tool, not part of the normal flow.
-- **Splash format** is raw RGBA8888 1280×800 = 4,096,000 bytes — the exact size
-  `splash.c` expects (it rejects any other size). Asset blob formats are defined by
-  whatever the firmware asset reader expects (compile-time offsets for now).
+- **Splash format** is raw RGBA8888 1280×800 = 4,096,000 bytes — exactly what
+  `ui/screens/splash/screen_splash.c` reads in one shot from `QSPI_SPLASH_OFFSET`
+  (it does no size check; a short blob leaves stale flash in the tail). Build it with
+  [`../data/ui/make-splash.sh`](../data/ui/make-splash.sh). Nothing in the firmware
+  reads the assets region yet.
 - **u-boot parses command args as hex** — the script passes all lengths/offsets in
   hex. `sf write` writes the file's exact byte count; `sf erase` rounds up to u-boot's
   **64 KiB** erase block for this part (a 4 KiB-aligned length gives `ERROR -22`). The

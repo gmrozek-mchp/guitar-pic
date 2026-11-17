@@ -2,7 +2,7 @@
 
 Authoritative configuration reference for the 720p60 HDMI capture path on SAM9X75. Every stage, every register bit that matters, with datasheet citations. When something breaks, start here before grepping code.
 
-**Status:** working as of 2026-05-02. Validated at **1280×720p60** and **720×480p60**, native BGR888 packed (3 B/pixel) in DDR, no CPU post-processing. The pipeline is resolution-agnostic — PFE crop, DMA size, and framebuffer offsets all scale from the TC358743-detected `{width, height}` automatically.
+**Status:** working. Validated at **1280×720p60** (Raspberry Pi bring-up source) and **720×480p60** (the production source: Wii → ElectronWarp component→HDMI), native BGR888 packed (3 B/pixel) in DDR, no CPU post-processing. The pipeline is resolution-agnostic — PFE crop, DMA size, and framebuffer offsets all scale from the TC358743-detected `{width, height}` automatically. Display of the captured frame is in [`display_path.md`](display_path.md).
 
 Datasheet references are to **SAM9X7 Series DS60001813** (sections 48 = MIPI CSI / D-PHY, 49 = CSI2DC, 50 = ISC). TC358743 refs are to the Toshiba datasheet + mainline Linux `drivers/media/i2c/tc358743.c`.
 
@@ -11,7 +11,7 @@ Datasheet references are to **SAM9X7 Series DS60001813** (sections 48 = MIPI CSI
 ## 1. Pipeline overview
 
 ```
-HDMI source (Pi 720p60 RGB)
+HDMI source (Pi 720p60 RGB for bring-up; Wii via ElectronWarp 480p60 in use)
         │
         ▼
 TC358743 HDMI-to-CSI-2 bridge
@@ -53,8 +53,8 @@ DDR3 framebuffer  (1280 × 720 × 3 = 2,764,800 B/frame)
 
 ### 2.1 HDMI source
 
-- 1280×720p @ 60 Hz, RGB (not YCbCr), progressive.
-- Any stable DVI/HDMI source works. Raspberry Pi with `/boot/firmware/config.txt` forced to `hdmi_group=1 hdmi_mode=4 hdmi_force_hotplug=1 hdmi_drive=2` is the known-good reference.
+- In use: the Wii through an ElectronWarp component→HDMI converter, 720×480p60. Its active picture sits inside dead black bars, detected at runtime downstream ([`ui_compositor.md`](ui_compositor.md) §15).
+- Bring-up reference: 1280×720p @ 60 Hz, RGB (not YCbCr), progressive. Any stable DVI/HDMI source works. Raspberry Pi with `/boot/firmware/config.txt` forced to `hdmi_group=1 hdmi_mode=4 hdmi_force_hotplug=1 hdmi_drive=2` is the known-good reference.
 - Pixel rate: 74.25 MHz (standard CEA-861 VIC 4 / 720p60).
 
 Full-range vs limited-range is sender-controlled. TC358743's AVI InfoFrame carries whatever the source advertises; currently Pi sends limited-range, so peak values in DDR are `0xFE` not `0xFF`. EDID colorimetry overrides are a separate future task.
@@ -70,7 +70,7 @@ Driver: `firmware/marvin/default/src/video/tc358743.c`. Register values derived 
 | `CONFCTL` | 0x0007 | PCLK divider off, 3-byte pixel pack, no audio |
 | `FIFOCTL` | 0x0176 | FIFO level 374 (kernel hardcodes at all rates) |
 | `VI_MODE` | 0xE6 | RGB888 input, 16-bit HDMI RX side |
-| `VI_REP`  | 0x00 | **No pixel replication / doubling** (critical — was 0x80 in earlier 480p test and caused 16-row phase drift) |
+| `VI_REP`  | 0x00 | **No pixel replication / doubling** (critical — `0x80` causes a 16-row phase drift at 480p) |
 | `VOUT_SET2` / `VOUT_SET3` | 0x01 / 0x08 | Output color format / range handling |
 | CSI-2 DT | 0x24 | RGB888 per CSI-2 spec |
 
@@ -89,7 +89,7 @@ Operating mode: **continuous clock** (`TXOPTIONCNTRL = CONTCLKMODE`). This is th
 
 Driver: `firmware/marvin/default/src/config/default/vision/drivers/csi/` (MCC-generated, slightly tweaked).
 
-Key setting — **the one parameter that took us the longest to get right**:
+Key setting:
 
 ```c
 // video/isc_capture.c:29
@@ -98,7 +98,7 @@ Key setting — **the one parameter that took us the longest to get right**:
 
 This is the `HSFREQRANGE` DWC D-PHY test-mode value. SAM9X75 is **DWC Gen3** (verified from Linux DT: `snps,dw-dphy-rx` with `snps,phy_type=<0>`). The Gen3 table entry for the 950–1000 Mbps band is `0x0A`.
 
-- **Wrong** (used during earlier debug): `0x1A` — that's a Gen2 value. At 972 Mbps Gen2 bands diverge from Gen3, symptom is persistent `PHY_FATAL.SOT_SYNC_ERR = 0x3`.
+- **Wrong:** `0x1A` — that's a Gen2 value. At 972 Mbps Gen2 bands diverge from Gen3, symptom is persistent `PHY_FATAL.SOT_SYNC_ERR = 0x3`.
 - **Correct** for 972 Mbps Gen3: `0x0A`.
 - Changes with bitrate. If bitrate moves, look up Gen3 table (DesignWare MIPI D-PHY RX Gen3 Databook), don't copy values from other SoC examples.
 
@@ -176,7 +176,7 @@ ISC_REGS->ISC_PFE_CFG2 = ISC_PFE_CFG2_ROWMIN(0u)
 ISC_REGS->ISC_PFE_CFG0 |= ISC_PFE_CFG0_COLEN_1 | ISC_PFE_CFG0_ROWEN_1;
 ```
 
-With RMS=1, COLMAX is in **byte-stream word units** (4 bytes per ISC sample), so COLMAX = `(W × 3) / 4 - 1`. Under the previous RMS=0 path, COLMAX was in pixel units (`W - 1`).
+With RMS=1, COLMAX is in **byte-stream word units** (4 bytes per ISC sample), so COLMAX = `(W × 3) / 4 - 1` (with RMS=0 it would be pixel units, `W - 1`).
 
 ### 2.6 ISC — Rounding, Limiting, Packing (RLP)
 
@@ -222,7 +222,7 @@ ISC_REGS->ISC_DCFG = ISC_DCFG_IMODE_PACKED32
                    | ISC_DCFG_CMBSIZE_BEATS32;
 ```
 
-The write is safe because nothing in MCC writes DCFG again after this point (the redundant-call to `DRV_ISC_Configure_DMA` was removed). `DRV_ISC_Configure` already calls it internally at `drv_isc.c:381` — don't add a second call.
+The write is safe because nothing in MCC writes DCFG again after this point. `DRV_ISC_Configure` already calls `DRV_ISC_Configure_DMA` internally — don't add a second call.
 
 **Descriptor view:** `DCTRL.DVIEW = 0` (PACKED / single channel). `DAD0` holds the current buffer base address. `DST0` = 0 (contiguous frame, no row stride gap).
 
@@ -291,11 +291,11 @@ All five match expectation across the full 1280×720 extent (rows 0..719 complet
 
 | Stage | File | Line | Change |
 |---|---|---|---|
-| TC358743 D-PHY timing | `default/src/video/tc358743.c` | 27–39 | 972 Mbps timing constants (kernel-derived) |
+| TC358743 D-PHY timing | `default/src/video/tc358743.c` | 26–34 | 972 Mbps timing constants (kernel-derived) |
 | TC358743 PLL | `default/src/video/tc358743.c` | 14–22 | `PLL_PRD=4`, `PLL_FBD=144` |
 | CSI HSFREQRANGE | `default/src/video/isc_capture.c` | 29 | `0x0A` for DWC Gen3 @ 972 Mbps |
 | CSI bitrate override | `default/src/video/isc_capture.c` | 115 | `csiObj->csiBitRate = ISC_CAP_CSI_BITRATE` (MCC default is `0x16`) |
-| CSI2DC RMS=1 | `default/src/config/default/vision/drivers/csi2dc/plib_csi2dc.c` | 78–81 | added `CSI2DC_VPCFGR_RMS_1` to VPCFGR write (byte-stream mode) |
+| CSI2DC RMS=1 | `default/src/config/default/vision/drivers/csi2dc/plib_csi2dc.c` | 81 | `CSI2DC_VPCFGR_RMS_1` in the VPCFGR write (MCC re-apply patch #3) |
 | CSI2DC free-run | `default/src/video/isc_capture.c` | 120 | `enableMIPIFreeRun = true` |
 | ISC PFE crop | `default/src/video/isc_capture.c` | 249–253 | direct `PFE_CFG1/2` + `COLEN`/`ROWEN` writes |
 | ISC DMA config | `default/src/video/isc_capture.c` | 263–265 | direct `DCFG` write (PACKED32 + BEATS32×2) |
@@ -315,11 +315,15 @@ What lands on the DBGU during normal operation:
 4. **`ISC_Capture: capture started`** — green light. Quiet from here.
 5. **TC358743 format-change events** — if the source switches resolution mid-run, the watcher prints a new detection line and the capture module re-configures.
 
-If deeper inspection is needed (byte-level probes, phase scanners, content bounding box), resurrect `ISC_Capture_ProbeFrame()` from git history (commit `29a21bf` has the last full version) and wire it into a temporary 1-Hz tick.
+For byte-level inspection, a one-shot full frame can be pulled over USB with `marvin-perf snapshot` (spec §4.6.8). An older in-firmware probe (`ISC_Capture_ProbeFrame()`) is in git history at commit `29a21bf`.
 
 ---
 
 ## 6. Known carry-forwards
+
+- **Only 972 Mbps/lane works.** Lower lane rates (594, 540) fail with `ErrSotSyncHS` on both lanes even though they are ample for 480p; the RX band setting is correct for each. Keep `PLL_FBD=144` / `HSFREQRANGE=0x0A` (journal 2026-07-01).
+- **Capture stall watchdog.** The D-PHY RX can drop out of HS lock under heavy DDR load (e.g. album-art decode + full-panel scanout). `capture_watchdog()` in `video/video.c` re-arms the whole chain if the frame count stalls for `VIDEO_STALL_TIMEOUT_MS` (500 ms) while the source is locked, dumping the RX diagnostics (`ISC_Capture_DumpDiag`) for the first few stalls. The UI also hides the video and discards BASE behind modals to keep bandwidth down.
+- **Arm capture last.** `Video_CaptureEnable()` runs at the end of the UI boot task; arming it during boot contention leaves the lanes stuck in LP-11 (~0 fps).
 
 - **`INTSR.HDTO` always set** after capture start — informational-only residual, not a stop signal. Also present under working RMS=1 config. Safe to ignore.
 - **DDONE interrupt unreliable** — `iscObj->frameIndex` advances rarely or not at all; `g_frame_count` (incremented from the frame-done callback, driven by VD) counts correctly. DMA itself works (buffers update on schedule). Investigate before building consumer logic that relies on DDONE firing per frame.

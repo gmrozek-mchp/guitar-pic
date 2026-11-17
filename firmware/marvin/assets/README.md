@@ -33,10 +33,11 @@ cannot recolour an image: rest is zinc-300, selected is white, and `navigation_h
 a pair are rendered from the *same* SVG so only the colour differs (verified: alpha channels are
 pixel-identical).
 
-Only three pairs are on screen today — the drawer carries one row per screen that exists
-(Dashboard, Wiimotes, Bus Statistics; `NAV_ENTRY` in `screen_navigation.c`). The other five are
-kept for the screens they name, so `prune_unused_images.py` will report them as unreferenced;
-that is deliberate, not a leak.
+Five pairs are on screen today — the drawer carries one row per screen that exists
+(Dashboard, Wiimotes, Bus Statistics, System Info, Activity Logs; `NAV_ENTRY` in
+`screen_navigation.c`). `PERFORMANCE`, `DIAGNOSTICS` and `SETTINGS` are kept for the screens
+they name, so `prune_unused_images.py` will report them as unreferenced; that is deliberate,
+not a leak.
 
 | design asset | lucide file | size | stroke |
 |---|---|---|---|
@@ -51,7 +52,9 @@ that is deliberate, not a leak.
 | `BUTTON_ICON_CLOSE` | `x.svg` | 20×20 | `#9F9FA9` |
 | `BUTTON_ICON_CHECK` | `check.svg` | 20×20 | `#000000` (dark, on a light button) |
 | `BUTTON_FACE_SELECT_SONG` | `list-music.svg` | 14×14 | `#D4D4D8` |
+| `BUTTON_FACE_SELECT_SONG_DIM` | `list-music.svg` | 14×14 | `#52525B` (disabled caption colour) |
 | `BUTTON_FACE_START` | `play.svg` | 14×14 | `#FFFFFF` |
+| `BUTTON_FACE_STOP` | `square.svg` | 12×12 | `#FFCAC5` (filled) |
 | `NAV_ICON_BUS` + `_SELECTED` | `network.svg` | 24×24 | `#D4D4D8` / `#FFFFFF` |
 | `BUTTON_ICON_TROPHY` | `trophy.svg` | 20×20 | `#492F03` (see below) |
 | `BUTTON_ICON_RECONNECT` | `refresh-cw.svg` | 24×24 | `#9F9FA9` |
@@ -82,10 +85,9 @@ alpha-over-scheme relationship, so the 70% black is pre-composited against `#F59
 
 Two traps:
 
-- **`play.svg` ships as an open outline** (`fill="none"`). The shipped asset is a **solid**
-  triangle, because the mockup rendered it as `<Play className="… fill-current" />`. To
-  reproduce it, set `fill` as well as `stroke`. It is the only icon here that needs this —
-  every other one is stroke-only.
+- **`play.svg` and `square.svg` ship as open outlines** (`fill="none"`). `BUTTON_FACE_START`
+  and `BUTTON_FACE_STOP` are **solid**, because the mockup renders them `fill-current`. To
+  reproduce them, set `fill` as well as `stroke`; every other icon here is stroke-only.
 - **lucide renames and aliases icons between versions.** `NAV_ICON_DASHBOARD` is `house.svg`
   today; the mockup imported the component as `Home`, which is now a legacy alias. If a filename
   above 404s, search lucide for the shape rather than assuming the name is stable.
@@ -98,8 +100,8 @@ where `image/source/` has one.
 | file | design asset | upstream |
 |---|---|---|
 | `Logo-GUITAR.png` (225×45) | `LOGO_GUITAR` | — project branding, authored at this size |
-| `Logo-PIC.png` (121×43) | `LOGO_PIC` | — as above |
-| `Logo-MICROCHIP.png` (194×45) | `LOGO_MICROCHIP` | `source/Microchip-Logo-Horizontal-White-Red.png` (361×84) |
+| `Logo-PIC.png` (115×41) | `LOGO_PIC` | — as above |
+| `Logo-MICROCHIP.png` (177×41) | `LOGO_MICROCHIP` | `source/Microchip-Logo-Horizontal-White-Red.png` (361×84) |
 | `HumanPlayer_gradient.png` (254×208) | `PLAYER_HUMAN_ART` | `source/VitruvianGuitarist.png` (1024×1024) |
 | `LemmyOnStagePlayerImage_gradient.png` (254×208) | `PLAYER_ROBOT_ART` | `source/LemmyOnStage.png` (816×1276) |
 | `HumanPlayer.png`, `LemmyOnStagePlayerImage.png` | — | the same crops *before* the gradient overlay |

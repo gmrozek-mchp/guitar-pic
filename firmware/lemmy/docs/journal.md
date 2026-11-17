@@ -22,31 +22,13 @@ Running log of planning, decisions, open questions, and work-in-progress for the
 
 ## Current focus
 
-**Bring lemmy up on the T1S bus first, then add motion.** lemmy is the **animation node**: a
-PIC32CM6408PL10048 T1S PLCA *follower* (node id 6, MAC `02:00:00:00:00:06`) that will animate a
-guitar-playing puppet with **two R/C hobby servos** — a **neck joint** (nod / head-bang) and a
-**bottom jaw** (mouth open/close). Its primary job is to nod the head in time to the music from a
-future **beatbox** node (id 5); long term the jaw may animate "talking."
-
-The base MCC project is scaffolded and committed (unmodified generator output: clock/EVSYS/NVIC/PORT,
-CMSIS+DFP, default `SYS_Initialize`/`SYS_Tasks` main loop). The immediate path mirrors the
-[`guitar`](../../guitar/SPEC.md) node's G0→G1: add the T1S/CLI peripherals in MCC (L0b), then port the
-`t1s_follower` + `cli` glue for follower bring-up (L1). Servo motion (L2+) comes after the link is
-proven.
-
-L1 (T1S follower), L2 (raw servo PWM), and the L3 position + calibration layer are up and verified on
-hardware. L3 beat-driven nod is now **wired**: lemmy consumes beatbox's `0x88B8` beat frame locally and
-runs a ported nod engine (`nod_engine.{c,h}` + `beat_nod.{c,h}`) to head-bang the neck — pending
-on-hardware verification against a live beatbox.
-
-The `0x88B9` control channel is now defined and wired: marvin can enable/disable the nod, set its trim,
-and toggle the oscillator over T1S (`lemmy nod on|off` / `trim <n>` / `osc <0|1>`) — the same tunables as
-lemmy's local `nod` CLI. `nod off` is also the enabler for remote manual neck control: it frees the neck
-so a `0x88B5` `lemmy <neck> <jaw>` command sticks instead of being overwritten each beat frame.
-
-The nod now has three modes — off / always / **auto** — and `auto` is what a gameplay window commands:
-occasional bursts of 12-24 beats, 10-30 s apart, entered only on a tempo the engine is confident of.
-See the 2026-08-11 entry above.
+**Motion is wired; verify it on hardware against a live beatbox.** lemmy is the **animation node**: a
+PIC32CM6408PL10048 T1S PLCA follower (id 6, MAC `02:00:00:00:00:06`) driving two R/C servos — neck
+(nod / head-bang) and jaw. L1 (T1S follower), L2 (servo PWM) and the position + calibration layer are
+verified on hardware. Everything since is built but not yet hardware-checked: the beat-driven nod off
+beatbox's `0x88B8` broadcast (`nod_engine` + `beat_nod`), the `0x88B9` control channel (nod mode /
+trim / osc / output enable / confidence floor), `auto` mode (occasional bursts on a confident tempo —
+current tunables in [`../SPEC.md`](../SPEC.md) §4.7), and the autonomous jaw (`beat_jaw`, §4.8).
 
 **Next:** verify the nod on hardware with beatbox live on the bus (frame counter advances, locked BPM
 tracks the music, neck head-bangs / snaps on strong beats / comeback-slams / parks on silence), watch

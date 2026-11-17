@@ -7,10 +7,10 @@ the application owns screen orchestration so multiple panels coexist **live and 
 at once** instead of one-screen-at-a-time switching.
 
 Read [`spec.md`](spec.md) §4.5 (operator UI) and §4.1 (video/display) first. Decisions in
-[`journal.md`](journal.md) (2026-06-25, 2026-06-29). **Status: migrated to the MGS layer-screen
-model and confirmed on hardware** — one master `Marvin` screen with dashboard (BASE), nav
-(OVR1), and song-select dialog (OVR2) as layer-screens; the model and the canonical mental
-picture are in §0.
+[`journal.md`](journal.md) (2026-06-25, 2026-06-29). **Status: built and on hardware** — one
+master `Marvin` MGS screen with eleven layer-screens (§4.1), time-shared across BASE / OVR1 /
+OVR2, with live video on HEO. The model is in §0; where an older section disagrees with §0 or
+§4.1, those win.
 
 ---
 
@@ -41,19 +41,14 @@ slot `CANVAS_ID_INVALID` / `GFXC_FX_IDLE`, so spare slots are inert at ~150 B of
 raising the number is an MCC regen and nothing more. `LE_LAYER_COUNT` is MGS-derived, and
 `leState.layerList` is a dynamic `leList` rather than a fixed array — no ceiling there either.
 What actually bounds the screen count is **`ram_nocache`** (`ddram.ld`, now 40 MB): a
-full-screen RGB565 surface is 1.95 MB, and with the ten layers below defined the region is
-**34.74 MB used of 40** (36,432,480 B, measured 2026-08-08) — 5.26 MB spare. The eleventh
-layer-screen (the affiliation modal, 2026-08-10) took 0.25 MB of that, being dialog-sized
-rather than full-screen, and needed no reclaim and no MCC change. The
-region has been resized twice for exactly this reason, both times an MCC setting rather
-than a bigger pool: 32 → 34 MB for the ninth layer-screen (System Info's detail view,
-2026-08-06), then 34 → 40 MB ahead of the tenth (the activity log, 2026-08-08).
+full-screen RGB565 surface is 1.95 MB, and the region is about **35 MB used of 40** with all
+eleven defined (34.74 MB measured with ten on
+2026-08-08; the dialog-sized affiliation modal added ~0.25 MB). Growing the region is an
+MCC setting (`ddram.ld` is generated), not a pool change.
 
-> The splash's 4 MB RGBA8888 buffer used to be described here as the *preferred* reclaim.
-> It is not, and the activity log is why: the splash is **on screen while the other screens
-> paint behind it**, so a screen aliasing that buffer could not paint until after the
-> reveal. Resize the region instead while there is room to (below), and keep the splash
-> buffer as a last resort that costs boot sequencing.
+> Don't reclaim the splash's 4 MB RGBA8888 buffer for a screen: the splash is **on screen
+> while the other screens paint behind it**, so a screen aliasing it could not paint until
+> after the reveal. Resize the region while there is room (below).
 
 > **`ram_nocache` cannot grow past ~60 MB, and overshooting it does not fail loudly.** `ddram.ld`
 > places `.text` at a **hard-coded `0x23f00000`** — DDR base + 63 MB — which does *not* move when the
@@ -72,25 +67,20 @@ than a bigger pool: 32 → 34 MB for the ninth layer-screen (System Info's detai
 
 Per Microchip's GFX-canvas layer-screen guide¹, MGS is meant to be **one master screen whose
 *layers* are the logical screens** ("layer-screens"), each auto-associated with its own canvas.
-marvin **adopted this model on 2026-06-29** (confirmed on hardware). It previously *emulated*
-it by hand — each panel a **separate 1-layer MGS Screen**, built on layer 0 then manually
-disconnected and re-hosted by `ui_manager`, with `LE_LAYER_COUNT` pinned by a never-shown
-`LayerBudget` screen. Now there is **one master screen named `Marvin`, one layer per panel**:
-layer 0 dashboard, layer 1 nav, layer 2 song-select dialog, layer 3 song-select album-art strip
-(the Legato layer ↔ HW-layer bindings are runtime and reassignable — see §16). MGS derives
-`LE_LAYER_COUNT` (= **4**) and associates each layer-screen with `canvas[i]`, so the `LayerBudget`
-hack and the disconnect/re-host dance are gone — `ui_manager` calls `screenInit_Marvin()` +
-`screenShow_Marvin()` once (the latter builds the tree and attaches each root to its Legato
-layer), then per-panel `*_Setup()` wiring, and binds canvases to HW layers at display time.
+marvin has **one master screen named `Marvin`, one layer per panel** (§4.1 table). MGS derives
+`LE_LAYER_COUNT` (= **11**) and associates each layer-screen with `canvas[i]`; `ui_manager`
+calls `screenInit_Marvin()` + `screenShow_Marvin()` once (the latter builds the tree and
+attaches each root to its Legato layer), then per-panel `Screen*_Setup()` wiring, and binds
+canvases to HW layers at display time.
 **The splash is separate and fully manual** (pre-Legato RGBA8888 scanout): it is *not* a
 canvas at all — it owns a static framebuffer, reads a raw RGBA8888 blob straight from QSPI NOR
 into it, and drives its XLCDC hardware layer directly via the PLIB
-(`screens/splash/screen_splash.c` `ScreenSplash_Load`/`Show`/`Hide`, mirroring `video.c`'s HEO
-setup), so the canvas pool is exactly the four layer-screens (0/1/2/3).
+(`screens/splash/screen_splash.c` `ScreenSplash_Load`/`Show`/`FadeOut`, the same direct-PLIB pattern as the HEO
+setup), so canvases 0–10 are exactly the eleven layer-screens.
 
-> **§1–§7 below were written for the previous per-screen-Factory + manual-re-host design** and
-> are kept for history; where they conflict with §0, §0 wins. `screenInit_X` is now a one-time
-> flag only — the widget tree is constructed in **`screenShow_X`** (a gotcha worth remembering).
+> **Gotcha:** `screenInit_Marvin` is a one-time flag only — the widget tree is constructed in
+> **`screenShow_Marvin`**. §1–§3 describe the underlying Legato mechanics; where they say
+> "re-host" or "per-screen factory", §0 wins.
 
 ¹ developerhelp.microchip.com → MGS Harmony guide → how-to → gfx-canvas → layer-screen.
 
@@ -155,34 +145,28 @@ lifecycle events are direct calls).
 
 ## 4. Hardware layer budget
 
-| Legato layer | LCDC | Content | Lifecycle |
-|---|---|---|---|
-| 0 | BASE | active full-screen view (dashboard, …) | swappable (replace) |
-| 1 | OVR1 | **nav drawer** | resident — attach once, persists across base-view swaps |
-| 2 | OVR2 | **modal dialog** (song/mode select), sized to the dialog | shown/hidden; background stays live |
-| — | HEO | camera | `video.c`, **outside Legato** |
+HW-layer map, z-order `OVR2 > OVR1 > HEO > BASE`:
 
-- **Nav on its own resident layer ⇒ "same nav over every view" for free** — it is independent
-  of layer 0, so swapping the base view leaves it untouched.
-- **Modal dialog on OVR2 sized to the dialog ⇒ uncovered dashboard telemetry keeps updating**
-  (layer 0 renders live behind it). The dialog is invoked only from the dashboard.
-- **Ceiling:** dashboard + nav + dialog + camera = **all 4 LCDC layers**. A 4th simultaneous UI
-  surface needs canvas multiplexing (`gfxcSetBaseCanvasID`) or giving up a layer.
+| LCDC | Users (time-exclusive) |
+|---|---|
+| BASE | the current base view: dashboard, wiimotes, bus, system grid, system detail, activity log |
+| HEO | live video (`ui_manager`, outside Legato), or the modal scrim (§18.1) |
+| OVR1 | splash during boot (§12) · video frame overlay (§16) · song-select dialog · keyboard modal · affiliation modal · system-screen board photo (§19) |
+| OVR2 | nav drawer · song-select album-art strip |
 
-> **Current HW-layer map (supersedes the table above; see §16):** BASE = dashboard, HEO = video,
-> **OVR1 = video frame overlay / song-select dialog / keyboard modal / system-screen board photo**,
-> **OVR2 = nav drawer / album-art strip**.
-> Z-order `OVR2 > OVR1 > HEO > BASE`. Nav moved to OVR2 so it sits *above* the OVR1 video frame
-> (an open drawer covers the frame's left edge). The users of each overlay are time-exclusive:
-> frame ⇎ dialog (frame hidden whenever video is), nav ⇎ album-art (nav closed during song-select),
-> and the board photo ⇎ everything else on OVR1 (`UiManager_ShowSystem` drops the video *and* its
-> frame; the dialog and keyboard are reachable only from the dashboard). The nav drawer is the one
-> thing that *can* appear over the system screen, and it rides OVR2 above the photo — so it covers
-> the photo's left edge, which is the wanted behaviour.
+- **Nav on its own overlay ⇒ "same nav over every view" for free** — swapping the base view
+  leaves it untouched. It rides OVR2 so an open drawer covers the OVR1 video frame's left edge
+  and the system screen's board photo.
+- **Modals on OVR1, sized to the dialog ⇒ uncovered dashboard telemetry keeps updating** (BASE
+  renders live behind it). Modals are reachable only from the dashboard and hide the video, which
+  frees HEO for the scrim.
+- The OVR users are time-exclusive by construction: frame ⇎ modal (frame hidden whenever video
+  is), nav ⇎ album-art (nav closed during song-select), board photo ⇎ everything else on OVR1
+  (`UiManager_ShowSystem` drops the video and its frame).
 
 ### 4.1 Two layer counts — don't conflate them
 - **`LE_LAYER_COUNT`** (Legato, `legato_config.h:156`) = how many canvases / Legato layers the global
-  `layerList` manages = **10** (the Marvin layer-screens, `CANVAS_*` in `ui_manager.h`):
+  `layerList` manages = **11** (the Marvin layer-screens, `CANVAS_*` in `ui_manager.h`):
 
   | Layer / canvas | Panel | Role | HW layer when shown |
   |---|---|---|---|
@@ -205,35 +189,28 @@ lifecycle events are direct calls).
 - **`XLCDC_TOT_LAYERS`** (XLCDC driver, "Total Layers" in `le_gfx_driver_xlcdc.yml`) = enumerated
   hardware layers = **4** (`layerOrder` = {BASE 0, HEO 1, OVR1 2, OVR2 3}).
 
-The eight canvases are mapped, at display time, onto the **three non-HEO** hardware layers
-(BASE / OVR1 / OVR2); HEO is the live camera. Because the canvases are time-shared (four
-mutually-exclusive base views on BASE, video frame ⇎ dialog on OVR1, nav ⇎ album-art on OVR2 —
-see §16), never more than three are visible at once even though eight are defined.
+The eleven canvases are mapped, at display time, onto the **three non-HEO** hardware layers
+(BASE / OVR1 / OVR2); HEO is the live camera. Because they are time-shared (six base views on
+BASE, modals on OVR1, nav ⇎ album-art on OVR2), never more than three are visible at once.
 
 **A base-view swap costs no drawing.** Legato renders into a canvas surface whether or not that
 canvas is shown or bound to a hardware layer, so `paint_all_screens_once` (`ui_manager.c`) paints
-all eight surfaces complete behind the splash and every later `bind_canvas` is a pure layer bind:
+every surface complete behind the splash and every later `bind_canvas` is a pure layer bind:
 `gfxcSetLayer` + `gfxcShowCanvas` + `gfxcCanvasUpdate` + the colour-mode poke, and no repaint. This
 is the property to reach for when a screen transition looks expensive — give the two states their
 own canvases and the switch becomes free. It is also why each `Screen*_SetShown` gates only that
 screen's *periodic work*, never a repaint.
-
-### 4.2 The LayerBudget screen (obsolete)
-> **Obsolete — removed on 2026-06-29.** This described the old per-screen-Factory design, where each
-> panel was its own 1-layer MGS screen and a dedicated never-shown `LayerBudget` screen pinned
-> `LE_LAYER_COUNT`. Under the single-master-`Marvin`-screen model (§0.1) MGS derives `LE_LAYER_COUNT`
-> from the master screen's layer count directly, so the LayerBudget hack is gone.
 
 ### 4.3 Why HEO is safe (and stays enabled)
 Layer targeting is **explicit, not positional**: Legato layer *i* → `canvas[i]` →
 `gfxcSetLayer(i, hwLayer)`, where `hwLayer` indexes `layerOrder`. We map canvases only to hw layers
 **0 / 2 / 3** (BASE / OVR1 / OVR2) and **never to 1 (HEO)**, so the canvas framework never issues an
 IOCTL to HEO regardless of enumeration order. The only GFX-side touch of HEO is
-`DRV_XLCDC_Initialize` disabling all enumerated layers once at init — before `video.c` configures it
-(post-scheduler), so video is the last writer. So **HEO stays enabled** and `video.c` keeps full
-runtime control via the XLCDC PLIB, including the `HEOCFG12` blender + `VIDPRI` z-order that
-`XLCDC_SetupHEOLayer` provides (`video.c` does not set those itself — which is exactly why disabling
-HEO in MCC would break compositing, and why we don't).
+`DRV_XLCDC_Initialize` disabling all enumerated layers once at init — before `ui_manager`'s HEO
+code first binds it from the video task, so that code is the last writer. So **HEO stays enabled**
+in MCC and `ui_manager` drives it via the XLCDC PLIB, relying on the `HEOCFG12` blender + `VIDPRI`
+z-order that `XLCDC_SetupHEOLayer` provides — which is why disabling HEO in MCC would break
+compositing ([`display_path.md`](display_path.md) §4).
 
 ## 5. Live coexistence vs. replacement
 
@@ -242,9 +219,8 @@ The compositor offers two verbs, chosen per interaction — you do **not** pick 
 - **Coexist (overlay-as-layer)** — the panel is its own layer over a still-live background.
   Used for the **nav drawer** (dashboard keeps updating behind it) and the **modal dialog**
   (telemetry keeps updating around it). No freeze.
-- **Replace (switch base view)** — a full-screen view replaces another on layer 0; the
-  outgoing one detaches (its surface can hold the last frame, or it is rebuilt on return).
-  Used when a view genuinely supersedes the dashboard and live background isn't needed.
+- **Replace (switch base view)** — a full-screen view's canvas replaces another on BASE. Every
+  view is pre-painted and persistent (§13), so the swap is a layer bind with no repaint.
 
 Because the compositor owns layer placement and attach/detach, moving an interaction between
 these is a compositor-level change, not a per-module rewrite — the reversibility we wanted.
@@ -253,23 +229,21 @@ these is a compositor-level change, not a per-module rewrite — the reversibili
 
 ```
             ┌──────────────────────── ui_manager ─────────────────────────┐
-            │ string-table init · screen init/show · root re-host onto     │
-            │ layers · layer/canvas pool · visibility · verbs:             │
-            │   show_view(X) · push_overlay(nav|dialog) · hide_overlay(…)   │
+            │ screenInit/Show_Marvin · canvas buffers · bind_canvas onto   │
+            │ BASE/OVR1/OVR2 · HEO + scrim + BASE discard · verbs:         │
+            │   show base view · open/close modal · nav slide · video show │
             └───────┬──────────────────────┬───────────────────────┬───────┘
-              ┌─────▼─────┐          ┌──────▼──────┐          ┌──────▼──────┐
-              │  dashboard │         │ screens/nav │          │ song_select  │
-              │ (BASE,lyr0)│         │ (OVR1,lyr1) │          │ (OVR2,lyr2)  │
-              └────────────┘         └─────────────┘          └──────────────┘
-   each: owns its widgets + interactions; composition root = its screen OnShow hook
+              ┌─────▼──────┐        ┌──────▼──────┐         ┌───────▼──────┐
+              │ base views │        │ nav drawer  │         │ modals       │
+              │ (BASE)     │        │ (OVR2)      │         │ (OVR1)       │
+              └────────────┘        └─────────────┘         └──────────────┘
+   each: owns its widgets + interactions, wired in its Screen<Name>_Setup()
 ```
 
-- **`ui_manager`** (promoted from today's `compositor.c`) owns the *mechanism*: string-table
-  setup, calling `screenInit_/screenShow_`, re-hosting roots onto the right layer, the canvas
-  buffer pool, layer visibility, and the coexist/replace verbs. It is the "top-level module
-  that ties everything together."
-- **Per-screen/overlay modules** own only their panel's content + event wiring, registered
-  from their own `OnShow` composition root. They never call `legato_*`/canvas APIs directly —
+- **`ui_manager`** owns the *mechanism*: string-table setup, `screenInit_/screenShow_Marvin`,
+  the canvas buffers, HW-layer binding and visibility, and the coexist/replace verbs.
+- **Per-screen/overlay modules** own only their panel's content + event wiring, set up in
+  their `Screen<Name>_Setup()`. They never call `legato_*`/canvas APIs directly —
   they go through `ui_manager`, which is what keeps the layer mechanics swappable.
 
 ### 6.1 Source layout (`default/src/ui/`)
@@ -280,8 +254,11 @@ a flat editor tab list reads unambiguously:
 ```
 ui/
   ui_manager.{c,h}                          orchestrator (mechanism; stays at root)
-  manual_input.c                            input shim for the future manual-input screen
-  node_art.{c,h}                            board-photo cache for the system screen
+  titlebar.{c,h}                            shared titlebar (CPU / bus sparkline tiles, status LED)
+  dashboard_feed.{c,h}                      sole writer of dashboard widgets (event coalescing)
+  song_detail.{c,h}                         tier / duration formatting shared by dashboard + song-select
+  manual_input.c                            MGS strum-event glue → manual_control (no generated widget calls it today)
+  node_art.{c,h}, qr_art.{c,h}              board-photo and QR caches for the system screen
   screens/<name>/   screen_<name>.{c,h}     one folder per panel (+ panel-specific helpers)
   widgets/<name>/   widget_<name>.{c,h}     reusable widgets, one folder each
   gfx/              <primitive>.{c,h}       raw-surface drawing primitives (no widget)
@@ -291,10 +268,9 @@ An asset cache belongs beside the screens that consume it, not in the domain mod
 is keyed by **T1S PLCA node id** and read only by `screens/system`, so it lives here. `game_art`
 stays in `game/` because its key *is* game data — `(setlist, index)` from the recognizer.
 
-Current contents: `screens/dashboard/screen_dashboard`, `screens/video/screen_video`,
-`screens/navigation/screen_navigation`, `screens/song_select/screen_song_select`,
-`screens/splash/screen_splash`, `widgets/song_list/widget_song_list`,
-`widgets/button_aa/widget_button_aa`.
+Screens: `album_art`, `bus`, `dashboard`, `keyboard`, `log`, `navigation`, `role` (affiliation
+modal), `song_select`, `splash`, `system`, `video`, `wiimotes`. Widgets: `bar`, `button_aa`, `fret`,
+`gauge`, `log_list`, `panel_aa`, `slide_unlock`, `song_list`, `sparkline`, `tilt`, `whammy`.
 
 `screen_video` is a screen module without its own canvas: the live video is on the
 HEO hardware layer (compositor-owned), so this module owns only the *interaction* —
@@ -315,23 +291,10 @@ New panels add a `screens/<name>/` folder; new widgets a `widgets/<name>/` folde
 into `user.cmake`
 (no MCC involvement).
 
-## 7. Build state & refactor plan
+## 7. Build state
 
-**Built (committed):** GFX Canvas substrate; state machine off + app-owned `screenInit/Show`
-(`compat/le_gen_init.h` stub); `ui_manager` orchestrator + dashboard on BASE; `LE_LAYER_COUNT`=4
-under the single-master-`Marvin`-screen model (the old `LayerBudget`-screen pin is retired — §4.2).
-**Nav drawer is feature-complete:** the Marvin
-master screen's layer-1 panel, bound to OVR2; slide in/out via canvas Move FX (Move FX
-re-enabled; `NAVIGATION_CLOSED_X` dodges the window-clip row-wrap; mid-slide reversal cancels the
-in-flight move); single-active highlight via a runtime-registered shared release sink; rounded
-AA buttons (§10a). **Its widget tree is built in C, not authored in MGS** (§17).
-
-**Song/mode-select is done too** (2026-08-05): the layer-2 dialog on OVR1 with its own layer-3
-album-art strip on OVR2, both built in C (§17), the modal coexist verb exercised against a live
-dashboard, and rounded dialog corners without per-pixel alpha (§18).
-
-**Next:** **`manual_input.c` fate** — `Screen0` is retired, but the strum handlers now serve the
-Dashboard screen, so `manual_input.c` stays until manual control is reworked.
+All eleven layer-screens are built in C over bare MGS root panels (§17) and confirmed on
+hardware. Not built: a calibration/tuning surface and a per-frame gameplay HUD (§16.1).
 
 ## 8. Static-allocation, cache & priority rules
 
@@ -346,27 +309,16 @@ Dashboard screen, so `manual_input.c` stays until manual control is reworked.
 
 ## 9. Memory budget
 
-`.region_nocache` is 32 MB, shared with the ISC capture pool (~10.5 MB) + Legato scratch
-(0.5 MB). Full-screen RGB565 surface ≈ 2.0 MB; overlays sized to content are far less (nav
-~320×800 ≈ 0.5 MB; a modal dialog smaller still). ~19 MB free after BASE + capture + scratch,
-so **memory is not the binding constraint — the 3 UI layers are.**
+`ram_nocache` is 40 MB (§0): the ISC capture pool (~11 MB, `capture_pipeline.md` §2.8), the 4 MB
+Legato scratch (§13), the splash framebuffer (4 MB), and the canvas surfaces (full-screen RGB565
+≈ 2.0 MB each; modals and the nav drawer are sized to content). ~5 MB is spare, and the region
+cannot grow past ~60 MB without moving `.text` (§0). Album art and board photos live in cached
+`.region_ram` instead.
 
 ## 10. Open items
 
-- **Base-view replacement** — first exercised by the boot splash → dashboard handoff (§12).
-  Still open: the *return* path (rebuild vs parked last-frame) and nav-persistence interaction
-  when two interactive base views swap (the splash is non-interactive, so it didn't surface this).
-- **Splash→dashboard transition** is a hard cut: the splash owns OVR1 above BASE, and reveal simply
-  disables OVR1 to uncover the dashboard already painted on BASE (§13 paints every surface before
-  reveal, so there's no garbage frame — only an abrupt cut). Smooth later with a brief fade if wanted.
-- **Splash backlight timing** — the raw QSPI splash is complete in its framebuffer the moment it's
-  read (no decode), so the boot task lights the backlight right after `ScreenSplash_Show`; the
-  render-idle wait (§13) then gates *reveal*, not the backlight.
-- **Reveal-before-paint** — *resolved* by the pre-render/persistent model (§13): screens are now
-  painted to completion off-screen before being revealed.
-- **`manual_input.c` fate** — `Screen0` retired; the strum handlers now serve the Dashboard
-  screen, so it stays until manual control is reworked.
 - **Per-pixel alpha** — which (if any) overlay needs ARGB8888 over the camera vs. layer alpha.
+- **Gameplay HUD over the video** — §16.1.
 
 ## 10a. Anti-aliased rounded button corners (done)
 
@@ -419,12 +371,11 @@ shows a pre-splash/garbage frame.
 
 - **Splash on OVR1, drawn over the dashboard, no canvas.** The splash is *not* a GFX canvas — it
   owns a static full-screen RGBA8888 framebuffer (`s_fb[BASE_W*BASE_H]` in `.region_nocache`) and
-  drives its XLCDC hardware layer directly via the PLIB, mirroring `video.c`'s HEO setup.
+  drives its XLCDC hardware layer directly via the PLIB, the same pattern as the HEO setup.
   `ScreenSplash_Show(layer)` sets the layer to `RGBA_8888`, points it at `s_fb`, opaque (alpha 255,
   DMA on), full-screen, zero stride, then enables — all deferred writes latched together at vsync.
-  It shows on **`SPLASH_HW_LAYER` = OVR1** (`ui_manager.h:39`), above BASE, so it covers the BASE
-  dashboard while the dashboard paints underneath; `ScreenSplash_Hide` disables OVR1 to reveal the
-  finished dashboard.
+  It shows on **`SPLASH_HW_LAYER` = OVR1** (`ui_manager.h`), above BASE, so it covers the BASE
+  dashboard while the dashboard paints underneath; `ScreenSplash_FadeOut` dissolves it away (§12.1).
 - **Raw RGBA8888 from QSPI NOR — no decode.** `ScreenSplash_Load` opens the SST26 QSPI driver and
   `DRV_SST26_Read(h, s_fb, sizeof s_fb, QSPI_SPLASH_OFFSET)`s the raw pixel blob straight into the
   scanout framebuffer (the read sets up the QSPI memory-read frame and completes synchronously; the
@@ -466,7 +417,7 @@ percentage on the right, an 8 px rounded capsule with a cyan gradient fill. Geom
   boot, *after* the album-art decode. It cannot cover the phase that most needs a bar.
 - **Own ticker task, because there are no software timers.** `configUSE_TIMERS` is 0 in the
   MCC-owned FreeRTOSConfig, and the boot task blocks in `GameArt_LoadAll` / `init_screens` /
-  `wait_render_idle`, so the bar runs on a static 25 Hz task at **priority 3** (above the boot task's
+  `UiManager_WaitRenderIdle`, so the bar runs on a static 25 Hz task at **priority 3** (above the boot task's
   2). It repaints only when the fill's pixel width or a string actually changes, and
   `SplashProgress_Complete()` stops it and waits for it to exit, so the framebuffer is back to a
   single writer before the final 100% draw and the fade.
@@ -543,49 +494,35 @@ percentage on the right, an 8 px rounded capsule with a cyan gradient fill. Geom
   frame-accurate layer change has to pace itself** — or poll `LCDC_ATTRS`'s per-layer update bit,
   which is the flag that actually clears at a frame boundary.
 
-## 13. Pre-rendered, persistent per-screen canvases (done — code-complete, pending hardware test)
+## 13. Pre-rendered, persistent per-screen canvases (done)
 
-Fixes the reveal-before-paint flash (§10): a screen used to be shown while Legato incrementally
-painted its freshly-rebuilt tree, so unpainted regions flashed uninitialized-DRAM noise (~1–2 s for
-the Dashboard's ~200-widget tree). The model is now the §1 ideal — **paint into an off-screen
-surface, then reveal**:
+The §1 ideal — **paint into an off-screen surface, then reveal** — so no screen is ever shown
+half-painted:
 
-- **Every layer-screen is persistent + owns a canvas.** The Marvin master screen's layer-screens are
-  persistent (built once, never torn down), each on its own Legato layer → canvas: Dashboard 0
-  (RGB565), Nav 1 (RGB565), song-select dialog 2 (RGB565), song-select album-art 3 (RGBA8888).
-  `CONFIG_CANVAS_NUM_OBJ` (8, expandable) gives room per screen; no `gfxcSetBaseCanvasID`
-  multiplexing needed. Canvas → HW-layer binding is runtime and reassignable (dashboard rides BASE;
-  nav OVR2; the dialog OVR1 + its album-art strip OVR2, bound on open — see §16). The splash is
-  *not* a canvas — it drives OVR1 directly (§12).
+- **Every layer-screen is persistent + owns a canvas** (built once, never torn down; §4.1 table).
+  All are RGB565 except the album-art strip (RGBA8888). No `gfxcSetBaseCanvasID` multiplexing is
+  needed. The splash is *not* a canvas — it drives OVR1 directly (§12).
 - **Build pre-scheduler, then let the render task paint; the loader just waits.** All screens are
   built + hosted on their layers in `UiManager_Initialize` (pre-scheduler → no concurrency). Once
   the scheduler is up, the normal `LEGATO_Tasks` + `GFX_CANVAS_Task` pair paints them — a full-screen
   surface spans several scratch tiles (`LE_SCRATCH_BUFFER_COUNT = 1`, 512 KB ⇒ ~131 072 px @ 32bpp),
   and the scratch is freed by the canvas commit *between* render passes, which only happens when
-  those tasks actually run. So the loader does **not** drive `leUpdate` or touch the scheduler — it
-  yields and polls the public `leRenderer_IsIdle()`. Important: `leRenderer_IsIdle()` is just
-  `frameState == LE_FRAME_READY`, which is **also true in the gaps between `leUpdate` calls** (which
-  tick only every ~10 ms), so a single sample reads "done" mid-paint; `wait_render_idle` requires
-  idle to hold **continuously for ≥120 ms** before trusting it. Boot sequence (`ui_boot_task`):
-  `ScreenSplash_Load` (raw RGBA8888 from QSPI) → `ScreenSplash_Show` (OVR1) → `enable_backlight`
-  (the splash framebuffer is already complete the moment it's read, so lighting it here is safe) →
-  splash-shown callback (app starts services + camera in parallel) → `Art_LoadAll` (album-art
-  decode) → build screens (`init_screens`) → bind dashboard canvas to BASE → `paint_all_screens_once`
-  → `wait_render_idle` (all layer-screens painted behind the splash) → min on-screen hold →
-  `ScreenSplash_Hide` (disable OVR1 → finished dashboard) → `ScreenVideo_ShowWindowed` → `Video_CaptureEnable`
-  → arm health monitor → self-delete.
-  - *Earlier mistake (corrected):* the loader first suspended `LEGATO_Tasks` and drove `leUpdate`
-    itself. That fought the scheduler and was wrong twice over — one `leUpdate(0)` only fills one
-    scratch tile (the rest bail on the locked scratch), and calling `GFX_CANVAS_Task()` in a tight
-    loop doesn't free it (the commit completes between real task runs). Letting the normal tasks run
-    and pending on idle is both correct and simpler.
+  those tasks actually run. So the boot task does **not** drive `leUpdate` itself — it yields and
+  waits. `leRenderer_IsIdle()` is **also true in the gaps between `leUpdate` calls** (~10 ms), so a
+  single sample reads "done" mid-paint; `UiManager_WaitRenderIdle` requires idle to hold
+  continuously for `RENDER_IDLE_STABLE_MS` before trusting it. Boot sequence (`ui_boot_task`):
+  `ScreenSplash_Load` (raw RGBA8888 from QSPI) → `ScreenSplash_Show` (OVR1) → `enable_backlight` →
+  progress bar starts → splash-shown callback (app starts services) → `Storage_Mount` →
+  `GameArt_LoadAll` + `NodeArt_LoadAll` → `init_screens` → `paint_all_screens_once` →
+  `UiManager_WaitRenderIdle` → min on-screen hold → `SplashProgress_Complete` →
+  `ScreenSplash_FadeOut` → `ScreenVideo_ShowWindowed` → `Video_CaptureEnable` (must be last: the
+  D-PHY locks marginally if armed during boot contention) → `DashboardFeed_Start` → arm health
+  monitor → self-delete.
   - **Scratch buffer sized for a full-screen tile.** With the stock 512 KB scratch a full-screen
     32bpp surface spans ~8 scratch tiles → multiple render passes. Bumped `LE_SCRATCH_BUFFER_SIZE_KB`
     512 → **4096** (MGS Graphics setting) so `maxScratchPixels` ≈ 1.05 M ≥ 1280×800 → one tile = whole
     screen, one render pass. Cost: a single 4 MB nocache scratch (`LE_SCRATCH_BUFFER_COUNT = 1`, widget
     buffer disabled) — fits the headroom; makes the RGB565 canvases one pass too.
-- **Open:** the splash owns OVR1 while shown (disabled after reveal); the song-select dialog also
-  binds a canvas onto OVR1 (§16), so opening it re-binds OVR1 from the splash/video-frame overlay.
 
 ## 14. Tap-to-fullscreen live video (`screen_video`)
 
@@ -715,10 +652,8 @@ Design implications when we build it:
 
 ## 17. Panels built in C, not authored in MGS
 
-**Every layer-screen is now a programmatic builder over an empty MGS root panel** — bus stats,
-wiimotes, the on-screen keyboard, the nav drawer, the dashboard, and (2026-08-05) the
-**song-select dialog**, which was the last. The design is now **assets only**: seven layers, seven
-bare panels, zero authored widgets. The design supplies one bare panel per layer-screen —
+**Every layer-screen is a programmatic builder over an empty MGS root panel.** The design is
+**assets only**: one bare panel per layer, zero authored widgets. The design supplies one bare panel per layer-screen —
 position, size, an opaque scheme — and the module builds every child in `Screen<Name>_Setup()`
 with the in-place constructors (`leWidget_Constructor`, `leButtonWidget_Constructor`,
 `leLabelWidget_Constructor`), storing widgets in file-scope arrays (no Legato pool, no
@@ -740,8 +675,8 @@ Three rules this style has to respect, all learned the hard way:
   is genuinely *data* (a song title, a score) is a `leFixedString`, and any non-ASCII character
   it can contain must be declared in the font's range (see the `mgs-legato-design` skill).
 - **Every appearance change needs an explicit `invalidate()`.** Image setters raise no damage and
-  `setScheme`'s damage doesn't cover the icon rect; the leftover pixels were the 2026-08-05 bug
-  (stale fill, or unzeroed `.region_nocache` DDR).
+  `setScheme`'s damage doesn't cover the icon rect; skipping it leaves stale fill or unzeroed
+  `.region_nocache` DDR on screen.
 - **Round a card with a frame overlay added LAST — and set `LE_WIDGET_IGNOREPICK` on it.** A
   full-card panel with `SCHEME_BACKGROUND` + `BORDER_LINE` + radius + `PanelAA_EnableRoundImage`
   draws the rounded border and then eats the corners back to the page black. Rounding the filled
@@ -749,9 +684,8 @@ Three rules this style has to respect, all learned the hard way:
   flush to the card's edge would overwrite the arc anyway — the overlay is on top of it.
   **The catch:** `leUtils_PickFromWidget` keeps the *last* child whose rect contains the point, so
   "paints on top" and "wins the touch" are the same property. Without `IGNOREPICK` the overlay
-  swallows every touch inside its card — which is exactly what happened on the dashboard's first
-  hardware run (only the titlebar hamburger, which has no overlay, responded). Any decorative
-  widget stacked over interactive ones needs the flag.
+  swallows every touch inside its card. Any decorative widget stacked over interactive ones needs
+  the flag.
 
 The MGS-side edit is mechanical: `strip_subtree.py <zip> <PANEL_NAME>` deletes the imported
 children and keeps the panel. Since the root panel's fill is what `PanelAA`/`ButtonAA` sample as
@@ -761,9 +695,8 @@ the backdrop behind a rounded child, it must stay **opaque** (`BACKGROUND_FILL`)
 
 `legato_config.h`'s `LE_<TYPE>_WIDGET_ENABLED` flags are derived by MGS from the widget types the
 **design** instantiates. A type used only by hand-built code therefore vanishes — `leXWidget`
-becomes an unknown type name — the moment the last design widget of that type is deleted. This
-bit us on 2026-08-05: stripping the dashboard removed the design's only progress bars and its only
-gradient, and the next Generate broke a build whose C had not changed.
+becomes an unknown type name — the moment the last design widget of that type is deleted, and the
+next Generate breaks a build whose C has not changed.
 
 Consequences for this style of screen:
 
@@ -772,10 +705,8 @@ Consequences for this style of screen:
   `widget_gauge`, …), and a plain widget is always available. `ui/widgets/bar` exists precisely
   because the stock progress bar contributed nothing but a square track and a vtable to hijack.
 - **What the code genuinely needs must be forced on** in the Legato component rather than left to
-  the design's whim. `leButtonWidget` / `leLabelWidget` / `leImageWidget` were alive *only* because
-  song-select was still MGS-authored; they are now **pinned**, which is what made stripping it
-  safe. With the design holding no widgets at all, every type the firmware uses is on loan from a
-  pin — there is nothing left for the design to keep them alive. The tell that a pin is real:
+  the design's whim. With the design holding no widgets at all, every type the firmware uses
+  (`leButtonWidget`, `leLabelWidget`, `leImageWidget`, …) is kept alive by a pin. The tell that a pin is real:
   `LE_CIRCULARGAUGE_WIDGET_ENABLED` reads 1 with no design instance anywhere.
 - **The failure is a compile error, not a silent one** — which is the one mercy here. Grep the
   firmware for `\ble[A-Z][A-Za-z]*Widget\b` to get the true list of types it depends on.
@@ -827,8 +758,7 @@ Three properties worth knowing before reusing this:
   leaves the width alone, while `gfxcGetWindowPosition` still reports the unaligned request — so
   the discard rect, the sample offset and any overlay placed in panel coords all end up
   disagreeing with where the canvas really is. Place modal canvases through `CANVAS_X_ALIGN`
-  (`ui_manager.h`). This produced a visible 2px black bar on both modals and a 2px offset of the
-  album-art strip; see the 2026-08-06 journal entry.
+  (`ui_manager.h`); see the 2026-08-06 journal entry.
 - **It composes with the BASE-discard optimisation.** The dialog still discards BASE DMA behind
   itself while open (bandwidth), and that is safe precisely because the corner pixels were
   *copied* — nothing needs BASE to be scanned there.
@@ -941,19 +871,15 @@ video frame overlay (§16) — `SetLayerRGBColorMode` + `SetLayerAddress` + wind
 - **Slots stay in cached `.region_ram`** even though the LCDC DMA-reads them, because a slot is
   write-once: the CPU decodes into it, `decode_one` cleans it to DDR, and nothing writes it again, so
   no line can go dirty behind the display controller. Cost of the format change: `.region_ram`
-  +2,499,840 B (7 slots, 565 → 8888). **`.region_nocache` is byte-for-byte unchanged** at
-  32,336,480 B — this buys full colour without spending the last full-screen surface.
+  +2,499,840 B (7 slots, 565 → 8888); `.region_nocache` is unchanged.
 - **`photo_apply()` is gated on the screen being shown**, because OVR1 belongs to whoever is on the
   panel: the splash owns it for all of boot, and `show_view(VIEW_OVERVIEW)` runs at build time, which
   would otherwise disable the splash mid-boot.
 - **The photo layer flips in the same breath as the canvas bind, because each view owns a canvas.**
   Enabling a hardware layer is instant while a canvas repaint is not, so any design where the two
   have to agree *and* the canvas has to repaint is a race you can only paper over. It was papered
-  over first — a task that waited for `leRenderer_GetDrawCount()` to pass the value sampled where the
-  damage was queued, which is the exact "has this repaint finished" signal (that counter moves in the
-  renderer's `postFrame`, only once every damaged rect on every layer is drawn, unlike
-  `leRenderer_IsIdle()`, which is also true between `leUpdate` calls). It worked going *into* the
-  detail view and was visibly wrong coming back out: the photo went down, then the grid appeared.
+  over first by waiting on the draw count, which is right going *into* the detail view and visibly
+  wrong coming back out (the photo went down, then the grid appeared).
   - **Fixed structurally:** overview and detail are separate layer-screens (7 and 8) with their own
     canvases, so `bind_view` is `UiManager_BindSystemView` — a layer bind, no drawing — and the
     photo's enable/disable rides along in the same call.
@@ -975,9 +901,8 @@ video frame overlay (§16) — `SetLayerRGBColorMode` + `SetLayerAddress` + wind
     life and `leInput` walks every attached layer, so the off-screen view would still answer taps.
     What keeps it out is `LE_WIDGET_ENABLED`, which the pick walk requires and
     `ScreenSystem_SetInput` puts on the current view alone.
-  - Cost, measured: `.region_nocache` 30.84 → 32.79 MiB (+2,048,000 B, exactly one full-screen
-    RGB565 surface) inside a region Greg grew 32 → 64 MiB, with `CONFIG_CANVAS_NUM_OBJ` raised to 40.
-    Each view also carries its own titlebar now (`TITLEBAR_MAX` 8, five in use).
+  - Cost: one more full-screen RGB565 surface (+2,048,000 B of `.region_nocache`). Each base view
+    carries its own titlebar (`TITLEBAR_MAX` 8 in `ui/titlebar.c`).
 - **Both of the open risks are now settled on hardware.** The XLCDC blender does treat an alpha-255
   RGBA8888 overlay as fully opaque — the full-rect BASE discard is active while the photo is up and
   nothing shows through — and direct LCDC scanout of cached `.region_ram` renders correctly, so the

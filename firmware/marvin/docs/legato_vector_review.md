@@ -1,5 +1,12 @@
 # Review: `gfx/legato/vector/` vs. our hand-rolled AA drawing
 
+> **Current status (2026-08-07, `a042067`): superseded.** No marvin code calls
+> `leDraw_Vector*` any more — tilt, gauge, whammy, fret, the `panel_aa` dot and the
+> sparkline all paint with integer coverage in `ui/gfx/aa_shape.{c,h}`, measured 2.4–36×
+> faster than the vector path. Keep this doc for the analysis of the vector API and for
+> §5 (vendor bugs still worth raising); ignore §4/§6 as a plan. The dated notes below
+> record how it got there.
+
 **Date:** 2026-08-05 · **Scope:** review only, no code changed.
 
 > **Status, 2026-08-06 — adopted for four widgets, with four corrections to this document.**

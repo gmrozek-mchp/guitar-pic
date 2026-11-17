@@ -1,10 +1,13 @@
 # Fret-Tuner Specification
 
-> **Legacy tool.** This is an offline detector-tuning harness. The runtime brain
-> now lives on the marvin firmware (vision-based gameplay engine), so the "move
-> the entire pipeline to the PC" / "PC is the runtime brain" framing below is
-> superseded — fret-tuner remains useful for iterating on detection algorithms
-> against captured/live ADC data, not as the deployed runtime.
+> **Dormant — its live mode does not work with current hardware.** fret-tuner reads the fretboard's
+> 12-byte UART frame and writes a UART command byte, but the fretboard is now T1S-only
+> (18-byte frames to marvin; no UART link — see
+> [`firmware/fretboard/SPEC.md`](../../firmware/fretboard/SPEC.md)). No commits since
+> 2026-07-03. Detector work moved to marvin's on-device CV and the
+> [edge-ai](../edge-ai/) model; fretboard ADC capture is done with
+> [marvin-perf](../marvin-perf/) (`export-ml`). Python deps are a `requirements.txt`
+> (pip), not uv. The rest of this document describes the tool as it was last built.
 
 ## Overview
 

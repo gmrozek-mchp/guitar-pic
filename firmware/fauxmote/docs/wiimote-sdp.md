@@ -2,8 +2,9 @@
 
 Exact bytes a real Wiimote (`RVL-CNT-01`) exposes, needed to satisfy the Wii's
 SDP validation. Sourced from wiibrew + the SDP dump in `rnconrad/WiimoteEmulator`
-(`sdp.c`). This is what fauxmote must serve once it moves off `esp_hidd` to a
-custom SDP record (see journal decision 2026-06-12).
+(`sdp.c`). fauxmote serves this record attribute-by-attribute from
+`main/wiimote_sdp.c` (`esp_hidd`'s generated record is rejected by the Wii — see
+journal decision 2026-06-12).
 
 ## HID attribute values the Wii checks (HID profile SDP attributes)
 
@@ -57,8 +58,7 @@ C0
 ## Full assembled SDP record (463 bytes)
 
 The complete service record (data-element-sequence form) as a real Wiimote
-returns it — feed attribute-by-attribute into `SDP_AddAttribute`/`SDP_AddSequence`,
-or serve verbatim. From `rnconrad/WiimoteEmulator` `sdp.c` `attributes[463]`:
+returns it; `wiimote_sdp.c` rebuilds it via `SDP_AddAttribute`. From `rnconrad/WiimoteEmulator` `sdp.c` `attributes[463]`:
 
 ```
 36 01 CC 09 00 00

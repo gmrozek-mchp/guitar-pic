@@ -11,15 +11,11 @@ as a renamed corpus in [`gh3_screens/`](gh3_screens/) (see its README for the
 name ↔ original-snapshot mapping). Raw `marvin-perf snapshot` captures land in
 the gitignored `tools/marvin-perf/snapshots/`. Native capture is 720×480.
 
-**Scope now:** the navigation *structure* — screens, their items, and the edges
-between them. The **vision** side is now built: the observer classifier lives in
-`game/gameplay_classify.c` (`gp_classify()`), and the controller
-(`game/game_controller.c`) uses it closed-loop (see Navigator notes below). This
-doc remains the source artifact for the screen/edge model those consume; screen
-snapshots stay recorded here as the corpus.
-
-Status: **in progress** — this navigation map is populated screen-by-screen
-(`TBD` = not yet captured); the observer + controller that consume it are built.
+**Scope:** the navigation *structure* — screens, their items, and the edges
+between them. The observer (`game/game_engine.c`, classifier `gp_classify()` in
+`game/gameplay_classify.c`) recognizes every screen below, and the controller
+(`game/game_controller.c`) walks the practice and 2-player paths closed-loop (see
+Navigator notes). `TBD` = not yet captured.
 
 ---
 
@@ -31,11 +27,11 @@ Status: **in progress** — this navigation map is populated screen-by-screen
 - **RED** — back up one level.
 
 (Bit names on the wire are the gameplay fret/strum masks; the controller emits
-the same bits for menu navigation — the fretboard MCU doesn't distinguish menu
-from gameplay. §4.8.4.) Some menus also use the `+` button (pause) and possibly
-others beyond fret/strum; the full controller is actuatable in principle —
-fauxmote emulates the complete guitar extension incl. `+`/`−` — the actuator
-command protocol just needs to carry those inputs.
+the same bits for menu navigation, so the actuator nodes cannot tell menu from
+gameplay — spec §4.8.2.) The `+` button (pause) is not a fret/strum bit: the guitar
+node cannot press it, and although fauxmote's WIIMOTE nav slice carries core
+buttons (`Fauxmote_SendNav`), the controller does not use it, so no plan enters
+`pause_menu`.
 
 ### Highlight paradigms
 How "selected" is presented drives what the observer reads. Three kinds so far:
@@ -54,10 +50,9 @@ How "selected" is presented drives what the observer reads. Three kinds so far:
   sit in different sub-states at the same time (snapshot-81552 shows P1 still on
   the character strip while P2 is already on the ready panel), so a single
   centroid built from one capture drifts as soon as the halves are staged
-  differently. This is the same failure mode that made `in_song_2p` drop out
-  intermittently, fixed by keying on static chrome at fixed coordinates instead
-  (see the gameplay journal, 2026-07-15) — per-side probes are the mechanism to
-  reuse when these readers get built.
+  differently. The fix, as for `in_song_2p`, is to key on static chrome at fixed
+  coordinates: P1's `READY!` badge is read by a masked-SAD presence probe
+  (`gp_ready_p1`, `game/gameplay_present.c`).
 
 ### Edge notation
 An edge is `from → to : [inputs]`. `STRUM_DN×n` means n strum-downs. Moving to
@@ -67,16 +62,16 @@ Note the controller does not actually issue blind counts — per the closed-loop
 rule below it strums the *signed delta from the observed cursor*. `STRUM_DN×i` in
 this doc names the **target index**, not a fixed input burst.
 
-**act-then-wait edges.** Most edges are "marvin acts → the screen changes". The
+**act-then-wait edges.** Most edges are "marvin acts → the screen changes". Three
 2-player setup screens are not: marvin confirms **its own side only** (it drives
 P1/left — the human plays P2), and the screen advances only once the *human*
 confirms theirs. Marked `[wait: P2]` in the graph below.
 
-These need a wait state distinct from the normal post-actuation poll: the wait is
-**unbounded**, because it ends on a human deciding. Timing out into the generic
-RED recovery would be actively wrong — it would back marvin out of the setup flow
-while the player is still choosing. Observe until the expected next screen
-appears, and surface "waiting for player 2" to the operator instead.
+These use a wait distinct from the normal post-actuation poll (`await_player`,
+`GC_PLAYER_WAIT_MS` = 120 s): the step must not re-fire (a second GREEN would
+un-confirm marvin's side) and must not time out into RED recovery (that would back
+out of the setup flow while the player is still choosing). The dashboard shows
+`WAITING FOR P2`; a lapse ends the run with `NO PLAYER 2`.
 
 ---
 
@@ -304,11 +299,12 @@ corpus filename where one exists.
 - **observed states:** left assigned, right empty, neither ready (*snapshot-73726*)
   → left `READY!` (*74942*) → a second guitar appears centre (*77649*) → it lands on
   the right (*78054*).
-- **marvin's action — assert, don't act.** Marvin's guitar is expected to be
-  **already preselected on the left** when this screen appears. The controller
-  asserts that, then GREENs to confirm its own side. It **never moves a guitar**:
-  a wrong move could drag the human's guitar to marvin's side and wedge the screen.
-  If the assertion fails, abort and surface it to the operator (Open items).
+- **marvin's action — confirm, don't move.** Marvin's guitar is expected to be
+  **already preselected on the left**. The controller GREENs and then verifies its
+  own confirm by polling for P1's `READY!` badge (`ACT_CONFIRM_READY`, ≤ 2.5 s);
+  no badge → retry the step. It **never moves a guitar**: a wrong move could drag
+  the human's guitar to marvin's side and wedge the screen. The preselect itself is
+  not checked (Open items).
 - **back (RED):** `main_menu`
 - **leads to:** `multiplayer_menu` — **`[wait: P2]`**, advances once both sides ready.
 
@@ -333,10 +329,13 @@ corpus filename where one exists.
   (*snapshot-80984*).
 - **paradigm:** per-side portrait strip.
 - **marvin's action:** pass straight through with `GREEN` — this brings up that
-  side's `player_ready_2p` panel. Character choice is **out of scope for now**
-  (marvin keeps whatever character it has); it may become a real selection later.
+  side's `player_ready_2p` panel. Character choice is out of scope (marvin keeps
+  whatever character it has).
 - **back (RED):** `multiplayer_menu`
-- **leads to:** `player_ready_2p` (per side).
+- **leads to:** `player_ready_2p` — **`[wait: P2]`**. After marvin's GREEN the frame
+  is "P1 panel + P2 strip", which has no corpus exemplar and reads UNKNOWN; it only
+  classifies as `player_ready_2p` once the human advances their half too. The
+  controller holds on UNKNOWN rather than RED-recovering.
 - **note:** this and `player_ready_2p` are **two sub-states of one screen, advanced
   per side** — *snapshot-81552* shows the left half still on the portrait strip
   while the right half already shows P2's ready panel. Don't model them as two
@@ -358,9 +357,8 @@ corpus filename where one exists.
   Items 1–3 are documented for recognition but out of scope.
 - **back (RED):** `character_select_2p`
 - **leads to:** `venue_select` — **`[wait: P2]`**, advances once both sides PLAY SHOW.
-- **note:** the observer's static-list reader returns a *single* selection index, so
-  this screen needs a per-side layout to be readable — only the left panel is
-  needed for actuation (Open items).
+- **note:** the selection reader has a left-panel layout for this screen; only the
+  left panel is needed for actuation.
 
 ### venue_select
 - **reached from:** `player_ready_2p` (both sides PLAY SHOW)
@@ -522,14 +520,16 @@ artists are lower-confidence than the main list — `?` = unverified / unknown.
 | main_menu | _(per item)_ | `STRUM_DN×index, GREEN` | static list, index per catalog above |
 | main_menu | training_menu | `STRUM_DN×4, GREEN` | TRAINING (index 4) |
 | main_menu | guitar_select_2p | `STRUM_DN×3, GREEN` | MULTIPLAYER (index 3) |
-| guitar_select_2p | multiplayer_menu | `GREEN` **`[wait: P2]`** | assert marvin's guitar preselected left, confirm own side; never moves a guitar |
+| guitar_select_2p | multiplayer_menu | `GREEN` **`[wait: P2]`** | confirm own side, verify P1 `READY!`; never moves a guitar |
 | multiplayer_menu | character_select_2p | `STRUM_DN×1, GREEN` | PRO FACE-OFF (index 1) — always |
-| character_select_2p | player_ready_2p | `GREEN` | per side; pass through (no character change) |
+| character_select_2p | player_ready_2p | `GREEN` **`[wait: P2]`** | per side; pass through (no character change) |
 | player_ready_2p | venue_select | `GREEN` **`[wait: P2]`** | PLAY SHOW (index 0) on the left panel |
 | venue_select | song_select | `GREEN` | confirm through; venue is irrelevant to gameplay |
-| song_select | difficulty_select | `STRUM_DN×i, GREEN` | 2-player path — song set unconfirmed; `part_select` presence unconfirmed |
+| song_select | difficulty_select | `STRUM_DN×i, GREEN` | 2-player path — no `part_select` observed |
 | difficulty_select | loading | `STRUM_DN×index, GREEN` | 2-player path — shared screen, both players same difficulty |
 | loading | in_song_2p | _(none — wait)_ | transient; auto-advances into 2-player gameplay |
+| in_song_2p | faceoff_end_menu | _(none — song ends)_ | gameplay completes |
+| faceoff_end_menu | song_select | `GREEN` | CONTINUE (idx 0); no RED on this screen |
 | training_menu | song_select | `STRUM_DN×1, GREEN` | PRACTICE (index 1) |
 | song_select | part_select | `STRUM_DN×i, GREEN` | song at list index i; shared node. May skip part_select for some songs |
 | song_select | bonus list | `BLUE` (back: `YELLOW`) | toggles the song list, not a screen change |
@@ -561,30 +561,32 @@ _(filled in as destinations are confirmed)_
 
 ## Navigator notes (implementation)
 
-> **Implemented (2026-07-02):** the on-device controller is
-> `firmware/marvin/default/src/game/game_controller.c` — a port of the offline
-> `tools/gameplay` `NavController`. Triggered by the dashboard START button or the
-> console `play` command; reads the committed `Selection`; drives the worked path
-> below closed-loop and hands off to the CV detector at `in_song`. v1 covers the
-> practice path from a menu anchor (RED→`main_menu`); mid-song `+`/pause recovery is
-> not wired (the T1S mask path carries no `+`). See the marvin journal 2026-07-02.
+> **Implemented** in `firmware/marvin/default/src/game/game_controller.c`, a port
+> of the offline `tools/gameplay` `NavController`. Triggered by the dashboard START /
+> SHOWDOWN buttons or the console `play` command; reads the committed selection;
+> anchors on `main_menu` (`nav_to_main_menu`: RED, or CONTINUE on
+> `faceoff_end_menu`), walks the practice or 2-player plan below, and hands off to
+> the CV detector at `in_song` / `in_song_2p`. `play attach` skips navigation for a
+> game started by hand. Mid-song `+`/pause is not used.
 
 How the controller (M10) uses this map. Unmapped paths don't need modeling —
 they're handled by recovery, not enumeration.
 
 - **Closed-loop — verify every screen (not a blind macro).** Before issuing a
   step's inputs, confirm the observer reports the expected screen; after issuing
-  them, confirm the expected destination before proceeding. On mismatch, recover
-  (see below) and re-plan. Never fire a button sequence open-loop and *assume* we
+  them, confirm the expected destination before proceeding. The plan is dispatched
+  by *observed* screen, so a step whose screen never appears is simply skipped. On
+  a decisive wrong screen, recover (see below) and re-plan; on UNKNOWN, hold and
+  re-observe (bounded) — UNKNOWN is no reading, not evidence of being off-plan. Never fire a button sequence open-loop and *assume* we
   landed where we hoped — drift, sticky defaults, variable/absent screens, and
   load times all break that. This is why the observer (M9) gates the controller
   (M10). (spec §4.8.1.)
 - **Stubs / unknown destinations.** Edges marked `TBD` simply have no plan; the
   navigator never routes through them. Out-of-scope nodes (`tutorials_menu`) and
   any screen the observer doesn't recognize are treated as "unknown state."
-- **Recovery from unknown state.** RED backs up one level from any menu, so the
-  generic recovery is *"press RED until a recognized screen appears, then
-  re-plan."* This gets us un-stuck from a wrong branch without mapping it.
+- **Recovery from a wrong screen.** RED backs up one level from any menu (except
+  `faceoff_end_menu`), so the generic recovery is *"press RED until an expected
+  screen appears, then re-plan."*
 - **Top-item selection (`STRUM_UP×N`).** For steps where we always want the top
   item (FULL SONG, FULL SPEED), strum up to saturate at the top, then GREEN,
   rather than trusting the entry highlight. (Depends on no wrap-around — open.)
@@ -604,12 +606,8 @@ with RED first):
 7. `STRUM_UP×N, GREEN` → FULL SPEED → `loading` (wait) → `in_song` (gameplay)
 
 **Caveat (step 4):** `part_select` items vary per song and the screen may be
-absent — exactly the case the closed-loop rule handles: after step 3's GREEN,
-check which screen actually appeared. If it's `part_select`, pick LEAD (read the
-offered items) and GREEN; if it's already `difficulty_select`, skip step 4. A
-purely open-loop macro can't do this safely (extra inputs would mis-fire), so
-until the observer exists, restrict to songs known to show LEAD-at-top. Per-song
-`parts` metadata lets the planner pre-know the layout either way.
+absent — the closed-loop dispatch handles it: if `part_select` appears the plan
+picks index 0 (LEAD); if `difficulty_select` appears first, step 4 never runs.
 
 ### Worked path — 2-player pro face-off run (main-setlist song `i`, difficulty `d`)
 Marvin drives **P1 (left)**; a human plays P2. Same closed-loop gating as above.
@@ -618,70 +616,39 @@ unbounded — observe until the next screen appears; do **not** time out into RE
 recovery (Conventions). From `main_menu`:
 
 1. `STRUM_DN×3, GREEN` → MULTIPLAYER → `guitar_select_2p`
-2. **assert** marvin's guitar is preselected on the left; `GREEN` to confirm its
-   own side. If the assertion fails, **abort to the operator** — do not try to move
-   a guitar. Then **`[wait: P2]`** → `multiplayer_menu`
+2. `GREEN` to confirm marvin's own side, verify P1 `READY!` (retry if absent); never
+   move a guitar. Then **`[wait: P2]`** → `multiplayer_menu`
 3. `STRUM_DN×1, GREEN` → PRO FACE-OFF → `character_select_2p`
-4. `GREEN` → pass through (keep the current character) → `player_ready_2p`
+4. `GREEN` → pass through (keep the current character), then **`[wait: P2]`** →
+   `player_ready_2p`
 5. PLAY SHOW (index 0) on the **left** panel, `GREEN`, then **`[wait: P2]`** →
    `venue_select`
 6. `GREEN` → confirm whatever venue is selected → `song_select`
-7. `STRUM_DN×i, GREEN` → song `i` → `difficulty_select` *(a 2-player `part_select`
-   may or may not appear — same closed-loop skip as the training path's step 4)*
+7. `STRUM_DN×i, GREEN` → song `i` → `difficulty_select` *(the plan also carries
+   `part_select` / `section_select` / `speed_select` steps in case they appear;
+   none did on hardware)*
 8. `STRUM_DN×d, GREEN` → difficulty `d`, shared by both players → `loading` (wait)
    → `in_song_2p` (gameplay, marvin reads the **left** highway)
 
-**Unverified in this plan:** the tail from step 6 on is operator-reported, not
-captured — see Open items before relying on steps 6–8.
+A full 2-player game ran through this path end to end on hardware (2026-08-10).
 
 ---
 
 ## Open items
-- ✅ Practice path mapped end-to-end (`main_menu → … → in_song`), incl. the
-  `practice_end_menu` loop-back (continue / restart / change speed|section / quit).
-- ✅ Mid-song `pause_menu` mapped (resume / restart / options / change speed|
-  section / new song / quit).
-- Extend the actuator command path to carry non-fret/strum buttons (`+`/`−`,
-  etc.) for menu use — fauxmote already emulates them (`firmware/fauxmote`, §3);
-  the marvin→actuator protocol (§4.3) is fret/strum today.
+- `+`/`−` and other non-fret/strum buttons for menu use: the guitar node's mask
+  can't carry them; fauxmote's nav slice can, but no plan uses it (so no
+  `pause_menu` recovery mid-song).
 - `pause_menu` OPTIONS submenu — out of scope; map only if needed.
 - Per-song `part_select`: which parts each song offers (lead/rhythm vs lead/bass),
-  and which songs skip the screen entirely. Likely a `parts` column on the song
-  catalog, or read live (vision). Need snapshots of the lead/bass variant + a
-  skip case.
+  and which songs skip the screen. Needs snapshots of the lead/bass variant + a skip
+  case; the plan currently always picks index 0.
 - Other modes: walk QUICKPLAY and CAREER; confirm they reuse `song_select` /
-  `difficulty_select` (shared-node assumption).
-- ✅ 2-player setup path mapped (`main_menu → MULTIPLAYER → … → in_song_2p`), 2026-08-08.
-  Its remaining gaps:
-  - **Not yet recognized.** The 5 new screens are documented but **not imported into
-    the `gh3_screens/` corpus**, so the observer classifies none of them (they'll read
-    UNKNOWN). Deferred phase: import the 22 captures, add the ids to `screens.py`
-    (`GP_N_SCREENS` 14 → 19), re-export `gameplay_metadata.h`, bump the dimension
-    assert in `tools/gameplay/tests/test_export_c.py`.
-  - **Per-side readers.** `player_ready_2p` has two independent cursors, but the
-    static-list reader returns a single index and menu layouts are keyed by screen id
-    — a per-side layout needs keying by a *layout* id instead. Only the left panel is
-    needed (marvin drives P1). For the per-side `READY!` commit state on
-    `guitar_select_2p` / `player_ready_2p`, reuse the masked-SAD probe pattern from the
-    scoreboard-presence work (gameplay journal 2026-07-15) rather than inventing a new
-    mechanism.
-  - **Confirm the tail** (steps 6–8 of the worked path): the exact
-    `venue_select → song_select → difficulty_select → loading` ordering is
-    operator-reported from memory, not captured. Also unconfirmed: whether a
-    `part_select` appears on this path, and the available *song set*. One capture pass
-    settles all three. (Difficulty is **not** per-player — resolved.)
-  - **Guitar-preselect assertion.** Documented default if it fails is abort-to-operator.
-    If the left side turns out not to be reliably preselected in practice, this needs a
-    real plan plus captures of the unassigned state.
-  - **Unbounded act-then-wait.** The controller needs a wait state distinct from its
-    timeout→RED-recover path, plus operator-visible "waiting for player 2" status
-    (`game_controller.c`).
-  - **2-player end-of-song screens** are unmapped — `in_song_2p` leads to TBD.
-- **Wrap-around behavior** (now load-bearing): does the cursor wrap past the
-  ends? The FULL SONG / FULL SPEED selection relies on strum-up **saturating** at
-  the top item. If lists wrap, that breaks and the navigator must read the
-  highlight instead. Confirm for static lists.
-  (Affects shortest-path planning in the controller.)
-- ✅ per-screen vision classifier + highlight readout — built in
-  `game/gameplay_classify.c` (`gp_classify()`); the controller reads the classified
-  `{screen, selection}` via the gameplay engine (`game_controller.c` `observe()`).
+  `difficulty_select`.
+- 2-player available *song set* vs practice — unconfirmed.
+- **Guitar-preselect check** on `guitar_select_2p` is not built: all corpus frames
+  have a guitar in P1's shield, so there is no negative to threshold against. If the
+  left side turns out not to be reliably preselected, this needs a plan plus
+  captures of the unassigned state.
+- **Wrap-around behaviour**: FULL SONG / FULL SPEED rely on strum-up **saturating**
+  at the top item. If lists wrap, the navigator must read the highlight instead.
+- `faceoff_end_menu` RETRY SONG / MORE STATS destinations — unverified.

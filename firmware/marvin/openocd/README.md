@@ -63,10 +63,11 @@ arm-none-eabi-gdb -ex 'target remote :3333'
 
 `reset`, `reset halt`, and `reset init` reset the SoC over the nRST line (AD5) —
 including a *running* marvin — and `reset init` additionally disables the watchdog
-and MMU/caches. This relies on driving nSRST push-pull (`-data`/`-oe`) with a
-500 ms pulse and `srst_pulls_trst`; a too-short pulse or `-oe`-only definition
-does **not** actually reset the chip. (Config follows the Microchip class-material
-example for this board.)
+and raises JTAG to 1 MHz. It does not touch the MMU/caches; they are off only
+because the core is caught in the ROM after reset (`erase-nand.cfg` forces them off
+explicitly for a board that booted marvin first). This relies on driving nSRST
+push-pull (`-data`/`-oe`) with a 500 ms pulse and `srst_pulls_trst`; a too-short
+pulse or `-oe`-only definition does **not** actually reset the chip.
 
 A `Warn : libusb_detach_kernel_driver() failed with LIBUSB_ERROR_ACCESS` line on
 macOS is harmless — OpenOCD claims the interface anyway.
@@ -107,22 +108,20 @@ It is **repeatable with no physical power-cycle** — edit, rebuild, re-run:
 Mechanism (`marvin_load_ram`, also the by-hand recipe):
 
 `reset init` (resets the SoC from any state via the 500 ms nSRST pulse, then
-disables the watchdog + MMU/caches) → `adapter speed 0` (RTCK adaptive clocking —
+disables the watchdog) → `adapter speed 0` (RTCK adaptive clocking —
 **required**; at fixed TCK, OpenOCD loses JTAG sync when at91bootstrap switches
 the master clock) → load the init-and-stop at91bootstrap → resume → `wait_halt`
 catches the bootstrap's `BKPT_NOTIFY_DONE` after DDR init (clocks + DDR now up,
 MMU/caches off) → load marvin → resume at `0x23f00000`. An I-cache invalidate
 (`arm mcr 15 0 7 5 0 0`) follows each `load_image`. The reset re-initializes the
 MPDDRC, so the bootstrap brings DDR3L up fresh each run — that is what makes the
-loop repeatable without a power-cycle. (The bootstrap issues a `bkpt`
-(`CONFIG_BKPT_NOTIFY_DONE`) after DDR init, which OpenOCD catches with `wait_halt`
-— no manual breakpoint or disassembly needed.)
+loop repeatable without a power-cycle.
 
 **Headless note:** with no display/maXTouch panel connected, marvin's maXTouch
 driver init fails gracefully (driver → ERROR) and the rest of the system runs.
-This relies on the bounded-retry fix in `drv_maxtouch.c` (journal re-apply patch
-#10) — without it, an absent panel hangs the system at the FreeRTOS malloc-fail
-hook.
+This relies on the bounded-retry fix in `drv_maxtouch.c` (re-apply patch #8 in
+the journal's MCC re-apply list) — without it, an absent panel hangs the system at
+the FreeRTOS malloc-fail hook.
 
 ## Debugging in VS Code (or gdb CLI)
 
@@ -142,10 +141,10 @@ Both auto-start the server (`preLaunchTask`), attach, load symbols from
 breakpoint, run the config, and step/inspect. (cortex-debug is Cortex-M-centric
 and is intentionally not used for this ARM926 target.)
 
-**gdb CLI** equivalent:
+**gdb CLI** equivalent (from the repo root):
 
 ```sh
-openocd -f sam9x75-chybrid.cfg &                       # gdb server on :3333
+openocd -f firmware/marvin/openocd/sam9x75-chybrid.cfg &   # gdb server on :3333
 arm-none-eabi-gdb firmware/marvin/out/marvin/default.elf \
     -ex 'set architecture arm' -ex 'target remote :3333'
 ```
@@ -157,7 +156,7 @@ only does a TAP reset (TMS), which leaves the running core alone; `reset`,
 `reset halt` and `reset init` all destroy the evidence.
 
 ```sh
-openocd -f sam9x75-chybrid.cfg &                       # no reset
+openocd -f firmware/marvin/openocd/sam9x75-chybrid.cfg &   # no reset
 arm-none-eabi-gdb firmware/marvin/out/marvin/default.elf \
     -ex 'set architecture arm' -ex 'target remote :3333' \
     -x firmware/marvin/openocd/inspect-wedge.gdb
@@ -267,20 +266,10 @@ Leave `FTDI_SERIAL` unset to use the first FT4232H found.
 
 ## Scope / limitations
 
-This supports **attach, halt, resume, memory/register access, reset**
-(`reset` / `reset halt` / `reset init` — resets a running marvin; `reset init`
-also disables the watchdog + MMU/caches), **adaptive clocking** (`adapter speed 0`,
-using RTCK), **loading + running marvin from DDR over JTAG, repeatable with no
-power-cycle** (`load-ram.sh` — validated booting marvin headless and reloading
-from a running marvin), **source-level debug** (gdb/VS Code on `:3333`), and a
-**macOS microSD prep** for standalone boot (`make-sdcard.sh`).
-
-It **programs on-board NAND from macOS** via [`program-nand.sh`](program-nand.md)
-— u-boot is RAM-loaded over JTAG (same mechanism as `load-ram`) and acts as a
-PMECC-aware flasher; marvin then boots standalone from NAND. Validated on
-hardware (2026-06-11). This replaces the SAM-BA `../binaries/nand_flash.bat` flow
-on macOS. It also **programs QSPI NOR data** (splash / UI assets) from macOS over
-JTAG via [`program-qspi.sh`](program-qspi.md) — u-boot RAM-loaded as an `sf`
-flasher, same mechanism, no SAM-BA. Only **QSPI boot** still needs SAM-BA
-(`../binaries/qspi_flash.bat`, Linux/Windows) or MPLAB: OpenOCD has no SAM9X7 QSPI
-driver and the u-boot QSPI-*boot* header path isn't wired up here.
+Covered from macOS over JTAG: attach/halt/reset, RAM load + run (`load-ram.sh`),
+source-level debug, microSD prep (`make-sdcard.sh`), NAND program/erase
+(`program-nand.sh` / `erase-nand.sh`, u-boot as a PMECC flasher), and QSPI **data**
+programming (`program-qspi.sh`, splash/assets). Not covered: **QSPI boot** — OpenOCD
+has no SAM9X7 QSPI driver and no u-boot QSPI-boot-header path is wired up; the only
+route is SAM-BA (`../binaries/qspi_flash.bat`, Linux/Windows), see
+[`../binaries/README.md`](../binaries/README.md).

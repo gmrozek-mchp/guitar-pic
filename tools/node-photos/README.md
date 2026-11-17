@@ -24,7 +24,7 @@ firmware keys it off `0xFF`, outside the T1S id space.
 
 ## The frame is baked in
 
-Each output carries its own 1px rounded border (`#404040`, radius 4, corners eaten back to page
+Each output carries its own 1px rounded border (`#404040`, radius 16 = `CARD_R`, corners eaten back to page
 black). That is not decoration you can drop: the photo is scanned out on its own hardware layer
 above the UI canvas — which is how it keeps 8 bits per channel instead of being quantized to
 RGB565 — so no widget can draw a frame over it. Staying opaque over the whole rect is also what

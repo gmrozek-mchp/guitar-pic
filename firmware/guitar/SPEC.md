@@ -31,16 +31,18 @@ naming is kept intentionally so a future board can carry both Wii actuators *and
 
 This split lets sensing (detector nodes) and actuation (guitar nodes) live on separate nodes
 of one PLCA bus, with marvin selecting the active one of each class (see top-level
-[`SPEC.md`](../../SPEC.md) §2 "Node classes"). Multiple guitar variants may coexist on the bus.
-fretboard keeps actuating until this node is proven; marvin flips its command target then.
+[`SPEC.md`](../../SPEC.md) §2 "Node classes"). Two sources command it: marvin (CV pipeline) and,
+inside a song with `active fretboard`, the fretboard peer-to-peer. The live game input is
+fauxmote, not this node — on the ATE_2026 board the guitar is an on-bus indicator.
 
 ## 2. Hardware
 
 | Spec | Value |
 |------|-------|
 | Device | PIC32CM PL10 (same family as fretboard; Cortex-M0+, 24 MHz) |
-| Toolchain | XC32 |
-| MAC-PHY | LAN8651 (10BASE-T1S), SPI Mode 0, ≤ ~12 MHz on the 24 MHz part |
+| Toolchain | XC32 5.10, PIC32CM-PL_DFP 1.4.418 ([`.vscode/guitar.mplab.json`](.vscode/guitar.mplab.json); app sources added via `cmake/guitar/default/user.cmake`) |
+| Programmer | PKOB nano |
+| MAC-PHY | LAN8651 (10BASE-T1S), SPI Mode 0, 12 MHz (SERCOM0 `BAUD=0`) |
 
 **Pin map (ATE_2026 board, PIC32CM6408PL10048)** — SERCOM0 in **SPI-master mode**
 (Mode 0: CPOL=0/CPHA=0, MSB first) for the LAN8651, GPIO chip-select / reset, and an
@@ -70,8 +72,8 @@ bit layout matching the wire command:
   | 5, 6 | Strum (up/down collapsed to one STRUM indicator) | PA13 |
 
 The bus is serviced from the main loop, woken by `IRQ_N` (no periodic ADC scan — that's the
-detector's job). PoDL on the pair powers the node (transparent to firmware;
-see [T1S/PoDL link](../../docs/t1s-podl-link.md) §6).
+detector's job). PoDL is not built; the node is powered separately
+([T1S/PoDL link](../../docs/t1s-podl-link.md) §6).
 
 > The original Wii-guitar board instead used **software open-drain** on seven pins (5 frets +
 > strum down + strum up), with a different pinout (`CS`=PA15, `RST`=PA14, `IRQ_N`=PA13/EXTINT13).
@@ -86,7 +88,8 @@ A **PLCA follower** — the mirror of marvin's coordinator glue, reusing the sha
 - `TC6_Init` + `TC6Regs_Init(enablePlca=true, nodeId=3, nodeCount=8, …)` — follower, **not**
   coordinator.
 - Custom ethertype `0x88B5`; marvin's command rides as a 1-byte payload inside the 14-byte
-  Ethernet header. The guitar accepts frames addressed to its MAC from the coordinator.
+  Ethernet header. The guitar applies any `0x88B5` frame addressed to its MAC (no source
+filter — latest wins), so marvin and the fretboard must not drive it at once.
 - **Bare-metal** (no FreeRTOS on PL10): the TC6 service loop runs from the main loop / timer
   tick, not a task; `IRQ_N` is wired to a SERCOM-EIC pin (not a PIO controller as on marvin).
 - **Control channel** (ethertype `0x88B9`, unicast to this node): typed `[opcode, arg]`. One opcode
@@ -121,7 +124,7 @@ Implemented in [`t1s_follower.c`](config.mcc/src/t1s_follower.c):
      is deliberate: inside a song with the fretboard selected, marvin is silent and the fretboard
      drives this node peer-to-peer, so a coordinator-side gate would miss exactly the window where
      the robot is playing.
-3. **TX path:** none required initially. Optional `applied_mask` telemetry back to marvin (for
+3. **TX path:** heartbeat only. Optional `applied_mask` telemetry back to marvin (for
    edge-ai zero-skew labels) is **deferred** with the edge-ai re-homing effort.
 4. **Service:** call `TC6_Service` from the main loop / tick, woken by `IRQ_N`.
 5. **CLI** (debug aid, on the SERCOM1 UART via embedded-cli, static allocation): `t1s` (link /
@@ -134,8 +137,8 @@ Implemented in [`t1s_follower.c`](config.mcc/src/t1s_follower.c):
 ## 5. What this is *not*
 
 - **Not a sensor.** No phototransistors, no ADC — sensing is the detector node's job.
-- **Not an on-device model.** The edge-ai MODEL_DRIVEN inference stays on fretboard for now;
-  re-homing it (detector infers → T1S → guitar) is out of scope.
+- **Not an on-device model.** Inference runs on the fretboard, which sends its result here
+  over T1S.
 - **Not a game brain.** No chord/strum timing — marvin's timing pipeline owns that and sends
   the resulting bitmask.
 - **Not the PLCA coordinator.** marvin (node 0) beacons the cycle; guitar is a follower.
@@ -147,9 +150,9 @@ Implemented in [`t1s_follower.c`](config.mcc/src/t1s_follower.c):
 | ✅ | **G0** — guitar MCC project: SERCOM0 SPI (Mode 0), EIC EXTINT13 (falling) on `IRQ_N`=PA13, `CS`=PA15 / `RST`=PA14 GPIO, 7 button GPIOs, SERCOM1 debug UART (CS/IRQ_N reassigned to match wiring) |
 | ✅ | **G1** — T1S follower bring-up on hardware: `LAN8651 up - chipRev=2 … PLCA follower id=2/8` (node renumbered to id 3 in source 2026-07-28; re-flash reproduces at `id=3/8`) |
 | ✅ | **G2** — end-to-end: marvin's command over T1S → the addressed Wii GPIO asserts |
-| ✅ | **CLI** — `t1s`/`btn`/`tap`/`id`/`plca` on the debug UART (embedded-cli). Drives the Wii-guitar GPIOs locally and reports T1S link/sync/PLCA status. |
+| ✅ | **CLI** — `t1s`/`btn`/`tap`/`output`/`id`/`plca` on the debug UART (embedded-cli). Drives the output GPIOs locally and reports T1S link/sync/PLCA status. |
 | ✅ | **Heartbeat** — periodic presence frame (ethertype `0x88B6`) to the coordinator so marvin's `nodes` shows this node present. TX gated on `PLCA_STATUS` bit 15 (polled 250 ms), so `IsConnected` / heartbeat reflect real on-bus state, not just local init |
 | ✅ | **Status LED** — `status_led.{c,h}` drives `LED0` (PB02, active-low) as a non-blocking SysTick heartbeat: lub-dub when on the bus, single blip when down; decoupled from any command state |
 | ✅ | **ATE_2026 port** — control + output pins remapped (`CS`=PA06, `RST`=PA03, `IRQ_N`=PA02/EXTINT2; LEDs PA08–PA13), output stage flipped to active-high status LEDs, strum collapsed to one STRUM. Builds; not yet exercised on the physical board. |
 | ✅ | **Output enable** — `0x88B9` control channel (op `0x01`) gating `buttons_apply_mask`, echoed back as heartbeat `flags` bit1 so marvin reconciles it. Drives marvin's dashboard GUITAR toggle, and holds even while the fretboard drives this node peer-to-peer. Wired; pending on-hardware verification |
-| 🔭 | **G3** — full system: `fretboard` (detector) + `guitar` (actuator) both on the bus with marvin selecting the active of each (marvin already targets the guitar; needs the fretboard moved to T1S) |
+| 🚧 | **G3** — full system: `fretboard` (detector) + `guitar` both on the bus. Detector selection exists on marvin (`active <cv\|fretboard>`); active-*guitar* selection is not built (marvin targets the single guitar via `node_for_type`) |

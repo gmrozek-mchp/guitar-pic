@@ -1,5 +1,7 @@
 # Voice Coil Actuator - 3D Part Dimensions
 
+> **Status: candidate design.** No physical actuator has been chosen or built — see [`hardware/README.md`](../README.md).
+
 ## Overview
 
 This document provides detailed dimensions for the 3D printed parts of the voice coil actuator. Use alongside `voice-coil-parts.scad` for generating STL files.

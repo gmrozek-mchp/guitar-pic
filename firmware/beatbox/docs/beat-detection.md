@@ -30,10 +30,10 @@ pieces cooperate on a bare-metal (no-RTOS) dsPIC33A. This is the durable
                           │  (decision)  │
                           └──────┬───────┘
                                  ▼  Beat_GetFrame / Beat_HasFrame
-                   ┌─────────────┼───────────────┐
-                   ▼             ▼               ▼
-             RGB indicator   `beat` CLI     T1S publish (B4, planned)
-             (main.c)        (cli.c)        → lemmy / lightshow
+          ┌──────────┬───────────┼────────────┬──────────────┐
+          ▼          ▼           ▼            ▼              ▼
+    RGB indicator  VU meter  `beat` CLI   UART1 GUI    publish.c → T1S
+    (main.c)    (vu_meter.c) (cli.c)   (uart_debug.c) 0x88B8 broadcast
 ```
 
 The dependency is strictly layered and additive:
@@ -56,7 +56,7 @@ design:
 | Context | What runs there | Cadence | Constraint |
 |---|---|---|---|
 | **ADC ISR** (`audio.c`, priority 6) | read ADC, DC-block HPF, write PWM DACs, sample callback → `BeatDetect_Process` | 48 kHz (every ~20.8 µs) | must be *short* — only per-sample bookkeeping, never the FFT |
-| **main loop** (`main.c`) | `CLI_Tasks()`, `Beat_Tasks()`, `T1SFollower_Tasks()` | as fast as the loop turns | cooperative — no task may block long |
+| **main loop** (`main.c`) | `CLI_Tasks()`, `Beat_Tasks()` + per-frame consumers, `T1SFollower_Tasks()`, `UART_Debug_Tasks()` | as fast as the loop turns | cooperative — no task may block long |
 
 **The ISR does the cheap per-sample work; the main loop does the heavy work.**
 `BeatDetect_Process` (ISR) only accumulates the downsampler and buffers one FFT
@@ -79,7 +79,7 @@ main-loop stages) is done with `volatile bool` flags, several of them
 
 ### Why no locks are needed
 
-- **Only the ISR preempts.** The three main-loop tasks never preempt each other,
+- **Only the ISR preempts.** The main-loop tasks never preempt each other,
   so state shared *only* among them needs no guarding. Guarding is required only
   for state shared with the ISR.
 - **Single-word reads are atomic** w.r.t. the ISR on this 32-bit core. The feature
@@ -209,8 +209,7 @@ currently tuned, `NOISE_GATE_BYPASS_DELTA` (250) equals `BEAT_DELTA_THR` (250), 
 any delta large enough to fire is already large enough to bypass the gate — the
 envelope gate is effectively inert, and the flux-delta threshold alone gates. Lower
 `NOISE_GATE_BYPASS_DELTA` (or raise `BEAT_DELTA_THR`) to make the envelope gate
-active. (Ported verbatim from the original; documented here rather than silently
-"fixed".)
+active.
 
 The kick beat/strength and the bass-dominance flag pass straight through from
 `beat_detect`.
@@ -219,8 +218,7 @@ The kick beat/strength and the bass-dominance flag pass straight through from
 
 `beat_engine` publishes one `BeatFrame` per frame (~23.4 Hz).
 `Beat_HasFrame()` returns true once per new frame (consume-once); `Beat_GetFrame()`
-snapshots the latest regardless. Today's consumers are the RGB indicator in
-`main.c` and the `beat` CLI command.
+snapshots the latest regardless. Consumers are listed in §1.
 
 | Field | Type | Range | Meaning |
 |---|---|---|---|
@@ -233,15 +231,9 @@ snapshots the latest regardless. Today's consumers are the RGB indicator in
 | `raw_env` | `uint16_t` | 0–10000 | absolute amplitude envelope |
 | `bass_dominant` | `bool` | — | bass energy > 35% of total |
 
-### Planned bus mapping (B4, not yet implemented)
+### Bus mapping
 
-The `BeatFrame` is the internal contract; the on-bus contract is downstream of it:
-
-- **→ lightshow (id 7):** a compact ~5-parameter **beat frame** derived from these
-  fields (e.g. beat pulse + band energy + big-beat flag), sent over T1S.
-- **→ lemmy (id 6):** **position commands** for the puppet, computed by beatbox's
-  choreography layer (the old `nod_engine`, not yet ported).
-
-Both require the **tempo/phase** layer, which is a downstream consumer of these beat
-events (see §1). See [`../SPEC.md`](../SPEC.md) §1 and the journal for the bus data
-model.
+The `BeatFrame` is the internal contract. `publish.c` maps each one to the 8-byte
+`LightshowFrame` that `t1s_follower.c` broadcasts under ethertype `0x88B8`; lightshow
+and lemmy both consume it. Its `tempo`/`phase` bytes stay 0 until a tempo/phase layer
+exists. See [`../SPEC.md`](../SPEC.md) §5.

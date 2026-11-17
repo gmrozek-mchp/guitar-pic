@@ -45,8 +45,7 @@ ISR; see decision log + edge-ai `runtime.md` §3). Over T1S the node then:
 Plus a 500 ms presence heartbeat (`0x88B6`, node_type 1 = detector). All TC6 TX/service is in the main
 loop ([`T1SDetector_Tasks`](../t1s_detector.c)); the ISR only scans + stages the data frame. It has **no
 local Wii-guitar outputs** (those pins are the LAN8651 SPI). PLCA follower id 4, MAC `02:00:00:00:00:04`
-(renumbered from id 1 in source 2026-07-28; last flashed/verified at id 1 — re-flash fretboard + marvin
-together for id 4 to take effect).
+(running on hardware at id 4 — the 2026-08-03 corpus captures were taken over it).
 
 Actuation is armed via the local **`arm [on|off]` CLI command** or marvin's **control channel** (ethertype
 `0x88B9`, opcode `0x01` arm, arg 0|1 → `fretboard arm|disarm`) — a single shared arm flag, last writer wins,
@@ -55,12 +54,12 @@ per-song gameplay window (asserted only while a song is playing with the fretboa
 detector; disasserted when the song ends or `active cv` is chosen). **LED0 (PB02)** is the T1S liveness heartbeat ([`status_led.c`](../status_led.c),
 lub-dub on the bus / single blip when down), decoupled from the arm state. **Coordination caveat:** the guitar applies whoever
 transmitted last (both marvin and the fretboard target `02:..:03`), so only one source may be armed at a time;
-**automatic** active-detector/active-guitar coordination is still the follow-up.
+marvin's `active` + gameplay window handle this automatically (active-*guitar* selection is not built).
 
-**MCC done** (SERCOM0 SPI Mode 0 on PA04/05/07; T1S_CS PA15 / T1S_RST PA14 / T1S_IRQ_N PA13 EXTINT13
-falling; SysTick 1 ms; SERCOM1 ring-buffer TX 512). **Operator CLI** on SERCOM1 ([`cli.c`](../cli.c),
-vendored `third_party/embedded-cli/`): `t1s` (link + data/cmd tx counts), `adc`, `id`, `plca`. Remaining:
-build-wiring (add the T1S + embedded-cli sources/include dirs) and on-hardware bring-up. Build at `-O2`/`-O3`.
+**MCC done** (SERCOM0 SPI Mode 0 on PA04/05/07; SysTick 1 ms; SERCOM1 ring-buffer TX 512). **Operator CLI** on SERCOM1 ([`cli.c`](../cli.c),
+vendored `third_party/embedded-cli/`): `t1s` (link + data/cmd tx counts), `arm`, `stream`, `model`, `adc`, `id`, `plca`. Built and running on hardware. The journal calls for `-O2`/`-O3`, but `.vscode/fretboard.mplab.json` is set to `-O1` (open question).
+T1S control pins were remapped 2026-08-02 (`fe0d7a9`) to CS PA06 / RST PA03 / IRQ_N PA02 — the EIC is
+still on EXTINT13 (see SPEC pin map).
 
 ---
 

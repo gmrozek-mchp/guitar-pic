@@ -196,7 +196,7 @@ On hardware: GH3 detects the guitar and frets/strum/whammy register in-game.
   single IR calibration. Deferred idea: drive `SX/SY` (guitar module already owns them,
   fixed at center `0x20`) for guitar-mode Home navigation if Marvin ever needs it.
 
-**Phase 4 IN PROGRESS — marvin command link (fauxmote side done; now T1S-capable).**
+**Phase 4 DONE — marvin command link, on T1S.**
 The link is a second front-end beside the CLI that drives the existing
 `Wiimote_*`/`Guitar_*`/`Fauxmote_*` APIs — `GUITAR` (fret/strum/whammy/aux), `WIIMOTE`
 (core/D-pad/stick, via new `Guitar_SetStick`), `LINK_CMD`, `ACCEL`/`POINTER` slices,
@@ -206,18 +206,19 @@ all inputs to safe defaults when the link goes quiet.
 The transport-neutral message layer now lives in `mf_link.c` (`MfLink_Init`/
 `HandleMessage`/`Service`); a Kconfig `choice` selects the backend that provides
 `MarvinLink_Start()` + the `mf_send_fn`:
-- **T1S (default)** — `mf_t1s.c`: LAN8651 MAC-PHY over SPI (SPI2_HOST, mode 0, 4 MHz — temporarily lowered for the test rig, see the 2026-08-08 entry)
+- **T1S (default)** — `mf_t1s.c`: LAN8651 MAC-PHY over SPI (SPI2_HOST, mode 0, `T1S_SPI_HZ`
+  — the committed source is 15 MHz; see the 2026-08-08 entry for the test-rig 4 MHz workaround)
   driven by the vendored OPEN Alliance TC6 library. PLCA follower id `CONFIG_FAUXMOTE_T1S_NODE_ID`
-  (default 3), MAC `02:00:00:00:00:<id>`; each mf_proto message = one Ethernet frame on
+  (default 1), MAC `02:00:00:00:00:<id>`; each mf_proto message = one Ethernet frame on
   ethertype **`0x88B7`** to the coordinator, plus a 500 ms `0x88B6` heartbeat (node_type 3).
   Feather V2 pin defaults SCK=5/MO=19/MI=21/CS=33/RST=27/IRQ=32 (all Kconfig-overridable).
 - **UART (fallback)** — `marvin_link.c`: the original UART1 task (Feather RX=`GPIO7`/
   TX=`GPIO8`, 1 Mbaud) with `SOF/TYPE/LEN/CRC8` framing.
 
-**UART path verified on hardware: builds, boots, the Wii connects with the link task
-running.** T1S path is written ahead of hardware (LAN8651 not yet wired); not yet driven
-by marvin over either transport (coordinator side + bring-up are later sessions). Wire
-protocol: `docs/marvin-fauxmote-link.md`; T1S framing: `docs/t1s-podl-link.md`.
+**Both paths verified on hardware.** On T1S, marvin drives fauxmote (menus, manual
+control, console `fauxmote …` verbs, GH3-drop recovery — see the 2026-07-28 and 2026-08-09
+entries); the armed fretboard detector also addresses it on `0x88B7` (fretboard journal).
+Wire protocol: `docs/marvin-fauxmote-link.md`; T1S framing: `docs/t1s-podl-link.md`.
 
 **Link stability (done):** idle disconnects are fixed — Bluedroid's JV idle→sniff
 delay (default 5 s) is overridden to 65 s via a `-D BTA_FTC_OPS_IDLE_TO_SNIFF_DELAY_MS`
@@ -285,13 +286,14 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 ## Open questions
 
-- Exact marvin FLEXCOM instance + pins for the command link (integration-time). *fauxmote side settled: UART1 on Feather RX=`GPIO7`/TX=`GPIO8`.*
-- Whether to retire the `MF_AUX_STARPOWER` bit from the shared `mf_proto.h` now that star power is expressed via the ACCEL slice. Deferred — a marvin-side decision, and the two `mf_proto.h` copies must stay byte-for-byte in sync (fauxmote's copy currently leads on the ACCEL constants until the marvin side lands).
+- Whether to retire the `MF_AUX_STARPOWER` bit from the shared `mf_proto.h` now that star power is expressed via the ACCEL slice. Deferred — a marvin-side decision, and the three `mf_proto.h` copies (fauxmote, marvin, fretboard) must stay byte-for-byte in sync.
 - **Q7: does the Wii's one-time (1+2) sync screen scan with a limited inquiry (LIAC) or a general one?** Answerable only on hardware, and now testable without a reflash: `pair temp` uses limited (shared with bonding), `pair temp gen` uses general. Whichever finds fauxmote is the answer; fold it into `Fauxmote_EnterPairingTemp`'s default and drop the argument once known.
 - **Q8: after a temporary session, does `reconnect` still authenticate — i.e. is the bond observably alive?** The ESP32's link key for that Wii is overwritten by the temp pairing either way (see the 2026-08-09 decision), so this is about what the *Wii* kept. Auth OK ⇒ nothing more to do. Auth failure ⇒ choose between unlinking at temp-session end (honest `MF_ST_BONDED`, a swap costs a re-SYNC) and a second BD_ADDR for guest pairing (keeps a durable bond, costs a reboot to switch and shows the Wii two controllers). Greg wants the permanent bond kept if it can be.
 - **Q9: do the Wii's player slots simply follow connection order?** If so, `disconnect` + a well-timed `reconnect` re-slots a bonded controller and the temporary-pairing mode is unnecessary for marvin's SWAP. Cheap to check and worth checking first.
 
 (Q6 dissolved 2026-08-09: fauxmote cannot choose to keep the link key through a temp pairing — one key per peer address, and both flows pair the same pair of addresses. Replaced by Q8, which is the measurement that actually matters — see decision log.)
+
+(Command-link wiring settled 2026-07-23: marvin FLEXCOM5 PA16/PA15 ↔ Feather UART1 `GPIO7`/`GPIO8`, now the UART fallback; see [`../../../docs/marvin-fauxmote-link.md`](../../../docs/marvin-fauxmote-link.md) §3.1.)
 
 (Q5 resolved 2026-07-02: marvin↔fauxmote link = UART first, layered message protocol; spec at [`../../../docs/marvin-fauxmote-link.md`](../../../docs/marvin-fauxmote-link.md) — see decision log.)
 

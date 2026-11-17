@@ -1,5 +1,7 @@
 # docs/archive/
 
+> **Retired and unmaintained.** Nothing here describes the current system, and many relative links inside these files point at docs that no longer exist. Do not update them; use the top-level [`SPEC.md`](../../SPEC.md) instead.
+
 Preserved historical documentation from the project's original architecture (≤ 2026-04). The system has since been re-architected; see the top-level [`SPEC.md`](../../SPEC.md) and the subproject specs for current state.
 
 **Files here are kept for design-rationale reference and are not maintained.** Specifically: hardware part numbers, wiring diagrams, calibration steps, and timing assumptions in these documents reflect the *original* PC-hosted / Elgato-USB-capture / PS2 / single-PIC-actuator design — not the current SAM9X75 (marvin) + PIC32CM6408 (fretboard) split.

@@ -16,9 +16,10 @@ Orienting docs (read alongside this journal):
 ## Current focus
 
 **Two threads.** (a) **2-player readers, host-side** — the amp score digit reader landed
-2026-08-09 and is proven on both sides; everything else 2p is data-blocked until Greg can
-capture again (the 6-digit layout, a left-side stream, star power, the face-off gauge, the
-multiplier — all itemized in Open questions). (b) the firmware port below.
+2026-08-09 and is proven on both sides, including 6-digit scores (2026-08-11); star power, the
+face-off gauge and the multiplier remain data-blocked (itemized in Open questions). (b) the
+firmware port below — phases 0–3 plus the score, amp2p, presence, READY! and end-layout readers
+are on marvin; the frame-rate end-of-song veto is disarmed (`GC_END_PROBE_ARMED 0`, 2026-08-11).
 
 **Porting to marvin firmware (`gameplay_engine`, spec §4.8) — started.** The offline
 prototype is complete (phases 1–4); now freezing the proven algorithms into firmware. Phased

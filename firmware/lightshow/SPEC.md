@@ -3,13 +3,10 @@
 > What lightshow *is* (purpose, hardware, interfaces, firmware design, milestones).
 > The running diary of decisions and progress lives in [`docs/journal.md`](docs/journal.md) — read it alongside this on any non-trivial task.
 
-> **Status: bring-up.** Project bootstrapped from the [`lemmy`](../lemmy/SPEC.md) node's
-> T1S follower (PIC32CM6408PL10048), mirroring the [`guitar`](../guitar/SPEC.md) node.
-> The LED output stage (2× WS2812-class strands via TC0 NPWM + DMA) is implemented and
-> driving on hardware via the `led` CLI. The beat-driven light show (L3) is now wired:
-> lightshow consumes [`beatbox`](../beatbox/SPEC.md)'s beat frame (ethertype `0x88B8`) and
-> renders three effects to the strands (`beat_show.{c,h}`), pending on-hardware verification
-> against a live beatbox. See §6 and [`docs/journal.md`](docs/journal.md).
+> **Status: working on hardware.** T1S PLCA follower (id 7) + 2× WS2812 strands (TC0 NPWM + DMA).
+> lightshow consumes [`beatbox`](../beatbox/SPEC.md)'s beat frame (ethertype `0x88B8`) and renders
+> three effects (`beat_show.{c,h}`) — verified with beatbox live. marvin gates the output over
+> `0x88B9` (dashboard toggle ∧ song playing). See §6 and [`docs/journal.md`](docs/journal.md).
 
 ## 1. Purpose
 
@@ -72,8 +69,7 @@ to `guitar`'s:
 - **Bare-metal** (no FreeRTOS on PL10): the TC6 service loop runs from the main loop / SysTick tick;
   `IRQ_N` is wired to a SERCOM-EIC pin.
 - **Presence heartbeat** (ethertype `0x88B6`) to the coordinator so marvin's `nodes` shows lightshow
-  present. A new `node_type = 5` (*lightshow*) is used for the heartbeat payload — marvin's §7.2
-  decode + `nodes` display learn it (marvin-side follow-up). Heartbeat TX is gated on PLCA actually
+  present (`node_type = 5`, informational — marvin identifies nodes by id). Heartbeat TX is gated on PLCA actually
   operating (`PLCA_STATUS` bit 15, polled every 250 ms) — not just local MAC-PHY init — so a follower
   never queues a frame before the coordinator's beacon exists; `T1SFollower_IsConnected()` reports this
   real on-bus state. The `flags` byte carries **bit1 = output enabled** (`BeatShow_IsEnabled()`), the
@@ -88,7 +84,8 @@ to `guitar`'s:
   calling `BeatShow_SetEnabled`. This is the same transport + grammar as [`lemmy`](../lemmy/SPEC.md)'s
   `0x88B9` control channel, routed by destination MAC with lightshow's own opcode namespace; opcode
   space is left open for future scene / brightness control. Disabling blanks the strands and frees
-  the WS2812 output for the `led` CLI.
+  the WS2812 output for the `led` CLI. marvin commands the gate as *dashboard LIGHTSHOW toggle ∧ a
+  song is playing*, so the strands stay dark through menus and come up only during gameplay.
 
 The marvin-side reference is [`firmware/marvin/default/src/net/t1s/t1s_link.c`](../marvin/default/src/net/t1s/t1s_link.c)
 (coordinator); the follower reference is [`guitar`](../guitar/config.mcc/src/t1s_follower.c).
@@ -101,9 +98,10 @@ Mirrors `guitar`'s `t1s_follower.{c,h}` + `cli.{c,h}` (reused, retargeted), then
    as follower id 7. Gate: read chip revision + PLCA *follower* status.
 2. **Service:** call `TC6_Service` from the main loop / tick, woken by `IRQ_N`.
 3. **Heartbeat:** periodic (≈500 ms) `0x88B6` presence frame to the coordinator.
-4. **CLI** (debug aid, SERCOM1 UART via embedded-cli, static allocation): `t1s` (link / sync /
-   chipRev / PLCA / counters), plus `led` (`off` / `fill <r> <g> <b>` / `set <strand> <idx> <r> <g> <b>`
-   / `test`) to stage the framebuffer and drive the strands before the command plane exists.
+4. **CLI** (debug aid, SERCOM1 UART via embedded-cli, static allocation): `info`, `t1s` (link / sync /
+   chipRev / PLCA / counters), `id`, `plca`, `led` (`off` / `fill <r> <g> <b>` /
+   `set <strand> <idx> <r> <g> <b>` / `test`) to drive the strands directly, `show` (status /
+   `show <0-2>` lock an effect / `show auto`), `reset`.
 5. **LED layer** (`neopixel.{c,h}`, implemented): R/G/B framebuffer → interleaved per-bit duty buffer
    streamed to `TC0.CCBUF` over DMA (see §2).
 6. **Beat show** (`beat_show.{c,h}`, implemented): the `0x88B8` consumer. Decodes the `LightshowFrame`
@@ -112,7 +110,8 @@ Mirrors `guitar`'s `t1s_follower.{c,h}` + `cli.{c,h}` (reused, retargeted), then
    fills strand 1 cool) — ported from the source project's WS2812 show and adapted to 2×33 strands +
    0-255 fields. Auto-cycles ~20 s; the `show` CLI reports/locks the effect. The RX callback only
    stashes the frame; `BeatShow_Tasks` renders from the main loop. Comet phase uses a local
-   restart-on-beat oscillator until beatbox sends a non-zero wire `phase`.
+   restart-on-beat oscillator until beatbox sends a non-zero wire `phase`. The strands clear after
+   750 ms with no frame.
 
 Static allocation only (no malloc), per project rule.
 
@@ -132,7 +131,7 @@ Static allocation only (no malloc), per project rule.
 | Status | Item |
 |---|---|
 | ✅ | **L0** — project bootstrapped from `lemmy`'s T1S follower (PIC32CM6408PL10048): clock/EVSYS/NVIC/PORT, SERCOM0 SPI (Mode 0), EIC EXTINT2 on `IRQ_N`=PA02, `CS`=PA06 / `RST`=PA03 GPIO, SERCOM1 debug UART (PB00/PB01), follower glue + CLI — retargeted to id 7 / `node_type = 5` |
-| 🚧 | **L1** — T1S follower bring-up on hardware: `LAN8651 up … PLCA follower id=7/8`, presence heartbeat, `t1s` CLI |
+| ✅ | **L1** — T1S follower bring-up on hardware: `LAN8651 up … PLCA follower id=7/8`, presence heartbeat, `t1s` CLI |
 | ✅ | **L2** — LED output: `neopixel.{c,h}` driver (TC0 NPWM + DMA, 2× WS2812-class strands, RGB wire order) + `led` CLI drive the strands manually; remaining hardware validation (rail sizing, VDDIO2, scope timing) tracked in §2 / journal |
-| 🚧 | **L3** — beat-driven light show: consumes beatbox's `0x88B8` beat frame (`beat_show.{c,h}`) and renders three effects to the strands; `show` CLI. Pending on-hardware verification against a live beatbox |
+| ✅ | **L3** — beat-driven light show: consumes beatbox's `0x88B8` beat frame (`beat_show.{c,h}`) and renders three effects to the strands; `show` CLI. Verified with beatbox live (idle-clear on silence not yet checked) |
 | ✅ | **L3.5** — `0x88B9` control channel: remote LED-output enable/disable (`[opcode, arg]`, `0x01` = output enable), driven by marvin's `lightshow on\|off` → `BeatShow_SetEnabled`. Shares lemmy's `0x88B9` transport/grammar (per-node opcode namespace, routed by dst MAC). Wired; pending on-hardware verification |

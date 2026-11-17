@@ -1,5 +1,11 @@
 # Yellow-Tinge / Left-Half Artifact — Complete Analysis
 
+> **Current status: resolved by running the panel at 55 Hz** on the Curiosity Hybrid —
+> `LVDSClockMul=37`, `LVDSClockFrac=2738881`, `LVDSClockDivPMC=2`, pixel clock 64.548 MHz in
+> `default/mcc/marvin_default/components/GFX/components/le_gfx_driver_xlcdc.yml` (§9).
+> Root cause is LVDS-cable signal-integrity margin; a better cable is the only open lever
+> toward 60 Hz. The rest of this doc is the investigation record.
+
 Working document collecting every test we've run against the yellow-tinge / left-half-of-overlay artifact on the SAM9X75 + 10.1" NVDI 1280×800 LVDS panel. Goal of this doc: avoid re-treading any of the tested ground; record the empirical results; identify the root cause; document the resolution.
 
 **Status (2026-06-09): production refresh raised to 55 Hz on the SAM9X75 Curiosity Hybrid board.** The board port (Curiosity → Curiosity Hybrid, same 10.1″ panel + LVDS cable) widened the signal-integrity margin: the cliff moved up from the original board's 52–54 Hz window to ~57–58 Hz. 60 Hz now shows only *mild* overlay yellow (vs *severe* before), 57 Hz is clean at rest but still cable-handling-sensitive (right at the new edge), and **55 Hz is clean and handling-robust → new production setting** (~3.5% margin under the 57 Hz edge, +5 Hz over the original board's 50 Hz). Same root cause and overlay-only signature as before — only the transmit-side margin improved. Full Hybrid sweep in §9. The original-board investigation and root-cause analysis below (§1–§8) stand as the historical record.

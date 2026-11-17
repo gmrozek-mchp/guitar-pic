@@ -1,5 +1,7 @@
 # DIY Solenoid Design Guide
 
+> **Status: candidate design.** No physical actuator has been chosen or built — see [`hardware/README.md`](../README.md).
+
 ## Overview
 
 This document details the design and construction of custom miniature solenoids for actuating keyboard switches in the Guitar Hero Bot project.

@@ -1,11 +1,13 @@
 # Bug: Legato PNG image decoder `_render()` produces garbage (image-to-image / `leProcessImage` path)
 
+> **Status in marvin:** worked around locally. The proposed fix (shared `_pngDecodeToImage` helper used by both `_draw` and `_render`) is applied in `firmware/marvin/default/src/config/default/gfx/legato/image/png/legato_imagedecoder_png.c` — re-apply patch #9 in `firmware/marvin/docs/journal.md` — and `LE_VARIABLEHEAP_SIZE` is 2 MB (patch #10). `game/game_art.c` and `ui/node_art.c` depend on it via `leImage_Render`. Not yet known whether this has been filed upstream.
+
 **Component:** MPLAB Harmony Graphics (Legato) — `gfx` **v3.17.0**
 **File:** `gfx/legato/image/png/legato_imagedecoder_png.c`
 **Function:** `_render()` (the PNG decoder's `leImageDecoder.render` callback)
 **Affected public APIs:** `leImage_Render()`, `leImage_Copy()` (render-into-image path), and therefore `leProcessImage()` (which calls `leImage_Render`)
 **Config at repro:** `LE_STREAMING_ENABLED = 0`, `LE_PNG_USE_SCRATCH = 0`, `LE_ENABLE_PNG_DECODER = 1`
-**Target:** SAM9X75 (Cortex-A5), but the defect is platform-independent (pure logic in the decoder).
+**Target:** SAM9X75 (ARM926EJ-S), but the defect is platform-independent (pure logic in the decoder).
 **Severity:** High — any attempt to decode a PNG into a destination buffer (rather than draw it directly to the active layer) yields garbage.
 
 ---

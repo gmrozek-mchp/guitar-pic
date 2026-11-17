@@ -3,12 +3,11 @@
 > What lemmy *is* (purpose, hardware, interfaces, firmware design, milestones).
 > The running diary of decisions and progress lives in [`docs/journal.md`](docs/journal.md) — read it alongside this on any non-trivial task.
 
-> **Status: smart — beat-driven nod wired.** T1S PLCA follower (id 6, link + presence + CLI), the
-> two-servo TCC0 PWM driver + position/calibration layer are up and verified on hardware. lemmy now
-> consumes [`beatbox`](../beatbox/SPEC.md)'s beat frame (ethertype `0x88B8`) and runs a local nod
-> engine (`nod_engine.{c,h}` + `beat_nod.{c,h}`) to head-bang the neck servo in time to the music —
-> in **occasional bursts** on a confident tempo (`auto` mode, §4.7), not continuously — pending
-> on-hardware verification against a live beatbox. See §6 and [`docs/journal.md`](docs/journal.md).
+> **Status: motion wired, awaiting on-hardware verification.** T1S PLCA follower (id 6) and the
+> two-servo TCC0 driver + calibration layer are verified on hardware. lemmy consumes
+> [`beatbox`](../beatbox/SPEC.md)'s beat frame (ethertype `0x88B8`) and animates itself from it: the
+> neck head-bangs in **occasional bursts** on a confident tempo (`auto`, §4.7) and the jaw poses on its
+> own (§4.8). Nothing on the bus sends lemmy per-frame positions. See §6 and [`docs/journal.md`](docs/journal.md).
 
 ## 1. Purpose
 
@@ -76,8 +75,7 @@ to `guitar`'s:
 - **Bare-metal** (no FreeRTOS on PL10): the TC6 service loop runs from the main loop / SysTick tick;
   `IRQ_N` is wired to a SERCOM-EIC pin.
 - **Presence heartbeat** (ethertype `0x88B6`) to the coordinator so marvin's `nodes` shows lemmy
-  present. A new `node_type = 4` (*animation*) is proposed for the heartbeat payload — marvin's §7.2
-  decode + `nodes` display learn it (marvin-side follow-up). Heartbeat TX is gated on PLCA actually
+  present (`node_type = 4`, informational — marvin identifies nodes by id). Heartbeat TX is gated on PLCA actually
   operating (`PLCA_STATUS` bit 15, polled every 250 ms) — not just local MAC-PHY init — so a follower
   never queues a frame before the coordinator's beacon exists; `T1SFollower_IsConnected()` reports this
   real on-bus state.
@@ -90,13 +88,16 @@ to `guitar`'s:
   tunes the nod remotely: `0x01` **nod mode** (0 = off, 1 = every beat, 2 = auto — see §4.7), `0x02`
   trim, `0x03` oscillator, `0x05` auto confidence floor (marvin's `lemmy nod|trim|osc`, `lemmy nod conf`),
   mapping onto the same `BeatNod`/`NodEngine` setters as lemmy's local `nod` CLI.
-  `nod off` here is what frees the neck for the `0x88B5` manual path. Opcode `0x04` is the
+  `nod off` here is what frees both servos for the `0x88B5` manual path. Opcode `0x04` is the
   **servo output enable** (marvin's `lemmy output on|off`) → `Servo_SetEnabled`; see §4. Opcode space is
   left open for future scripted gestures / jaw talking (L4).
   - **`nod enable` and `output enable` are different knobs, deliberately.** The first detaches the neck
     from the beat engine so a manual position sticks; the second gates the servos outright, against
-    *every* source — the nod, marvin's `0x88B5` positions, and beatbox's. Only the second answers "lemmy
-    must not move".
+    *every* source — the nod, the jaw animator, marvin's `0x88B5` positions, and the CLI. Only the
+    second answers "lemmy must not move".
+  - **marvin drives the gates per song:** output enable = dashboard LEMMY toggle ∧ a song is playing;
+    on the gameplay window edge it pushes the song's `nod_trim` (from `songs.csv`) and nod mode `auto`,
+    or nod off when `nod_trim` is 0.
 - **Heartbeat echo.** The `0x88B6` heartbeat's `flags` byte carries **bit1 = output enabled**
   (`Servo_IsEnabled()`), the return leg of opcode `0x04`: marvin compares it against what it last
   commanded and re-pushes on mismatch, so the gate converges after a lost frame, a reboot, or a local
@@ -107,16 +108,16 @@ The marvin-side reference is [`firmware/marvin/default/src/net/t1s/t1s_link.c`](
 
 ## 4. Firmware design
 
-Planned to mirror `guitar`'s `t1s_follower.{c,h}` + `cli.{c,h}` (reused, retargeted), then add a servo
+Mirrors `guitar`'s `t1s_follower.{c,h}` + `cli.{c,h}` (reused, retargeted), plus a servo and motion
 layer:
 
 1. **Bring-up:** reset the LAN8651 (`RST` pulse), configure SPI (Mode 0), `TC6_Init` + `TC6Regs_Init`
    as follower id 6. Gate: read chip revision + PLCA *follower* status.
 2. **Service:** call `TC6_Service` from the main loop / tick, woken by `IRQ_N`.
 3. **Heartbeat:** periodic (≈500 ms) `0x88B6` presence frame to the coordinator.
-4. **CLI** (debug aid, SERCOM1 UART via embedded-cli, static allocation): `t1s` (link / sync /
-   chipRev / PLCA / counters), `servo`/`pos`/`cal` (exercise + calibrate the mechanism), `nod`
-   (beat-nod status incl. the auto burst state; `on|off|auto` / `conf <0..100>` / `trim <n>` /
+4. **CLI** (debug aid, SERCOM1 UART via embedded-cli, static allocation): `info`, `t1s` (link / sync /
+   chipRev / PLCA / counters), `id`, `plca`, `reset`, `servo`/`pos`/`cal` (exercise + calibrate the mechanism), `nod`
+   (nod + jaw status incl. the auto burst state; `on|off|auto` / `conf <0..100>` / `trim <n>` /
    `osc <0|1>`), and `output <on|off>` (the gate below).
    `servo`/`pos`/`cal` say so explicitly when the gate is closed — otherwise calibrating a gated node
    looks like broken hardware. The local setting is a bench aid, not an override: marvin reconciles it
@@ -124,7 +125,7 @@ layer:
 5. **Servo layer** (L2): TCC0 PWM for the two servos + a position/calibration layer (`servo.{c,h}`).
    - **Output gate.** `Servo_SetEnabled` gates `Servo_SetPulseUs`, the single hardware write every path
      funnels through (`Servo_SetPosition` maps through calibration and then calls it), so one flag stops
-     the nod engine, marvin, beatbox and the CLI alike. Requested pulses/positions are still recorded
+     the nod, the jaw, marvin and the CLI alike. Requested pulses/positions are still recorded
      while gated and re-applied on enable, so the motion source resumes where it believes it is;
      disabling parks both servos at neutral first rather than freezing mid-nod. Defaults enabled, and
      marvin's boot default is also enabled.
@@ -133,7 +134,7 @@ layer:
    onsets from the frame flags, lifts `energy` into the engine's loudness domain, ticks the pure
    integer `nod_engine` once per frame (its tempo/oscillator tracking is self-contained), then maps
    the engine's target angle onto the neck servo position. The head parks at neutral when frames stop.
-   The nod engine ports from the source project (`config.mcc.bak/nod_engine.c`), decoupled from its
+   The nod engine is ported from beatbox's source project (`dspicguitarhero`), decoupled from its
    servo so the caller reads the angle out. The jaw is animated separately (§4.8).
 7. **Nod mode** (`beat_nod_mode_t`): **off** (neck free for `0x88B5`/`pos`), **always** (nod every
    frame — the bench setting for watching the motion), and **auto**, which is what a gameplay window
@@ -185,10 +186,10 @@ Static allocation only (no malloc), per project rule.
 | ✅ | **L0a** — base MCC project scaffolded (PIC32CM6408PL10048): clock/EVSYS/NVIC/PORT, CMSIS+DFP, default main loop |
 | ✅ | **L0b** — T1S/CLI peripherals in MCC: SERCOM0 SPI (Mode 0), EIC EXTINT2 (falling) on `IRQ_N`=PA02, `CS`=PA06 / `RST`=PA03 GPIO, SERCOM1 debug UART (PB00/PB01) — mirror of `guitar` G0 (verified byte-identical) |
 | ✅ | **L1** — T1S follower bring-up on hardware: `LAN8651 up … PLCA follower id=6/8`, presence heartbeat (`node_type=4`), `t1s` CLI — verified on the bus |
-| ✅ | **L2** — servo motion: TCC0 PWM for the 2 servos. Raw driver (`servo.{c,h}`) + `servo <neck\|jaw> <us>` CLI, verified driving real servos. Puppet-relative pose + calibration and a `nod`/`jaw` envelope layer come next (L3) |
-| 🚧 | **L3** — beat-driven head nod: `nod_engine.{c,h}` (ported, decoupled integer DSP) + `beat_nod.{c,h}` consume beatbox's `0x88B8` beat frame → neck head-bang; `nod` CLI (status / `on\|off` / `trim` / `osc`). Wired; pending on-hardware verification against a live beatbox |
+| ✅ | **L2** — servo motion: TCC0 PWM for the 2 servos. Raw driver (`servo.{c,h}`) + `servo <neck\|jaw> <us>` CLI, plus the int8 position + calibration layer (`pos`/`cal`), verified driving real servos |
+| 🚧 | **L3** — beat-driven head nod: `nod_engine.{c,h}` (ported, decoupled integer DSP) + `beat_nod.{c,h}` consume beatbox's `0x88B8` beat frame → neck head-bang; `nod` CLI. Wired; pending on-hardware verification against a live beatbox |
 | ✅ | **L3.5** — `0x88B9` control channel: remote nod enable/disable + trim + osc (`[opcode, arg]`), driven by marvin's `lemmy nod\|trim\|osc`. `nod off` frees the neck for the `0x88B5` manual path. Wired; pending on-hardware verification |
 | ✅ | **L3.6** — servo **output enable** (`0x88B9` op `0x04`) gating `Servo_SetPulseUs`, so one switch stops every motion source; echoed back as heartbeat `flags` bit1 so marvin reconciles it. Drives marvin's dashboard LEMMY toggle. Wired; pending on-hardware verification |
-| ✅ | **L3.8** — **jaw animation** (`beat_jaw.{c,h}`): autonomous, off the same beat frames — relaxed open at rest, wide open on a big beat during a burst, shut now and then; slew-limited, no bus involvement. Builds clean; pending on-hardware verification |
 | ✅ | **L3.7** — **auto nod mode**: occasional bursts (10-18 s, 8-20 s apart) gated on tempo confidence, so the head joins in for a stretch instead of banging through a whole song. Op `0x01` arg becomes a mode (0/1/2), new op `0x05` tunes the confidence floor; a gameplay window commands `auto`. Builds clean; pending on-hardware verification |
+| ✅ | **L3.8** — **jaw animation** (`beat_jaw.{c,h}`): autonomous, off the same beat frames — relaxed open at rest, wide open on a big beat during a burst, shut now and then; slew-limited, no bus involvement. Builds clean; pending on-hardware verification |
 | 🔭 | **L4** (future) — jaw "talking" animation; scripted gestures on the `0x88B9` channel (new opcodes) |

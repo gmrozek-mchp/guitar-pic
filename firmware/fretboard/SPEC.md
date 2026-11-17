@@ -1,11 +1,9 @@
 # Fretboard Firmware Specification
 
-> **Re-scoped to a T1S sense+actuate node (2026-06-17):** the fretboard is a 10BASE-T1S
-> PLCA follower (id 4) that infers actuator commands from the phototransistor data and — while armed —
+> **Status: on the bus and in use.** The fretboard is a 10BASE-T1S PLCA follower (id 4) that infers actuator commands from the phototransistor data and — while armed —
 > drives fauxmote directly over T1S (the game-critical path) plus the [`guitar`](../guitar/SPEC.md)
-> node as an indicator, while also streaming its data to marvin. The old UART
-> link, the standalone Wii-guitar GPIO outputs (`cmd_receive.c`), and the `FRETBOARD_LINK`/`FRETBOARD_MODE`
-> build flags are gone — one behaviour. Node-class model: top-level [`SPEC.md`](../../SPEC.md) §2; link
+> node as an indicator, while also streaming its data to marvin. T1S-only, one behaviour (no
+> build flags, no local Wii-guitar outputs). Node-class model: top-level [`SPEC.md`](../../SPEC.md) §2; link
 > detail: [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md).
 
 ## Overview
@@ -22,8 +20,8 @@ button bitmask from the ADC window. Over T1S it then:
   directly with an mf_proto GUITAR message on the controller channel (`0x88B7`) —
   this is the game-critical path (fauxmote is what actually controls the Wii); and
 - **commands** the [`guitar`](../guitar/SPEC.md) node (id 3) directly with the
-  inferred bitmask — a peer-to-peer *indicator* (open-drain presser); marvin
-  coordinates/logs but is out of the command path.
+  inferred bitmask — a peer-to-peer *indicator*; marvin coordinates/logs but is out
+  of the command path.
 
 Both outputs are gated by the arm state. marvin arms this node only while a song is
 actually being played *and* the fretboard is the selected detector (`active fretboard`);
@@ -73,9 +71,12 @@ pins now. See [`t1s_detector.c`](t1s_detector.c).
 
 #### SERCOM0 SPI — LAN8651 (T1S)
 
-Mode 0 (CPOL=0/CPHA=0, MSB, 8-bit): MOSI=PA04, SCK=PA05, MISO=PA07; `T1S_CS`=PA15
-(GPIO, held low across each TC6 chunk), `T1S_RST`=PA14, `T1S_IRQ_N`=PA13 (EIC
-EXTINT13, falling).
+Mode 0 (CPOL=0/CPHA=0, MSB, 8-bit), `BAUD=0` → 12 MHz: MOSI=PA04, SCK=PA05,
+MISO=PA07; `T1S_CS`=PA06 (GPIO, held low across each TC6 chunk), `T1S_RST`=PA03,
+`T1S_IRQ_N`=PA02 (pin map per the MCC `plib_port.h`). Note the EIC is still configured
+for EXTINT13 (MCC + `T1S_IRQ_EIC_PIN` in `t1s_detector.c`), not PA02's EXTINT2;
+`T1SDetector_Tasks()` runs a TC6 service pass every main-loop iteration regardless.
+`SW0` (PB03) is configured but unused.
 
 #### SERCOM1 — operator console
 
@@ -242,14 +243,12 @@ state: a "lub-dub" double pulse when on the bus (`T1SDetector_IsConnected()`), a
 single short blip when the bus is down. A dark or steady LED means the firmware is
 stuck. Decoupled from the arm state.
 
-**Coordination caveat:** the guitar applies whoever transmitted last (both marvin and
-the fretboard target `02:..:03`), so only one source may be armed at a time. marvin
-gates this node manually over the control channel (`fretboard arm|disarm`), or an
-operator does so from the node's local `arm` CLI command (shared state, last writer
-wins). **Automatic** active-detector/active-guitar selection (marvin arming the chosen
-detector and silencing its own command path) is still the follow-up. Link rationale,
-addressing, and the PoDL plan are in
-[`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md).
+**Coordination caveat:** the guitar and fauxmote apply whoever transmitted last, so only
+one source may drive at a time. marvin's `active <cv|fretboard>` selects the detector and
+its gameplay window arms this node / silences marvin's own CV output; the node's local `arm`
+command shares the same flag (last writer wins, no lockout), so arming locally while
+`active cv` can double-drive. There is one guitar node, so no active-guitar selection yet.
+Link detail: [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md).
 
 ## Observability
 
@@ -257,21 +256,20 @@ The data stream lands on **marvin** now (over T1S), so health is read there: the
 `PERF_REC_FRETBOARD_RAW` rate via [`tools/marvin-perf`](../../tools/marvin-perf/) and
 node presence via marvin's `nodes` console command. On the node itself, the SERCOM1
 CLI (`t1s`, `adc`) shows link state, data/command TX counts, and the live scan.
-([`tools/ds_monitor.py`](tools/ds_monitor.py) was the UART-era serial monitor — no
-longer applicable now that the stream is on the bus.)
+([`tools/ds_monitor.py`](tools/ds_monitor.py) is UART-era and does not apply.)
 
 ## Build System
 
-MPLAB Extensions for VS Code. Project config is in
-`.vscode/fretboard.mplab.json`. Source files are listed in the
-`fileSets[0].files` array. MCC/Harmony-generated code lives under
-`fretboard-mcc/` and should not be edited.
+MPLAB Extensions for VS Code, XC32 5.10, PIC32CM-PL_DFP 1.4.418; flash with the
+on-board PKOB nano. Project config is [`.vscode/fretboard.mplab.json`](.vscode/fretboard.mplab.json)
+(source files in its `fileSets`). MCC-generated code lives under `config.mcc/` and is not
+hand-edited. The vendored TC6 driver is the repo-level `third_party/oa-tc6-lib`.
 
 ## File Map
 
 | File | Purpose |
 |------|---------|
-| [main.c](main.c) | Init + TC0 scan/stage ISR + service loop (infer, drive guitar) |
+| [main.c](main.c) | Init + TC0 scan/stage ISR + service loop (infer, drive fauxmote + guitar) |
 | [fret_scan.c](fret_scan.c) / [.h](fret_scan.h) | ADC channel scanning |
 | [data_stream.c](data_stream.c) / [.h](data_stream.h) | 18-byte data frame builder (→ T1S) |
 | [t1s_detector.c](t1s_detector.c) / [.h](t1s_detector.h) | T1S node: data→coordinator, command→fauxmote (game) + guitar (indicator), heartbeat |
@@ -282,4 +280,4 @@ MPLAB Extensions for VS Code. Project config is in
 | [models.h](models.h) | Difficulty→model registry + `auto` resolve (firmware-owned, not generated) |
 | [tc6-conf.h](tc6-conf.h) | OA TC6 driver build config |
 | `third_party/embedded-cli/` | Vendored embedded-cli (CLI engine, static-alloc) |
-| `fretboard-mcc/` | MCC Harmony peripheral libraries (generated) |
+| `config.mcc/` | MCC Harmony peripheral libraries (generated) |

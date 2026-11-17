@@ -12,12 +12,12 @@ firmware design, milestones), read [`../SPEC.md`](../SPEC.md) — this journal d
 
 ## Current focus
 
-**Import first, then re-scope to a pure T1S beat publisher.** beatbox came in from the standalone
-`dspicguitarhero` project as a working **autonomous** animatronic (audio → FFT beat detect → local
-servo + RGB + WS2812). The plan is to strip the local actuation and turn it into the bus **beat
-source**: position commands → lemmy (id 6), a ~5-parameter beat frame → lightshow (id 7). It joins
-the bus as PLCA follower **id 5** (the id lemmy's spec already reserves for it). Milestones B0–B4 in
-[`../SPEC.md`](../SPEC.md) §6.
+**On the bus as the beat source (PLCA follower id 5).** beatbox detects beats from line-in and
+broadcasts the 8-byte `LightshowFrame` under `0x88B8` at ~23.4 Hz; lightshow (id 7) renders its show
+from it (verified with beatbox live) and lemmy (id 6) runs its own nod engine + jaw animator from the
+same frame (lemmy's 2026-07-31 / 2026-08-11 decisions — so the planned beatbox→lemmy position-command
+channel below is not being built). Open: tempo/BPM + phase layer, ADC5 pot read, on-hardware check of
+the v2 heartbeat. Milestones in [`../SPEC.md`](../SPEC.md) §6.
 
 ## Plan
 

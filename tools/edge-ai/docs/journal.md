@@ -8,6 +8,8 @@ Running log of planning, decisions, open questions, and work-in-progress for the
 
 **Phase 3 done — the model plays hard mode standalone on the fretboard MCU. Read this first to resume cold.**
 
+> **Latest (2026-08-08):** NEXT 6(a) is done — the deploy model was retrained 2026-08-03 on the recalibrated `commanded-fb` corpus (on-hardware bench of the new weights still pending, decision log). marvin now pushes the played difficulty to the node's model slot; only `hard` is trained. The "Done & committed" list below predates both.
+
 End-to-end works: a 16-channel int8 StrumNet, distilled from marvin's hard-mode play across 5 songs, runs standalone on the PIC32CM (no marvin), reads its own photosensors, and drives the controller — playing hard reasonably well on the bench. Deploy model: `--channels 16 --window 85 --no-holdout --strum-weight 5 --epochs 50` (dilations `(1,4,16)`, RF 85 — **`--window 85` is required, it must be ≥ RF or the streaming engine won't build**), quantised at `--strum-thresh 0.80 --strum-hold 8 --strum-refractory 8`. Inference in the main loop (not the ISR), 240 Hz sampling, SW0/LED enable toggle.
 
 Difficulty target was **hard** first (all 5 frets, slower scroll). **Open next-steps under discussion** (2026-06-04): residual-lag lead-comp, per-difficulty models, and a **2-sensor-per-fret hardware** revision (see open questions). Known caveats: slight overstrum remains (threshold-tunable); play quality not yet scored against a baseline (rollout Phase 5).
@@ -97,6 +99,11 @@ Difficulty target was **hard** first (all 5 frets, slower scroll). **Open next-s
 ---
 
 ## Session log
+
+### 2026-11-17 — doc consolidation
+
+- Merged `architecture.md` (data flow) and `rollout.md` (phase status) into [`SPEC.md`](SPEC.md) §4–§6; both files removed. Links to them in older entries below now resolve to SPEC.md.
+- Brought `SPEC.md` / `training.md` / `runtime.md` / `review.md` / `model.md` / README current with the code: `commanded-fb` is the label source (not `actuator-fb`), arming is the `arm` CLI / marvin opcode `0x01` (SW0 no longer arms), the command goes to fauxmote + guitar over T1S, `models.h` is the per-difficulty registry, and difficulty-dependent scroll speed is confirmed. No code changes.
 
 ### 2026-08-03 — Atomic teacher label (`commanded-fb`, schema v6) — plumbing done, recapture pending
 

@@ -13,7 +13,7 @@ below), so their provenance is known.
 | `sam9x7-nandflashboot-uboot-4.0.13.bin` | **NAND** boot (SAM-BA `writeboot`) | `sam9x75_curiosity_pronf_uboot` |
 | `sam9x7-nandflashboot-uboot-4.0.13-pmecchead.bin` | **NAND** boot via the macOS u-boot/JTAG path (`../openocd/program-nand.sh`) | as above + PMECC header prepended (`make-pmecchead.sh`) |
 | `sam9x75-uboot-nandflash-flasher-2025.07.bin` | **NAND flasher**, RAM-loaded over JTAG by `../openocd/program-nand.sh` (drives `nand erase`/`nand write`; not itself flashed to the board) | u-boot `sam9x75_curiosity_pro_nandflash` (recipe below) |
-| `sam9x7-dataflashboot-uboot-4.0.13.bin` | **QSPI** boot (SAM-BA `writeboot`) | `sam9x75_curiosity_prodf_qspi_uboot` |
+| `sam9x7-dataflashboot-uboot-4.0.13.bin` | **QSPI** boot (SAM-BA `writeboot`) — not compatible with the current QSPI data layout, see "Flashing" | `sam9x75_curiosity_prodf_qspi_uboot` |
 | `sam9x7-sdcardboot-harmony-4.0.13.bin` | **microSD** boot (copied to FAT as `boot.bin`) | `sam9x75_curiosity_prosd_uboot` + `IMAGE_NAME=harmony.bin` |
 | `make-pmecchead.sh` | Prepend the SAM9X7 ROM PMECC header to a NAND bootstrap (so a plain `nand write` is RomBOOT-bootable; SAM-BA's `writeboot` does this itself) | — |
 | `nand_flash.bat`, `qspi_flash.bat` | SAM-BA flashing scripts (Linux/Windows host) | — |
@@ -148,19 +148,12 @@ cp build/binaries/sam9x7-boot-none-4.0.13.elf \
 ```
 
 If the version string in the filename changes (newer at91bootstrap), update the
-`BOOTSTRAP_ELF` default in `../openocd/load-ram.sh` to match.
+`BOOTSTRAP_ELF` default in `../openocd/{load-ram,program-nand,erase-nand,program-qspi}.sh`
+to match.
 
-The `..._bkptnone_defconfig` contents (for reference):
-
-```
-CONFIG_INIT_AND_STOP=y
-CONFIG_SAM9X7=y
-CONFIG_DDR_SET_BY_DEVICE=y
-CONFIG_DDR_W632GU6NB12I=y
-CONFIG_BOARD_QUIRK_SAM9X75_CURIOSITY=y
-CONFIG_LED_*    # red PC14, green PC21, blue PC20 (curiosity_pro);
-                # we override blue -> PC18 value 0 at build time (see above)
-```
+The defconfig is stock upstream (`configs/sam9x75_curiosity_pro_bkptnone_defconfig`:
+`CONFIG_INIT_AND_STOP`, `CONFIG_DEBUG`, DDR `W632GU6NB12I`, LEDs red PC14 / green PC21 /
+blue PC20); the only marvin change is the blue-LED override above.
 
 ## Build the production (standalone-boot) bootstraps
 
@@ -209,41 +202,24 @@ marvin_cfg && make CROSS_COMPILE=arm-none-eabi-
 ### Flashing
 
 - **NAND (macOS, no SAM-BA)** — `../openocd/program-nand.sh` RAM-loads the u-boot
-  flasher over JTAG and `nand write`s the boot region + marvin. The boot region
-  uses the PMECC-headed bootstrap (`*-pmecchead.bin`); see
-  `../openocd/program-nand.md`. **Validated** booting marvin standalone from NAND.
-- **NAND / QSPI (Linux/Windows)** — SAM-BA. See `nand_flash.bat` / `qspi_flash.bat`:
-  bootstrap via `writeboot`, marvin via `write harmony.bin:0x40000`. (SAM-BA's
-  `nandflash` applet writes the PMECC/boot header the ROM expects — the same header
-  `make-pmecchead.sh` prepends for the macOS path.)
-- **microSD** — `../openocd/make-sdcard.sh` on macOS. It writes the SD bootstrap as
-  `boot.bin` (what the ROM looks for) and marvin as **`harmony.bin`** (the SD
-  bootstrap's `CONFIG_IMAGE_NAME`).
-
-> **QSPI over JTAG from macOS** is still open R&D — OpenOCD has no SAM9X7 QSPI
-> driver and the u-boot QSPI-boot flasher path isn't wired up here (u-boot's `sf`
-> could drive it; check whether QSPI boot needs an analogous header). BOSSA is
-> **not** applicable (it programs Cortex-M on-chip flash over the SAM-BA protocol,
-> not SAM9 external NVM, and not over JTAG).
+  flasher over JTAG and `nand write`s the PMECC-headed bootstrap (`*-pmecchead.bin`)
+  + marvin; see [`../openocd/program-nand.md`](../openocd/program-nand.md).
+  Validated booting marvin standalone from NAND.
+- **NAND (Linux/Windows)** — SAM-BA, `nand_flash.bat`: bootstrap via `writeboot`,
+  marvin via `write harmony.bin:0x40000`. (SAM-BA's `nandflash` applet writes the same
+  PMECC header `make-pmecchead.sh` prepends for the macOS path.)
+- **microSD** — `../openocd/make-sdcard.sh` on macOS: SD bootstrap as `boot.bin`,
+  marvin as `harmony.bin` (the SD bootstrap's `CONFIG_IMAGE_NAME`).
+- **QSPI boot** — SAM-BA only (`qspi_flash.bat`); there is no macOS/JTAG path.
+  **Conflicts with how QSPI is used now:** the script chip-erases QSPI and writes
+  marvin at `0x40000`, inside the splash region (`0x010000`–`0x400000`, see
+  `../default/src/flash/qspi_layout.h`), so it destroys the splash, assets and
+  settings. QSPI **data** (splash/assets) is programmed with
+  [`../openocd/program-qspi.sh`](../openocd/program-qspi.md) instead.
 
 ## Build the NAND flasher u-boot (`sam9x75-uboot-nandflash-flasher-*.bin`)
 
-This is **not** a boot stage — it's u-boot RAM-loaded over JTAG to drive NAND (see
-`../openocd/program-nand.md`). Source: the linux4microchip u-boot fork,
-<https://github.com/linux4microchip/u-boot-mchp> (branch `linux4microchip-2026.04`,
-v2025.07 base), built with `sam9x75_curiosity_pro_nandflash_defconfig`. Any
-`arm-none-eabi-` cross toolchain works. macOS specifics: use Homebrew `gmake`
-(stock make 3.81 can't parse u-boot's Makefile) and pass OpenSSL via the
-**environment** (command-line `HOST_EXTRACFLAGS` clobbers the bundled-dtc include
-path); adjust the OpenSSL prefix for your host.
-
-```sh
-git clone -b linux4microchip-2026.04 https://github.com/linux4microchip/u-boot-mchp.git
-cd u-boot-mchp
-# ensure an arm-none-eabi- cross-gcc is on PATH (e.g. the Arm GNU Toolchain)
-export HOST_EXTRACFLAGS="-I$(brew --prefix openssl@3)/include"   # macOS host-tool deps
-export HOSTLDFLAGS="-L$(brew --prefix openssl@3)/lib"
-gmake CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_pro_nandflash_defconfig
-gmake CROSS_COMPILE=arm-none-eabi- -j8
-cp u-boot.bin <repo>/firmware/marvin/binaries/sam9x75-uboot-nandflash-flasher-2025.07.bin
-```
+Not a boot stage — u-boot RAM-loaded over JTAG to drive NAND (and QSPI `sf`). Source
+`linux4microchip/u-boot-mchp` branch `linux4microchip-2026.04`, defconfig
+`sam9x75_curiosity_pro_nandflash_defconfig`; full macOS recipe in
+[`../openocd/program-nand.md`](../openocd/program-nand.md#build-the-u-boot-flasher-one-time).

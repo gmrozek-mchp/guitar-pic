@@ -72,7 +72,7 @@ The source is mildly range-compressed against the panel's full 0..255. The HEO *
 
 ### 2.5 Per-frame pointer swap (`heo_frame_latch`)
 
-On every ISC frame-done ISR, `video.c` invokes the compositor's frame-latch callback, `heo_frame_latch(buffer_addr)` in `ui_manager.c`. It re-points HEO at the just-completed ring slot:
+On every ISC frame-done ISR, `video/video.c` invokes the compositor's frame-latch callback, `heo_frame_latch(buffer_addr)` in `ui_manager.c`. It re-points HEO at the just-completed ring slot:
 
 ```c
 XLCDC_REGS->LCDC_HEOYFBA = buffer_addr + s_heo_crop_off;
@@ -91,7 +91,7 @@ This is a **non-blocking** base update: it writes the frame address and *request
 
 ## 4. Ownership & call sequence
 
-The HEO hardware layer is owned by **`ui_manager`** (`firmware/marvin/default/src/ui/ui_manager.c`), not by `video.c`. `video.c` is the capture *producer*; it exposes two callbacks that `ui_manager` registers in `UiManager_Initialize`:
+The HEO hardware layer is owned by **`ui_manager`** (`firmware/marvin/default/src/ui/ui_manager.c`), not by `video/video.c`, which is the capture *producer*; it exposes two callbacks that `ui_manager` registers in `UiManager_Initialize`:
 
 - `Video_SetFrameLatchCallback(heo_frame_latch)` — fires in the ISC IRQ, re-points HEO at the freshest complete ring slot (§2.5).
 - `Video_SetDisplayReconcileCallback(heo_reconcile)` — fires each video-task tick; (re)binds/unbinds HEO to match the compositor's show intent and the current source/active-crop size.
@@ -114,6 +114,7 @@ The channel is `CPOL_LOW` — it idles low (dark) when stopped — so `CDTY` is 
 Runs from the video-task reconcile when video is shown and the source is locked. Key writes (all in `ui_manager.c`, see §2.2–2.4):
 
 - `XLCDC_SetLayerRGBColorMode(HEO, RGB_888_PACKED, false)` + re-assert `GAM`.
+- `XLCDC_SetLayerOpts(HEO, 255, true, false)` — re-asserts DMA, which the modal scrim clears (`ui_compositor.md` §18.1).
 - `XLCDC_SetLayerAddress(HEO, frame_base + crop_off, false)`.
 - `XLCDC_SetLayerXStride(HEO, (src_w − active_w)·bpp, false)`.
 - `XLCDC_SetLayerWindowXYPos(HEO, x, y, false)`.
@@ -128,5 +129,6 @@ If the requested window exceeds the panel, `heo_bind` logs a warning and skips (
 ## 5. Current limitations / next steps
 
 - **Source sizing.** Sources are scaled to the destination rect via the HEO scaler; a window/fullscreen rect larger than the panel is rejected by `heo_bind`.
-- **BASE DMA discard.** While the video (or the song-select dialog) opaquely covers part of BASE, `ui_manager` arms the single BASE discard window (`base_discard_reconcile`) so BASE skips its DDR read behind the overlay, freeing read bandwidth. See `ui_compositor.md`.
+- **BASE DMA discard.** While the video (or a modal, or the system-screen board photo) opaquely covers part of BASE, `ui_manager` arms the single BASE discard window (`base_discard_reconcile`) so BASE skips its DDR read behind it. See `ui_compositor.md` §18.2.
+- **Scrim.** When the video is hidden behind a modal, HEO is reused with DMA off as a constant-colour dim layer (`ui_compositor.md` §18.1).
 - **Levels curve is fixed.** The pedestal/ceiling constants may vary by Wii/converter; retune `VIDEO_LEVELS_BLACK`/`WHITE` if the source changes (`ui_compositor.md` §15.1).

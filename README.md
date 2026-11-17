@@ -1,48 +1,57 @@
 # Guitar Hero Bot
 
-An autonomous robot that plays Guitar Hero / Rock Band on a Nintendo Wii by watching the game video, detecting notes in real time, and pressing the buttons on a real Wii guitar controller.
+A robot that plays Guitar Hero III on a real Nintendo Wii, built on Microchip silicon. It
+watches the game's video, detects notes in real time, navigates the game menus on its own, and
+plays the song. A 10BASE-T1S network of Microchip MCUs adds a neural-net detector, a
+head-banging puppet and a light show, all in time to the music.
 
-The system is built around a SAM9X75 host (**marvin**) that captures HDMI directly off the Wii, runs reference computer-vision note detection, schedules chord and strum timing, and sends fret/strum commands over USB CDC to a small actuator MCU (**fretboard**) that drives the controller's buttons via open-drain GPIO. A separate Python tool (**fret-tuner**) is used at the bench for calibration and detector tuning, but is not in the runtime path.
+- **marvin** (SAM9X75 MPU) is the brain. It captures the Wii's HDMI video, finds notes with
+  computer vision, times the strums, reads the menus, and runs the 10.1″ touch UI.
+- **10BASE-T1S** (LAN8651 at every node) is the backbone. One twisted pair links marvin, the
+  PLCA coordinator, to six followers. The bus carries commands, peer-to-peer and broadcast
+  traffic, and per-node health:
+  - **fretboard** (PIC32CM PL10): phototransistors plus an on-MCU int8 neural net
+  - **beatbox** (dsPIC33AK): audio FFT beat detection
+  - **lemmy** (PIC32CM PL10): servo puppet
+  - **lightshow** (PIC32CM PL10): WS2812 LEDs
+  - **guitar** (PIC32CM PL10): button-state indicator
+  - **fauxmote**: the Bluetooth bridge that carries button presses to the Wii
 
-For the full system overview see [SPEC.md](SPEC.md).
-
-## Where to start
-
-| If you want to… | Read |
+| Want to… | Read |
 |---|---|
+| Set up the booth demo | [SETUP.md](SETUP.md) |
+| Demo it to visitors | [DEMO.md](DEMO.md) |
 | Understand the whole system | [SPEC.md](SPEC.md) |
-| Work on the SAM9X75 host (capture, CV, timing, UI) | [firmware/marvin/docs/spec.md](firmware/marvin/docs/spec.md) + [journal](firmware/marvin/docs/journal.md) |
-| Work on the actuator MCU (sensors, GPIO output) | [firmware/fretboard/SPEC.md](firmware/fretboard/SPEC.md) |
-| Tune detection algorithms at the bench | [tools/fret-tuner/SPEC.md](tools/fret-tuner/SPEC.md) |
-| Inspect marvin performance logs (live or captured) | [tools/marvin-perf/](tools/marvin-perf/) |
-| Work on actuator mechanical / PCB / 3D-print parts | [hardware/](hardware/) |
+| Work on a subproject | its spec + journal, indexed in [SPEC.md §3](SPEC.md#3-subprojects) |
 
 ## Repository layout
 
 ```
 guitar-pic/
-├── README.md            # this file
-├── SPEC.md              # system spec
-├── CLAUDE.md            # workflow rules for Claude Code sessions
+├── README.md  SPEC.md  SETUP.md  DEMO.md  CLAUDE.md
+├── media/          # photos + video for SETUP/DEMO
 ├── firmware/
-│   ├── marvin/          # SAM9X75 host firmware
-│   ├── fretboard/       # PIC32CM6408 sensor/actuator MCU
-│   └── sam9x75_curiosity_emirror/   # Microchip reference (template only)
-├── tools/
-│   ├── fret-tuner/      # Python dev/calibration tool
-│   └── marvin-perf/     # marvin performance-log decoder + web viewer
-├── hardware/            # PCB, mechanical, actuator design
-└── docs/
-    ├── SAM9X7-Series-Data-Sheet-DS60001813.pdf
-    └── archive/         # historical docs from the original architecture
+│   ├── marvin/     # SAM9X75 host: capture, CV, timing, game control, UI   (XC32)
+│   ├── fauxmote/   # ESP32 Wiimote + guitar emulator                         (ESP-IDF)
+│   ├── guitar/     # PIC32CM PL10 indicator node (mirrors the button mask)   (XC32)
+│   ├── fretboard/  # PIC32CM PL10 phototransistor + on-MCU neural-net detector (XC32)
+│   ├── beatbox/    # dsPIC33AK audio beat detector, broadcasts beat frames   (XC-DSC)
+│   ├── lemmy/      # PIC32CM PL10 head-banging puppet, 2 servos              (XC32)
+│   └── lightshow/  # PIC32CM PL10 WS2812 light show                          (XC32)
+├── tools/          # host-side Python: marvin-perf viewer, gameplay prototype, edge-ai, …
+├── hardware/       # KiCad boards, 3D-printed enclosures, actuator design studies
+└── docs/           # cross-node docs (T1S link, marvin↔fauxmote protocol), upstream bug reports, archive
 ```
 
 ## Status
 
-Working end-to-end: marvin captures HDMI (480p60 and 720p60) and displays live on the LVDS panel; the reference CV detector (`cv_marvin_v1`) runs on captured frames; the timing pipeline and fretboard link (USB CDC over EDBG) are up and gameplay has been tested on Expert and Easy difficulty. The perf-log USB CDC export streams RTOS analytics and pixel strips to a browser-based viewer (`tools/marvin-perf`). Fretboard standalone play (phototransistors + open-drain GPIO) remains operational as a fallback.
-
-In progress: SD-card reference-data recording (M4), full operator UI (M5+). Phasing detail in [SPEC.md §7](SPEC.md).
+Plays GH3 end to end with no PC in the loop. marvin starts a song from the main menu, plays
+it with CV, and records the score. It also runs a 2-player **SHOWDOWN** of the robot against
+a human. All seven bus nodes are on T1S. Not built yet: the SD reference-data recorder, the
+calibration UI, and PoDL (power over the data pair). Per-milestone detail is in
+[SPEC.md §6](SPEC.md#6-status).
 
 ## License & acknowledgments
 
-MIT License. Hobby / educational project. Guitar Hero and Rock Band are trademarks of Activision and Harmonix; Wii is a trademark of Nintendo.
+MIT License. Hobby / educational project. Guitar Hero is a trademark of Activision; Wii is a
+trademark of Nintendo.

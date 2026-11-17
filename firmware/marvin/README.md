@@ -1,7 +1,7 @@
 
 # marvin
 
-SAM9X75-based vision and actuation controller for the guitar-playing robot. Captures Wii HDMI video, runs CV note detection, drives the fretboard MCU over USB CDC. See [`docs/spec.md`](docs/spec.md) for the system overview and [`docs/journal.md`](docs/journal.md) for current work state.
+SAM9X75 host for the guitar-playing robot: captures Wii HDMI video, runs CV note detection and menu navigation, and coordinates the 10BASE-T1S bus (fauxmote plays the Wii). See [`docs/spec.md`](docs/spec.md) for the system overview and [`docs/journal.md`](docs/journal.md) for current work state.
 
 ## Structure
 

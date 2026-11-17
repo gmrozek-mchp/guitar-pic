@@ -1,12 +1,16 @@
 # marvin-perf
 
-Host-side decoder and analyzer for the marvin firmware **perf-log** wire format.
+Host-side decoder, recorder and browser viewer for the marvin firmware **perf-log**
+wire format.
 
 The firmware emits framed binary records (schema version 7) over its USB-device
 CDC ACM port. This tool consumes that stream live, records it to disk, and
-replays captures offline. Summary analyses (latency attribution, drop
-accounting, stack high-water trends) are produced by the `serve` viewer, not a
-standalone CLI verb.
+replays captures offline. The `serve` viewer (http://127.0.0.1:8765) is the main
+interface: **Live** mode attaches to the port and shows the detector strips,
+events, CPU / per-task stack high-water and drop counters as they happen, with
+Record / Snapshot / overlay buttons; **Offline** mode opens a capture and scrubs it.
+Summary analyses (latency attribution, drop accounting, stack trends) live in the
+viewer, not a standalone CLI verb.
 
 Wire format source-of-truth lives in the firmware tree at
 [`firmware/marvin/default/src/perf_log/perf_log_records.h`](../../firmware/marvin/default/src/perf_log/perf_log_records.h).
@@ -22,9 +26,9 @@ bootstrap:
     cd tools/marvin-perf
     uv sync --group viewer   # include viewer deps for the serve command
 
-`uv sync` creates `.venv/` and writes `uv.lock`. Subsequent invocations use the
+`uv sync` creates `.venv/` from the committed `uv.lock`. Subsequent invocations use the
 existing venv automatically. Omit `--group viewer` if you only need the headless
-CLI helpers (record, set-mask, set-overlay, snapshot, screendump, export-ml).
+CLI helpers (record, set-mask, set-overlay, snapshot, screendump, score-capture, export-ml, export-region).
 
 ## Usage
 
@@ -109,8 +113,8 @@ slots, each with its own enable and rect, each emitting its own strip kind:
 | slot | `--slot` / `--kind` | strip kind | default rect |
 |---|---|---|---|
 | 0 | `score` | `region` | `114,309,96,105` (1p scoring block) |
-| 1 | `score-2p-left` | `score_2p_left` | `128,164,68,78` |
-| 2 | `score-2p-right` | `score_2p_right` | `515,164,68,78` |
+| 1 | `score-2p-left` | `score_2p_left` | `123,172,76,78` |
+| 2 | `score-2p-right` | `score_2p_right` | `513,172,76,78` |
 
 Rects are host-supplied, so any slot can be repointed without a firmware
 rebuild. Every slot streams at the full frame rate and there is no rate control:
@@ -122,6 +126,12 @@ sessions** rather than trying to fit both.
 
     uv run pytest
 
-Fixtures under [`tests/fixtures/`](tests/fixtures/) are hand-built byte streams
-covering one frame per record type plus framing edge cases (FCS mismatch,
-truncated payload, mid-stream join needing SOF resync).
+Test inputs are built in code by [`tests/conftest.py`](tests/conftest.py) — one frame
+per record type plus framing edge cases (FCS mismatch, truncated payload, mid-stream
+join needing SOF resync). The viewer tests skip unless the `viewer` group is installed.
+
+## Other scripts
+
+`fretboard_rate.py` measures the fretboard's tick rate off its old UART data stream. It is
+UART-era: the fretboard now streams only over T1S to marvin, so read its rate from the
+`PERF_REC_FRETBOARD_RAW` records in the viewer instead.

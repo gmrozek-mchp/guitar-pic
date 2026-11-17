@@ -7,14 +7,13 @@
 
 fauxmote is an **ESP32 firmware that emulates a Nintendo Wiimote with an attached
 Guitar Hero guitar extension**, speaking Bluetooth straight to a real Wii console.
-It is a **parallel proof-of-concept** alternative to the existing actuation path:
-today the [fretboard](../fretboard/SPEC.md) MCU physically presses buttons on a
-*real* Wii guitar controller via open-drain GPIO. fauxmote instead *becomes* the
-controller — eventually driven by [marvin](../marvin/docs/spec.md)'s high-level
-fret/strum commands, removing the physical actuator + real controller from the loop.
-
-The fretboard GPIO-press path stays authoritative until fauxmote is proven; nothing
-in marvin/fretboard/edge-ai changes as part of this subproject.
+Rather than pressing buttons on a real controller, fauxmote *becomes* the
+controller. It is the **controller node** (PLCA id 1) on the 10BASE-T1S bus and the
+game-critical actuation path: [marvin](../marvin/docs/spec.md) drives it for menus,
+manual control and its CV pipeline, and the [fretboard](../fretboard/SPEC.md)
+detector drives it peer-to-peer while armed in a song. The
+[guitar](../guitar/SPEC.md) node mirrors the same mask as an indicator. Bus roles:
+[`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md) §7.1.
 
 ## 2. Hardware
 
@@ -23,6 +22,7 @@ in marvin/fretboard/edge-ai changes as part of this subproject.
 | Board | **Adafruit ESP32 Feather V2** (product 5400) — *original* dual-core ESP32 (Tensilica LX6), 8 MB flash, 2 MB PSRAM, USB-C. |
 | Radio | ESP32 has a **Bluetooth Classic (BR/EDR)** radio — required, because the Wiimote link is Classic HID. (ESP32-S3/C3 are BLE-only and would *not* work.) |
 | Wii console | Real retail Wii; pairing via the sync button or the controller's 1+2 button. |
+| T1S MAC-PHY | **LAN8651** 10BASE-T1S Click on SPI2 — SCK 5 / MOSI 19 / MISO 21 / CS 33 / RST 27 / IRQ 32 (Kconfig-overridable), `T1S_SPI_HZ` in `main/mf_t1s.c`. |
 | Status light | The board's onboard **NeoPixel** (data GPIO 0, power-enable GPIO 2, active high). Red heartbeat + blue Wii-link state, time-sliced so only one colour is lit — see `main/status_led.c`. The discrete GPIO 13 LED is unused. |
 
 ## 3. The link fauxmote emulates (verified protocol facts)
@@ -56,13 +56,14 @@ References: wiibrew [`Wiimote`](https://wiibrew.org/wiki/Wiimote) and
 
 - **Downstream (fauxmote → Wii):** Bluetooth Classic HID, as above.
 - **Upstream (commands → fauxmote):** the **marvin command link** — a layered
-  message protocol, **UART first** (T1S later), specified in
-  [`docs/marvin-fauxmote-link.md`](../../docs/marvin-fauxmote-link.md). marvin sends a
-  tiny fixed `GUITAR` hot message (fret/strum mask + whammy + aux), a `WIIMOTE` nav
-  message (core buttons/D-pad/stick), and `LINK_CMD` (Bluetooth link management:
-  pair/stop/reconnect/disconnect/reboot/unlink/ext); fauxmote returns `STATUS`. Absolute/latest-wins;
-  a link timeout releases all inputs. The link is a second front-end over the same
-  module APIs the CLI uses. Early bring-up still uses the local CLI (§ below).
+  message protocol specified in
+  [`docs/marvin-fauxmote-link.md`](../../docs/marvin-fauxmote-link.md), carried on
+  T1S ethertype `0x88B7` (default) or a point-to-point UART (fallback). Senders are
+  marvin and the armed fretboard detector. Slices: `GUITAR` (fret/strum mask + whammy
+  + aux), `WIIMOTE` (core buttons/D-pad/stick), `ACCEL`, `POINTER`, and `LINK_CMD`
+  (Bluetooth link management); fauxmote returns `STATUS` plus a `0x88B6` presence
+  heartbeat. Absolute/latest-wins; a 200 ms link timeout releases all inputs. The
+  link is a second front-end over the same module APIs the CLI uses.
 - **Debug:** USB-C CDC serial for flashing + logs (`idf.py monitor`).
 
 ## 5. Software
@@ -83,10 +84,12 @@ References: wiibrew [`Wiimote`](https://wiibrew.org/wiki/Wiimote) and
   extension cipher (`ext_crypto.c`) lives in the base — it captures the host's key
   handshake and encrypts outgoing extension data (streamed bytes + register reads),
   which Guitar Hero 3 requires.
-- **marvin command link:** `main/marvin_link.c` is a FreeRTOS task that owns UART1,
-  the framing/CRC, and message parse/dispatch, driving the same module APIs the CLI
-  uses and emitting `STATUS`. Started at boot via `MarvinLink_Start()` (`main.c`).
-  Protocol in [`docs/marvin-fauxmote-link.md`](../../docs/marvin-fauxmote-link.md).
+- **marvin command link:** `main/mf_link.c` is the transport-neutral message layer
+  (parse/dispatch, slice watchdog, `STATUS`). A Kconfig choice picks the backend that
+  provides `MarvinLink_Start()` (called from `main.c`): `main/mf_t1s.c` (LAN8651 via
+  the vendored OPEN Alliance TC6 library, default) or `main/marvin_link.c` (UART1,
+  Feather RX=`GPIO7`/TX=`GPIO8`, 1 Mbaud, `SOF/LEN/CRC8` framing). `mf_proto.h` is
+  shared byte-for-byte with marvin and the fretboard.
 - **Allocation:** application code follows the project's **static-allocation**
   preference (no `malloc` in our code). Bluedroid's internal allocation is
   framework-owned and out of scope.
@@ -98,11 +101,11 @@ References: wiibrew [`Wiimote`](https://wiibrew.org/wiki/Wiimote) and
 | **0** ✅ | Toolchain + radio bring-up | Builds + flashes to the Feather V2; the board is discoverable by name in a PC/phone Bluetooth scan. |
 | **1** ✅ | Bluetooth identity / pairing (highest risk) | A real Wii authenticates and opens the HID channels (PSM 0x11 control + 0x13 interrupt) without immediately dropping. *Done via custom SDP + raw L2CAP (§5).* |
 | **2** ✅ | Core Wiimote emulation | Wii shows one stable connected Wiimote; emulated buttons drive the Home-menu cursor; connection survives minutes. Includes device-initiated reconnect after idle + keep-awake (see journal). |
-| **3** ✅ | Guitar extension emulation | A real Guitar Hero / Rock Band Wii title detects the guitar and registers scripted fret+strum notes. *Done: GH3 detects the guitar and frets/strum/whammy register in-game, through the extension cipher (§3). Known open: GH3 game-launch handoff drops the link — workaround is to restart fauxmote after the game starts (see journal).* |
-| **4** ✅ | Command source | Local test driver (serial console + canned patterns) exercises the emulator independently; a clean seam is left for the marvin link. *Done: protocol spec ([`docs/marvin-fauxmote-link.md`](../../docs/marvin-fauxmote-link.md)) and the `marvin_link.c` UART receiver (§5) both built; the CLI stays for manual bring-up.* |
+| **3** ✅ | Guitar extension emulation | A real Guitar Hero / Rock Band Wii title detects the guitar and registers scripted fret+strum notes. *Done: GH3 detects the guitar and frets/strum/whammy register in-game, through the extension cipher (§3). Known open: the GH3 game-launch handoff drops the link; a plain `reconnect` recovers it (see journal).* |
+| **4** ✅ | Command source | Local test driver (serial console + canned patterns) exercises the emulator independently; a clean seam is left for the marvin link. *Done: protocol spec ([`docs/marvin-fauxmote-link.md`](../../docs/marvin-fauxmote-link.md)) built on both transports; marvin and the fretboard drive fauxmote over T1S. The CLI stays for manual bring-up.* |
 
 ## 7. Out of scope
 
-- Retiring or modifying the fretboard GPIO-press path.
-- The exact link wiring (marvin FLEXCOM instance + fauxmote UART GPIO pins) — set at integration.
-- Any edge-ai retargeting toward fauxmote.
+- Game logic: fauxmote reflects whatever input it is sent; deciding what to play is
+  marvin's and the fretboard's job.
+- Powering a Wii on from standby (a Wiimote's radio can't).

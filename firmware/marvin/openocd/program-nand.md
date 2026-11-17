@@ -5,14 +5,17 @@ on-board NAND from macOS, using **u-boot as a PMECC-aware flasher loaded over
 JTAG**. The SAM9X75 ROM then boots NAND on its own: RomBOOT → at91bootstrap →
 `harmony.bin` in DDR (the same chain as the SD path, just resident in NAND).
 
-This replaces the SAM-BA `nand_flash.bat` flow (`../binaries/nand_flash.bat`) on
-hosts where SAM-BA isn't used. It reproduces exactly what SAM-BA does:
+This is the macOS alternative to the SAM-BA flow (`../binaries/nand_flash.bat`).
+It produces the same NAND contents:
 
-| SAM-BA (`nand_flash.bat`)            | here (u-boot console)                       |
-|--------------------------------------|---------------------------------------------|
-| `erase::0x100000`                    | `nand erase.chip` (full chip)                |
-| `writeboot:sam9x7-nandflashboot…bin` | `nand write 0x21100000 0x0 0x4000`           |
-| `write:harmony.bin:0x40000`          | `nand write 0x21200000 0x40000 0x80000`      |
+| SAM-BA (`nand_flash.bat`)            | here (u-boot console)                         |
+|--------------------------------------|-----------------------------------------------|
+| `erase::0x100000`                    | `nand erase.chip` (full chip)                 |
+| `writeboot:sam9x7-nandflashboot…bin` | `nand write 0x21100000 0x0 <boot size>`       |
+| `write:harmony.bin:0x40000`          | `nand write 0x21200000 0x40000 <app size>`    |
+
+Sizes are each file's length rounded up to the 4 KiB page; `program-nand.sh`
+computes and prints them.
 
 ## Why u-boot (and not OpenOCD's NAND driver)
 
@@ -70,7 +73,7 @@ cp u-boot.bin <repo>/firmware/marvin/binaries/sam9x75-uboot-nandflash-flasher-20
    ```sh
    cd firmware/marvin/openocd
    ./program-nand.sh
-   # FTDI_SERIAL=W16-2026-4300 ./program-nand.sh   # target a specific board
+   # FTDI_SERIAL=W16-2026-413 ./program-nand.sh    # target a specific board
    # CONSOLE=/dev/cu.usbserial-XXXX2 ./program-nand.sh   # override DBGU node
    ```
 
@@ -95,17 +98,18 @@ cp u-boot.bin <repo>/firmware/marvin/binaries/sam9x75-uboot-nandflash-flasher-20
 
 To program by hand instead (e.g. debugging), open the console
 (`screen /dev/cu.usbserial-...2 115200`) after staging and run: `nand erase.chip`,
-`nand write 0x21100000 0x0 0x4000`, `nand write 0x21200000 0x40000 0x80000`.
+`nand write 0x21100000 0x0 <boot size>`, `nand write 0x21200000 0x40000 <app size>`
+(sizes in hex, as printed by `program-nand.sh`).
 
 ## Layout reference
 
-| NAND offset | Contents                          | DDR stage    | Size written            |
-|-------------|-----------------------------------|--------------|-------------------------|
-| `0x00000`   | at91bootstrap (boot region)       | `0x21100000` | file size, 4 KiB-rounded (`0x4000`) |
-| `0x40000`   | `harmony.bin` (marvin app)        | `0x21200000` | file size, 4 KiB-rounded (`0x7f000`) |
+| NAND offset | Contents                          | DDR stage    | Size written                 |
+|-------------|-----------------------------------|--------------|------------------------------|
+| `0x00000`   | at91bootstrap (boot region)       | `0x21100000` | file size, 4 KiB-rounded     |
+| `0x40000`   | `harmony.bin` (marvin app)        | `0x21200000` | file size, 4 KiB-rounded; must fit `CONFIG_IMG_SIZE` (4 MiB) |
 
-(`program-nand.sh` computes the write size from each file, rounded up to the 4 KiB
-page; the values shown are for the current binaries.)
+Read-back for the verify goes to scratch DDR at `0x24000000` / `0x24800000`
+(`nand_console.py`).
 
 The boot region must carry a **PMECC header** the ROM reads (page 0, no ECC): 52
 copies of a 32-bit word encoding the NAND/PMECC params, with the bootstrap code

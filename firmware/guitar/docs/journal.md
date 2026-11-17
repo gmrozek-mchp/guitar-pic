@@ -33,10 +33,10 @@ only the output stage and pinout differ: the fret/strum GPIOs now drive **active
 `BTN_APPLY` macro / `buttons_*` "button" naming is retained deliberately — a future board may carry both
 Wii actuators *and* LEDs. See the 2026-07-23 decision-log/session entries for the pin remap.
 
-**Next (G3, full system):** `fretboard` (detector) + `guitar` (actuator) both on the bus with marvin
-selecting the active of each — marvin already targets the guitar node for actuation; the remaining work is
-moving the fretboard onto a T1S detector node and the active-detector/active-guitar selector. Tracked on
-the marvin side.
+**Next (G3, full system):** the fretboard is on T1S and drives this node peer-to-peer, and marvin's
+`active <cv|fretboard>` selects the detector; what remains is an active-*guitar* selector (only needed
+once a second guitar node exists) and on-hardware checks of the ATE_2026 port and the output enable.
+Tracked on the marvin side.
 
 ---
 
