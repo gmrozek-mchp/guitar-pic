@@ -64,13 +64,16 @@ everything is alive. Reflashing is in the [appendix](#appendix-reflashing).
 
 ## 3. Power-up order
 
-1. **TV, ElectronWarp, Wii.** Leave the Wii at the GH3 main menu or the Wii menu.
+1. **TV, ElectronWarp, Wii.** Leave the Wii at the Wii home screen for now.
 2. **marvin.** The splash screen shows a progress bar, then the dashboard appears with live
    video. marvin is the PLCA coordinator, and the bus has no beacon until it is up.
 3. **Bus nodes**, in any order. Each one appears on marvin's **Bus** screen within a second
    or two of booting.
 4. **fauxmote ↔ Wii.** fauxmote reconnects to a Wii it is already bonded with. If it doesn't
    (or after a Wii swap), see [Pairing](#pairing-fauxmote-with-a-new-wii).
+5. **Boot GH3** from the Wii home screen. GH3 drops the robot's controller as it boots, so
+   once it has finished booting open **Wiimotes** → **RECONNECT** (or run
+   `fauxmote reconnect` on marvin's console). Leave GH3 running at its main menu.
 
 ## 4. Check it's alive
 
@@ -92,7 +95,7 @@ their ACTUATORS toggle is on.
 
 | Symptom | Fix |
 |---|---|
-| Robot stops playing just after a song launches | GH3 drops the controller at launch. Open **Wiimotes** → **RECONNECT**, or run `fauxmote reconnect` on marvin's console. |
+| Robot's controller does nothing after GH3 boots | GH3 drops it when the game boots from the Wii home screen. Open **Wiimotes** → **RECONNECT**, or run `fauxmote reconnect` on marvin's console. |
 | Black video window | Check the HDMI chain and ElectronWarp power. marvin's capture watchdog re-arms itself on a stall. If the window stays black, reboot marvin. |
 | A node is missing from **Bus** | Check its T1S connection and power. Run `nodes` / `t1s` on marvin's console, or `t1s` on the node's own console. |
 | lemmy never nods during songs | Every `nod_trim` in `songs.csv` is currently 0. ⚠ TBD: set booth values, or use `lemmy nod on` from the console. |

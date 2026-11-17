@@ -140,8 +140,9 @@ For engineers who want to know why each part is there.
 
 ## Don't promise / known quirks
 
-- **The robot loses the controller right after a song launches.** GH3 drops it. Fix: open
-  Wiimotes → **RECONNECT**. Explain it as "the Wii re-handshakes at song start".
+- **GH3 drops the robot's controller when the game boots from the Wii home screen.** Fix:
+  open Wiimotes → **RECONNECT** once GH3 has finished booting. It only happens at game
+  boot, so do it during setup rather than in front of visitors.
 - **The neural-net detector is hard, 1-player only.** Its peer-to-peer play is built but
   not yet confirmed on hardware, so rehearse it before showing it live.
 - **lemmy and lightshow only perform during a song**, and only if they're enabled under
